@@ -83,6 +83,7 @@ export const authOptions: any = {
   
   pages: {
     signIn: '/auth/signin',
+    error: '/auth/error', // Custom error page
   },
   
   session: {
@@ -150,7 +151,14 @@ export const authOptions: any = {
       }
     },
     async error(message: any) {
-      console.error('❌ NextAuth Error:', message)
+      console.error('❌ NextAuth Error Details:', {
+        error: message.error,
+        errorDescription: message.error_description,
+        provider: message.provider,
+        code: message.code,
+        timestamp: new Date().toISOString(),
+        fullMessage: message
+      })
     }
   },
 }
