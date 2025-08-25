@@ -14,6 +14,7 @@ const authPool = new Pool({
 
 export const authOptions: any = {
   adapter: PostgresAdapter(authPool),
+  debug: process.env.NODE_ENV === 'development',
   providers: [
     // Google OAuth Provider
     GoogleProvider({
@@ -81,6 +82,18 @@ export const authOptions: any = {
   },
   
   callbacks: {
+    async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
+      // Log OAuth signin attempts for debugging
+      if (process.env.NODE_ENV === 'production') {
+        console.log('OAuth signin attempt:', {
+          provider: account?.provider,
+          user: user?.email,
+          timestamp: new Date().toISOString()
+        })
+      }
+      return true
+    },
+    
     async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.id = user.id
