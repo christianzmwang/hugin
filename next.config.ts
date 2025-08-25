@@ -1,9 +1,5 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    // Enable optimizations for better performance
-    optimizeCss: true,
-  },
   // Optimize for production
   compress: true,
   poweredByHeader: false,
