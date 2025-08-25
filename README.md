@@ -26,20 +26,73 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 - `DATABASE_URL` - PostgreSQL connection string
 - `DATABASE_POOLING_URL` - Optional pooled connection string
+- `NEXTAUTH_SECRET` - Secret key for NextAuth.js (generate with: openssl rand -base64 32)
+- `NEXTAUTH_URL` - Base URL for the application (http://localhost:3000 for development)
+- `GOOGLE_CLIENT_ID` - Google OAuth client ID (optional, for Gmail login)
+- `GOOGLE_CLIENT_SECRET` - Google OAuth client secret (optional, for Gmail login)
 
 ## Database Dependencies
 
 This application requires the following PostgreSQL tables:
+
+**Business Data:**
 - `Business` - Company information
 - `FinancialReport` - Financial data
 - `CEO` - Executive information
 - `public.events_public` - Events data
 - `public.business_filter_matrix` - For filtering
 
+**Authentication (auto-created by setup script):**
+- `users` - User accounts and password hashes
+- `accounts` - OAuth provider accounts (Google, etc.)
+- `sessions` - User session management
+- `verification_tokens` - Email verification and password reset tokens
+
 ## Features
 
+**Market Research:**
 - Real-time business data search and filtering
 - Event-based company scoring
 - Industry and revenue filtering
 - Advanced sorting and pagination
 - Event type weighting system
+
+**Authentication & Security:**
+- Email/password user registration and login
+- Google OAuth integration (Gmail login)
+- Secure password hashing with bcryptjs
+- Session management with NextAuth.js
+- Password strength validation
+- User profile management
+
+## 🔐 Authentication Setup
+
+To set up user authentication:
+
+1. **Copy environment template:**
+   ```bash
+   cp .env.example .env.local
+   ```
+
+2. **Configure authentication variables in .env.local:**
+   ```bash
+   NEXTAUTH_SECRET=your-secret-key-here  # Generate with: openssl rand -base64 32
+   NEXTAUTH_URL=http://localhost:3000
+   ```
+
+3. **Run authentication setup script:**
+   ```bash
+   node setup-auth.js
+   ```
+
+4. **Optional - Configure Google OAuth:**
+   - Create a project in [Google Cloud Console](https://console.cloud.google.com/)
+   - Enable Google+ API and create OAuth 2.0 credentials
+   - Add `http://localhost:3000/api/auth/callback/google` as authorized redirect URI
+   - Add credentials to .env.local:
+     ```bash
+     GOOGLE_CLIENT_ID=your-google-client-id
+     GOOGLE_CLIENT_SECRET=your-google-client-secret
+     ```
+
+For detailed authentication setup instructions, see [AUTHENTICATION.md](./AUTHENTICATION.md).

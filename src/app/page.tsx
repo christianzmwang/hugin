@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { createPortal } from 'react-dom'
+import AuthNav from '@/components/AuthNav'
 
 const numberFormatter = new Intl.NumberFormat('no-NO')
 
@@ -820,8 +821,9 @@ export default function BrregPage() {
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
       <div className="bg-black border-b border-white/10">
-        <div className="py-4 px-6">
+        <div className="py-4 px-6 flex justify-between items-center">
           <h1 className="text-xl font-bold">Allvitr / <span className='text-red-600'>Hugin</span></h1>
+          <AuthNav />
         </div>
       </div>
 
