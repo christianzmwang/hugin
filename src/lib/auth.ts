@@ -20,6 +20,13 @@ export const authOptions: any = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code"
+        }
+      }
     }),
     
     // Email/Password Provider
@@ -83,14 +90,25 @@ export const authOptions: any = {
   
   callbacks: {
     async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
-      // Log OAuth signin attempts for debugging
-      if (process.env.NODE_ENV === 'production') {
-        console.log('OAuth signin attempt:', {
-          provider: account?.provider,
-          user: user?.email,
-          timestamp: new Date().toISOString()
+      // Enhanced logging for OAuth debugging
+      console.log('🔐 SignIn callback:', {
+        provider: account?.provider,
+        user_email: user?.email,
+        user_id: user?.id,
+        account_type: account?.type,
+        profile_email: profile?.email,
+        timestamp: new Date().toISOString(),
+        env: process.env.NODE_ENV
+      })
+      
+      if (account?.provider === 'google') {
+        console.log('🟢 Google OAuth details:', {
+          access_token: account.access_token ? 'present' : 'missing',
+          id_token: account.id_token ? 'present' : 'missing',
+          expires_at: account.expires_at
         })
       }
+      
       return true
     },
     
@@ -110,6 +128,30 @@ export const authOptions: any = {
   },
   
   secret: process.env.NEXTAUTH_SECRET,
+  
+  // Enhanced error logging
+  events: {
+    async signIn(message: any) {
+      console.log('✅ SignIn event:', message)
+    },
+    async signOut(message: any) {
+      console.log('🚪 SignOut event:', message)
+    },
+    async createUser(message: any) {
+      console.log('👤 CreateUser event:', message)
+    },
+    async linkAccount(message: any) {
+      console.log('🔗 LinkAccount event:', message)
+    },
+    async session(message: any) {
+      if (process.env.NODE_ENV === 'development') {
+        console.log('📋 Session event:', message)
+      }
+    },
+    async error(message: any) {
+      console.error('❌ NextAuth Error:', message)
+    }
+  },
 }
 
 // NextAuth instance is created in the route handler
