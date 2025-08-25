@@ -1,4 +1,4 @@
-import NextAuth, { NextAuthOptions } from 'next-auth'
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
 import PostgresAdapter from '@auth/pg-adapter'
@@ -12,7 +12,7 @@ const authPool = new Pool({
   ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
 })
 
-export const authOptions: NextAuthOptions = {
+export const authOptions: any = {
   adapter: PostgresAdapter(authPool),
   providers: [
     // Google OAuth Provider
@@ -81,16 +81,16 @@ export const authOptions: NextAuthOptions = {
   },
   
   callbacks: {
-    async jwt({ token, user }) {
+    async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.id = user.id
       }
       return token
     },
     
-    async session({ session, token }) {
+    async session({ session, token }: { session: any; token: any }) {
       if (token && session.user) {
-        (session.user as any).id = token.id as string
+        session.user.id = token.id as string
       }
       return session
     },
@@ -99,4 +99,4 @@ export const authOptions: NextAuthOptions = {
   secret: process.env.NEXTAUTH_SECRET,
 }
 
-export default NextAuth(authOptions)
+// NextAuth instance is created in the route handler

@@ -58,6 +58,16 @@ function buildQuery(p: Params) {
 const inflight = new Map<string, AbortController>()
 
 export function useBusinessesInstant(p: Params) {
+  // Extract computed values to avoid complex expressions in dependency array
+  const industryCode = p.industryCode || null
+  const sectorCode = p.sectorCode || null
+  const orgFormCode = p.orgFormCode || null
+  const city = p.city || null
+  const revenueBucket = p.revenueBucket || null
+  const employeeBucket = p.employeeBucket || null
+  const vatRegistered = typeof p.vatRegistered === 'boolean' ? p.vatRegistered : null
+  const search = p.search || null
+
   const key = useMemo(() => {
     // key excludes cursor for count (count only on first page)
     const k = {
@@ -65,17 +75,17 @@ export function useBusinessesInstant(p: Params) {
       sortBy: p.sortBy,
       order: p.order,
       limit: p.limit,
-      industryCode: p.industryCode || null,
-      sectorCode: p.sectorCode || null,
-      orgFormCode: p.orgFormCode || null,
-      city: p.city || null,
-      revenueBucket: p.revenueBucket || null,
-      employeeBucket: p.employeeBucket || null,
-      vatRegistered: typeof p.vatRegistered === 'boolean' ? p.vatRegistered : null,
-      search: p.search || null,
+      industryCode,
+      sectorCode,
+      orgFormCode,
+      city,
+      revenueBucket,
+      employeeBucket,
+      vatRegistered,
+      search,
     }
     return JSON.stringify(k)
-  }, [p.sortBy, p.order, p.limit, p.industryCode || null, p.sectorCode || null, p.orgFormCode || null, p.city || null, p.revenueBucket || null, p.employeeBucket || null, typeof p.vatRegistered === 'boolean' ? p.vatRegistered : null, p.search || null])
+  }, [p.sortBy, p.order, p.limit, industryCode, sectorCode, orgFormCode, city, revenueBucket, employeeBucket, vatRegistered, search])
 
   const [items, setItems] = useState<Record<string, unknown>[]>([])
   const [listTookMs, setListTook] = useState<number | null>(null)
