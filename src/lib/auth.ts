@@ -15,6 +15,7 @@ const authPool = new Pool({
 export const authOptions: any = {
   adapter: PostgresAdapter(authPool),
   debug: process.env.NODE_ENV === 'development',
+  trustHost: true, // Allow multiple domains
   providers: [
     // Google OAuth Provider
     GoogleProvider({
@@ -89,7 +90,7 @@ export const authOptions: any = {
   },
   
   callbacks: {
-    async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
+    async signIn({ user, account, profile, credentials }: { user: any; account: any; profile?: any; credentials?: any }) {
       // Enhanced logging for OAuth debugging
       console.log('🔐 SignIn callback:', {
         provider: account?.provider,
