@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { createPortal } from 'react-dom'
+import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import AuthNav from '@/components/AuthNav'
 
 const numberFormatter = new Intl.NumberFormat('no-NO')
@@ -491,6 +493,18 @@ const BusinessCard = memo(
 BusinessCard.displayName = 'BusinessCard'
 
 export default function BrregPage() {
+  const { data: session, status } = useSession()
+  const router = useRouter()
+  
+  // Redirect to signin if not authenticated
+  useEffect(() => {
+    if (status === 'loading') return // Still loading
+    if (!session) {
+      router.push('/auth/signin')
+      return
+    }
+  }, [session, status, router])
+
   const [data, setData] = useState<Business[]>([])
   const [total, setTotal] = useState<number>(0)
   const [loading, setLoading] = useState(true)
@@ -817,6 +831,23 @@ export default function BrregPage() {
   // Data is now sorted server-side, no need for client-side sorting
   const sortedData = data
 
+  // Show loading state while checking authentication
+  if (status === 'loading') {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
+          <div className="text-lg text-gray-400">Loading...</div>
+        </div>
+      </div>
+    )
+  }
+
+  // Don't render content if not authenticated (will redirect)
+  if (!session) {
+    return null
+  }
+
   return (
     <div className="min-h-screen bg-black text-white">
       {/* Header */}
@@ -828,8 +859,8 @@ export default function BrregPage() {
       </div>
 
       <div className="flex">
-  {/* Left Sidebar - Signals */}
-  <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6">
+        {/* Left Sidebar - Signals */}
+        <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6">
           <div className="sticky top-6">
             <h2 className="text-xl font-semibold mb-6">Signals</h2>
 

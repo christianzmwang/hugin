@@ -1,6 +1,8 @@
 import Link from 'next/link'
+import { Suspense } from 'react'
+import AuthErrorContent from '@/app/auth/error/AuthErrorContent'
 
-export default function AuthErrorPage() {
+function AuthErrorFallback() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full space-y-8">
@@ -56,6 +58,14 @@ export default function AuthErrorPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense fallback={<AuthErrorFallback />}>
+      <AuthErrorContent />
+    </Suspense>
   )
 }
 
