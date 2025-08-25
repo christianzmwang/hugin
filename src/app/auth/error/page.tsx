@@ -1,9 +1,10 @@
 'use client'
 
+import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
-export default function AuthErrorPage() {
+function AuthErrorInner() {
   const searchParams = useSearchParams()
   const error = searchParams.get('error')
   const errorDescription = searchParams.get('error_description')
@@ -39,7 +40,6 @@ export default function AuthErrorPage() {
     }
   }
 
-  // Log error details for debugging
   if (typeof window !== 'undefined') {
     console.error('🔴 Auth Error Page:', {
       error,
@@ -89,7 +89,6 @@ export default function AuthErrorPage() {
             </div>
           </div>
 
-          {/* Debug information */}
           {(error || errorDescription) && (
             <div className="mt-4 bg-gray-100 border border-gray-200 rounded-md p-4">
               <h4 className="text-sm font-medium text-gray-900 mb-2">Debug Information:</h4>
@@ -122,5 +121,21 @@ export default function AuthErrorPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function AuthErrorPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-md w-full space-y-8">
+            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Authentication Error</h2>
+          </div>
+        </div>
+      }
+    >
+      <AuthErrorInner />
+    </Suspense>
   )
 }
