@@ -1,0 +1,8 @@
+{
+  "/api/events/types/route": "app/api/events/types/route.js",
+  "/api/industries/route": "app/api/industries/route.js",
+  "/api/businesses/route": "app/api/businesses/route.js",
+  "/api/events/route": "app/api/events/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/page": "app/page.js"
+}
