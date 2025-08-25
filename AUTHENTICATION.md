@@ -74,6 +74,38 @@ GOOGLE_CLIENT_ID=your-google-client-id-here.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret-here
 ```
 
+#### reCAPTCHA Enterprise Setup (Required for Signup)
+
+1. Go to [Google Cloud Console](https://console.cloud.google.com/)
+2. Create a new project or select existing project
+3. Enable the reCAPTCHA Enterprise API
+4. Go to "reCAPTCHA Enterprise" → "Site Keys" → "Create Site Key"
+5. Choose "Website" and configure:
+   - **For Development Key:**
+     - Domain: `localhost`
+     - reCAPTCHA type: "Score-based (v3)"
+   - **For Production Key:**
+     - Domain: `allvitr.com`, `allvitr.no` (your production domains)
+     - reCAPTCHA type: "Score-based (v3)"
+   
+   **Note:** Google recommends separate keys for development and production. If you get a "localhost not supported" error, you need to add `localhost` to your site key's supported domains list.
+6. Create an API key:
+   - Go to "APIs & Services" → "Credentials" → "Create Credentials" → "API Key"
+   - Restrict the key to "reCAPTCHA Enterprise API"
+
+Add the reCAPTCHA configuration to your `.env.local`:
+
+```bash
+# reCAPTCHA Enterprise Configuration
+NEXT_PUBLIC_RECAPTCHA_SITE_KEY=your-site-key-here
+RECAPTCHA_PROJECT_ID=your-google-cloud-project-id
+RECAPTCHA_API_KEY=your-api-key-here
+
+# For separate dev/prod keys (recommended):
+# Development: Use the site key that includes localhost
+# Production: Use the site key that includes your production domains
+```
+
 ### 3. Install Dependencies
 
 The required dependencies are already installed:
@@ -95,6 +127,35 @@ pnpm dev
    - Click "Sign Up" to create a new account
    - Click "Sign In" to log in with existing credentials
    - Try "Continue with Google" (if configured)
+
+## 🔧 Troubleshooting
+
+### reCAPTCHA "localhost not supported" Error
+
+If you see an error that "localhost domains are not supported by default":
+
+1. **Quick Fix**: Add `localhost` to your existing site key
+   - Go to [Google Cloud Console](https://console.cloud.google.com/) → reCAPTCHA Enterprise
+   - Find your site key and click on it
+   - Under "Domains", click "Add a domain"
+   - Enter `localhost` and save
+
+2. **Best Practice**: Create separate development and production keys
+   - **Development key**: Only includes `localhost`
+   - **Production key**: Only includes your production domains (`allvitr.com`, `allvitr.no`)
+   - Use the appropriate key in each environment
+
+### Environment Variables Not Loading
+
+- Make sure your `.env.local` file is in the project root
+- Restart your development server after adding new environment variables
+- Check that variable names match exactly (case-sensitive)
+
+### Database Connection Issues
+
+- Verify your `DATABASE_URL` is correct
+- Ensure the database is running and accessible
+- Run the auth schema SQL script if tables don't exist
 
 ## 📋 Authentication Features
 

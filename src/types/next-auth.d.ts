@@ -23,3 +23,17 @@ declare module 'next-auth/jwt' {
     id: string
   }
 }
+
+// reCAPTCHA Enterprise type declarations
+declare global {
+  interface Window {
+    grecaptcha?: {
+      enterprise?: {
+        ready: (callback: () => void) => void
+        execute: (siteKey: string, options: { action: string }) => Promise<string>
+      }
+    }
+  }
+}
+
+export {}
