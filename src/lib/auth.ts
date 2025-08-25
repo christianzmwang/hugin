@@ -14,20 +14,13 @@ const authPool = new Pool({
 
 export const authOptions: any = {
   adapter: PostgresAdapter(authPool),
-  debug: process.env.NODE_ENV === 'development',
+  debug: false, // Disable debug to avoid console errors
   trustHost: true, // Allow multiple domains
   providers: [
     // Google OAuth Provider
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
-      authorization: {
-        params: {
-          prompt: "consent",
-          access_type: "offline",
-          response_type: "code"
-        }
-      }
     }),
     
     // Email/Password Provider
@@ -91,29 +84,6 @@ export const authOptions: any = {
   },
   
   callbacks: {
-    async signIn({ user, account, profile, credentials }: { user: any; account: any; profile?: any; credentials?: any }) {
-      // Enhanced logging for OAuth debugging
-      console.log('🔐 SignIn callback:', {
-        provider: account?.provider,
-        user_email: user?.email,
-        user_id: user?.id,
-        account_type: account?.type,
-        profile_email: profile?.email,
-        timestamp: new Date().toISOString(),
-        env: process.env.NODE_ENV
-      })
-      
-      if (account?.provider === 'google') {
-        console.log('🟢 Google OAuth details:', {
-          access_token: account.access_token ? 'present' : 'missing',
-          id_token: account.id_token ? 'present' : 'missing',
-          expires_at: account.expires_at
-        })
-      }
-      
-      return true
-    },
-    
     async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.id = user.id
@@ -130,37 +100,6 @@ export const authOptions: any = {
   },
   
   secret: process.env.NEXTAUTH_SECRET,
-  
-  // Enhanced error logging
-  events: {
-    async signIn(message: any) {
-      console.log('✅ SignIn event:', message)
-    },
-    async signOut(message: any) {
-      console.log('🚪 SignOut event:', message)
-    },
-    async createUser(message: any) {
-      console.log('👤 CreateUser event:', message)
-    },
-    async linkAccount(message: any) {
-      console.log('🔗 LinkAccount event:', message)
-    },
-    async session(message: any) {
-      if (process.env.NODE_ENV === 'development') {
-        console.log('📋 Session event:', message)
-      }
-    },
-    async error(message: any) {
-      console.error('❌ NextAuth Error Details:', {
-        error: message.error,
-        errorDescription: message.error_description,
-        provider: message.provider,
-        code: message.code,
-        timestamp: new Date().toISOString(),
-        fullMessage: message
-      })
-    }
-  },
 }
 
 // NextAuth instance is created in the route handler
