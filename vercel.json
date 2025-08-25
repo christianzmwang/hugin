@@ -8,6 +8,5 @@
     "src/app/api/**/*.ts": {
       "maxDuration": 30
     }
-  },
-  "regions": ["fra1", "arn1", "cdg1"]
+  }
 }
