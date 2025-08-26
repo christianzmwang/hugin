@@ -1,11 +1,1 @@
-{
-  "/api/businesses/route": "app/api/businesses/route.js",
-  "/api/industries/route": "app/api/industries/route.js",
-  "/api/events/types/route": "app/api/events/types/route.js",
-  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/auth/signup/route": "app/api/auth/signup/route.js",
-  "/page": "app/page.js",
-  "/auth/signin/page": "app/auth/signin/page.js",
-  "/auth/signup/page": "app/auth/signup/page.js"
-}
+{}

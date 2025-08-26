@@ -14,7 +14,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
-    username: '',
+    email: '',
     password: '',
     name: ''
   })
@@ -22,12 +22,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
   // State for password visibility
   const [showPassword, setShowPassword] = useState(false)
   
-  // State for successful signup
-  const [signupSuccess, setSignupSuccess] = useState(false)
-  const [signupCredentials, setSignupCredentials] = useState({
-    username: '',
-    password: ''
-  })
+
   
   // Cloudflare Turnstile state
   const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
@@ -66,8 +61,12 @@ export default function AuthForm({ mode }: AuthFormProps) {
     return () => {
       // Cleanup script on unmount
       const existingScript = document.querySelector(`script[src*="challenges.cloudflare.com/turnstile"]`)
-      if (existingScript) {
-        document.head.removeChild(existingScript)
+      if (existingScript && existingScript.parentNode) {
+        try {
+          existingScript.parentNode.removeChild(existingScript)
+        } catch (error) {
+          console.warn('Failed to remove Turnstile script:', error)
+        }
       }
     }
   }, [mode])
@@ -82,6 +81,11 @@ export default function AuthForm({ mode }: AuthFormProps) {
           const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
           if (siteKey) {
             try {
+              // Clear any existing widget first
+              if (container.children.length > 0) {
+                container.innerHTML = ''
+              }
+              
               const widgetId = window.turnstile.render(container, {
                 sitekey: siteKey,
                 size: 'invisible',
@@ -90,7 +94,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
                   setTurnstileToken(token)
                 },
                 'error-callback': () => {
-                  console.error('Turnstile error')
+                  console.error('Turnstile error occurred')
                   setTurnstileToken(null)
                 },
                 'expired-callback': () => {
@@ -101,14 +105,45 @@ export default function AuthForm({ mode }: AuthFormProps) {
               setTurnstileWidgetId(widgetId)
             } catch (error) {
               console.error('Failed to render Turnstile widget:', error)
+              setTurnstileToken(null)
             }
+          } else {
+            console.error('Turnstile site key not configured')
           }
+        } else {
+          console.warn('Turnstile container or API not available')
         }
       }, 100)
       
       return () => clearTimeout(timer)
     }
+    
+    // Cleanup widget when component unmounts or mode changes
+    return () => {
+      if (turnstileWidgetId && window.turnstile) {
+        try {
+          window.turnstile.remove(turnstileWidgetId)
+        } catch (error) {
+          console.warn('Failed to remove Turnstile widget:', error)
+        }
+      }
+    }
   }, [mode, turnstileLoaded, turnstileWidgetId])
+
+  // Cleanup widget on component unmount
+  useEffect(() => {
+    return () => {
+      if (turnstileWidgetId && window.turnstile) {
+        try {
+          window.turnstile.remove(turnstileWidgetId)
+          setTurnstileWidgetId(null)
+          setTurnstileToken(null)
+        } catch (error) {
+          console.warn('Failed to cleanup Turnstile widget on unmount:', error)
+        }
+      }
+    }
+  }, [turnstileWidgetId])
 
   // Function to execute invisible Turnstile challenge
   const executeTurnstile = (): Promise<string | null> => {
@@ -128,11 +163,17 @@ export default function AuthForm({ mode }: AuthFormProps) {
         if (turnstileToken) {
           resolve(turnstileToken)
         } else {
-          // Wait for the callback to set the token
+          // Wait for the callback to set the token with a timeout
+          let attempts = 0
+          const maxAttempts = 100 // 10 seconds max wait
           const checkToken = () => {
             if (turnstileToken) {
               resolve(turnstileToken)
+            } else if (attempts >= maxAttempts) {
+              console.error('Turnstile execution timeout')
+              resolve(null)
             } else {
+              attempts++
               setTimeout(checkToken, 100)
             }
           }
@@ -155,41 +196,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
     return Math.floor(Math.random() * max)
   }
 
-  // High-grade generator functions for signup
-  const generateUsername = () => {
-    const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
-    const lowercase = 'abcdefghijklmnopqrstuvwxyz'
-    const numbers = '0123456789'
-    
-    // Variable length between 8-16 characters for username
-    const length = getRandomInt(9) + 8 // 8-16 chars
-    const minComplexity = Math.floor(length / 3) // Scale complexity with length
-    
-    let username = ''
-    
-    // Ensure complexity with multiple chars from each category (no symbols for username)
-    for (let i = 0; i < minComplexity; i++) {
-      username += uppercase[getRandomInt(uppercase.length)]
-      username += lowercase[getRandomInt(lowercase.length)]
-      username += numbers[getRandomInt(numbers.length)]
-    }
-    
-    // Add additional random characters to reach target length
-    const allChars = uppercase + lowercase + numbers
-    for (let i = username.length; i < length; i++) {
-      username += allChars[getRandomInt(allChars.length)]
-    }
-    
-    // Shuffle using Fisher-Yates algorithm
-    const chars = username.split('')
-    for (let i = chars.length - 1; i > 0; i--) {
-      const j = getRandomInt(i + 1)
-      ;[chars[i], chars[j]] = [chars[j], chars[i]]
-    }
-    
-    return chars.join('')
-  }
-
+  // Password generator function
   const generatePassword = () => {
     const uppercase = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'
     const lowercase = 'abcdefghijklmnopqrstuvwxyz'
@@ -226,6 +233,21 @@ export default function AuthForm({ mode }: AuthFormProps) {
     return chars.join('')
   }
 
+  // Password validation for real-time feedback
+  const validatePasswordRequirements = (password: string) => {
+    return {
+      minLength: password.length >= 8,
+      hasUppercase: /[A-Z]/.test(password),
+      hasLowercase: /[a-z]/.test(password),
+      hasNumber: /\d/.test(password),
+      hasSymbol: /[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)
+    }
+  }
+
+
+
+
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setIsLoading(true)
@@ -252,7 +274,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            username: formData.username,
+            email: formData.email,
             password: formData.password,
             name: formData.name,
             turnstileToken: token
@@ -269,34 +291,37 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
         // After successful registration, sign in the user
         const signInResult = await signIn('credentials', {
-          username: formData.username,
+          email: formData.email,
           password: formData.password,
           redirect: false,
         })
 
         if (signInResult?.error) {
           setError('Registration successful, but sign-in failed. Please try signing in manually.')
+        } else {
+          // Redirect to main program after successful signup and sign-in
+          router.push('/')
         }
-        
-        // Show success screen with credentials and let the user proceed
-        setSignupCredentials({ username: formData.username, password: formData.password })
-        setSignupSuccess(true)
         
         // Reset Turnstile token state
         setTurnstileToken(null)
         if (turnstileWidgetId && window.turnstile) {
-          window.turnstile.reset(turnstileWidgetId)
+          try {
+            window.turnstile.reset(turnstileWidgetId)
+          } catch (error) {
+            console.warn('Failed to reset Turnstile widget:', error)
+          }
         }
       } else {
         // Sign in existing user
         const result = await signIn('credentials', {
-          username: formData.username,
+          email: formData.email,
           password: formData.password,
           redirect: false,
         })
 
         if (result?.error) {
-          setError('Invalid username or password')
+          setError('Invalid email or password')
         } else {
           router.push('/')
         }
@@ -307,7 +332,11 @@ export default function AuthForm({ mode }: AuthFormProps) {
       if (mode === 'signup') {
         setTurnstileToken(null)
         if (turnstileWidgetId && window.turnstile) {
-          window.turnstile.reset(turnstileWidgetId)
+          try {
+            window.turnstile.reset(turnstileWidgetId)
+          } catch (error) {
+            console.warn('Failed to reset Turnstile widget on error:', error)
+          }
         }
       }
     } finally {
@@ -325,21 +354,14 @@ export default function AuthForm({ mode }: AuthFormProps) {
     }
   }
 
-  // Copy to clipboard function
-  const copyToClipboard = async (text: string) => {
-    try {
-      await navigator.clipboard.writeText(text)
-    } catch (err) {
-      console.error('Failed to copy:', err)
-    }
-  }
+
 
   return (
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-black relative">
       {/* Munin image in bottom left corner */}
       <div className="absolute bottom-6 left-6 w-6 h-6">
         <Image 
-          src="/whitemunin.jpg" 
+          src="/munin.svg" 
           alt="Munin" 
           width={24}
           height={24}
@@ -363,7 +385,6 @@ export default function AuthForm({ mode }: AuthFormProps) {
         {/* Right side - Form (50% width) */}
         <div className="w-full lg:w-1/2 flex items-center justify-center">
           <div className="max-w-lg w-full space-y-8 px-8">
-        {!signupSuccess && (
           <div>
             <h2 className="mt-6 text-2xl lg:text-3xl font-extrabold text-white text-left whitespace-nowrap">
               {mode === 'signin' ? 'Sign in to your account' : 'Create your account'}
@@ -386,86 +407,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
               )}
             </p>
           </div>
-        )}
         
-        {signupSuccess ? (
-          // Success view with credentials display
-          <div className="mt-8 space-y-6">
-            <div className="text-left">
-              <div className="mb-6">
-                <svg className="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <h3 className="mt-2 text-lg font-medium text-white text-left">Account Created Successfully!</h3>
-                <p className="mt-1 text-sm text-gray-400 text-left">Your credentials are shown below. Please save them securely.</p>
-              </div>
-
-              {/* Username display with copy */}
-              <div className="mb-4">
-                <label className="block text-sm font-medium text-gray-300 mb-2 text-left">Username</label>
-                <div className="flex items-stretch space-x-2">
-                  <div className="flex-1 bg-transparent border-0 border-b border-gray-600 px-1 py-2 text-white font-mono text-sm overflow-x-auto text-left">
-                    {signupCredentials.username}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(signupCredentials.username)}
-                    className="px-3 py-2 text-white text-sm font-medium transition-colors bg-transparent hover:bg-transparent"
-                    title="Copy username"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Password display with copy */}
-              <div className="mb-6">
-                <label className="block text-sm font-medium text-gray-300 mb-2 text-left">Password</label>
-                <div className="flex items-stretch space-x-2">
-                  <div className="flex-1 bg-transparent border-0 border-b border-gray-600 px-1 py-2 text-white font-mono text-sm overflow-x-auto text-left">
-                    {signupCredentials.password}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => copyToClipboard(signupCredentials.password)}
-                    className="px-3 py-2 text-white text-sm font-medium transition-colors bg-transparent hover:bg-transparent"
-                    title="Copy password"
-                  >
-                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
-                    </svg>
-                  </button>
-                </div>
-              </div>
-
-              {/* Security message */}
-              <div className="bg-yellow-900/50 border border-yellow-500 p-4 mb-6 text-left">
-                <div className="flex">
-                  <svg className="h-5 w-5 text-yellow-400 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
-                  </svg>
-                  <div>
-                    <h4 className="text-sm font-medium text-yellow-400">Important Security Notice</h4>
-                    <p className="mt-1 text-sm text-yellow-200">
-                      Please store your username and password securely. Consider using a password manager to keep your credentials safe.
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Continue button */}
-              <button
-                type="button"
-                onClick={() => router.push('/')}
-                className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium text-white bg-red-700 hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400 transition-colors mt-4"
-              >
-                Get started
-              </button>
-            </div>
-          </div>
-        ) : (
+        
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="p-4 bg-red-900/50 border border-red-500">
@@ -475,35 +418,20 @@ export default function AuthForm({ mode }: AuthFormProps) {
           
           <div className="shadow-sm space-y-6">
             <div className="relative">
-              <label htmlFor="username" className="sr-only">
-                Username
+              <label htmlFor="email" className="sr-only">
+                Email
               </label>
               <input
-                id="username"
-                name="username"
-                type="text"
-                autoComplete="username"
+                id="email"
+                name="email"
+                type="email"
+                autoComplete="email"
                 required
-                readOnly={mode === 'signup'}
-                className={`relative block w-full px-1 py-2 pr-20 bg-transparent border-0 border-b border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-0 focus:z-10 sm:text-sm ${
-                  mode === 'signup' ? 'caret-transparent' : ''
-                }`}
-                placeholder={mode === 'signup' ? 'Use generator to create username' : 'Username'}
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                className="relative block w-full px-1 py-2 bg-transparent border-0 border-b border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-0 focus:z-10 sm:text-sm"
+                placeholder="Email"
+                value={formData.email}
+                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
               />
-              {mode === 'signup' && (
-                <button
-                  type="button"
-                  onClick={() => setFormData({ ...formData, username: generateUsername() })}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white z-20"
-                  title="Generate username"
-                >
-                  <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                  </svg>
-                </button>
-              )}
             </div>
             
             <div className="relative">
@@ -516,11 +444,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 type={showPassword ? 'text' : 'password'}
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 required
-                readOnly={mode === 'signup'}
-                className={`relative block w-full px-1 py-2 pr-20 bg-transparent border-0 border-b border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-0 focus:z-10 sm:text-sm ${
-                  mode === 'signup' ? 'caret-transparent' : ''
-                }`}
-                placeholder={mode === 'signup' ? 'Use generator to create password' : 'Password'}
+                className={`relative block w-full px-1 py-2 ${mode === 'signup' ? 'pr-16' : 'pr-10'} bg-transparent border-0 border-b border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-0 focus:z-10 sm:text-sm`}
+                placeholder="Password"
                 value={formData.password}
                 onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
@@ -529,9 +454,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className={`absolute inset-y-0 flex items-center text-gray-400 hover:text-white z-20 ${
-                  mode === 'signup' ? 'right-8' : 'right-0'
-                } pr-3`}
+                className={`absolute inset-y-0 ${mode === 'signup' ? 'right-8' : 'right-0'} pr-3 flex items-center text-gray-400 hover:text-white z-20`}
                 title={showPassword ? 'Hide password' : 'Show password'}
               >
                 {showPassword ? (
@@ -562,6 +485,81 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 </button>
               )}
             </div>
+
+            {/* Password requirements for signup */}
+            {mode === 'signup' && (
+              <div className="mt-3">
+                <div className="text-xs text-gray-400">
+                  {(() => {
+                    const requirements = validatePasswordRequirements(formData.password)
+                    return (
+                      <div className="w-full flex justify-between">
+                        <div className={`flex items-center ${requirements.minLength ? 'text-green-400' : 'text-red-400'}`}>
+                          {requirements.minLength ? (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          8+ chars
+                        </div>
+                        <div className={`flex items-center ${requirements.hasUppercase ? 'text-green-400' : 'text-red-400'}`}>
+                          {requirements.hasUppercase ? (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          A-Z
+                        </div>
+                        <div className={`flex items-center ${requirements.hasLowercase ? 'text-green-400' : 'text-red-400'}`}>
+                          {requirements.hasLowercase ? (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          a-z
+                        </div>
+                        <div className={`flex items-center ${requirements.hasNumber ? 'text-green-400' : 'text-red-400'}`}>
+                          {requirements.hasNumber ? (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          0-9
+                        </div>
+                        <div className={`flex items-center ${requirements.hasSymbol ? 'text-green-400' : 'text-red-400'}`}>
+                          {requirements.hasSymbol ? (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                            </svg>
+                          ) : (
+                            <svg className="h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                          )}
+                          special char
+                        </div>
+                      </div>
+                    )
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Invisible Turnstile widget container */}
@@ -619,7 +617,6 @@ export default function AuthForm({ mode }: AuthFormProps) {
             </div>
           </div>
         </form>
-        )}
           </div>
         </div>
       </div>

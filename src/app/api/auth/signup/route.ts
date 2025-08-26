@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createUser, validateUsername, validatePassword } from '@/lib/auth-helpers'
+import { createUser, validateEmail, validatePassword } from '@/lib/auth-helpers'
 
 // Function to verify Cloudflare Turnstile token
 async function verifyTurnstile(token: string): Promise<boolean> {
@@ -51,21 +51,21 @@ async function verifyTurnstile(token: string): Promise<boolean> {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { username, password, name, turnstileToken } = body
+    const { email, password, name, turnstileToken } = body
 
     console.log('Signup attempt:', { 
-      hasUsername: !!username, 
+      hasEmail: !!email, 
       hasPassword: !!password, 
       hasName: !!name,
       hasTurnstileToken: !!turnstileToken,
-      username: username?.substring(0, 3) + '***' // Only show first 3 chars for privacy
+      email: email?.substring(0, 3) + '***' // Only show first 3 chars for privacy
     })
 
     // Validate required fields
-    if (!username || !password) {
-      console.log('Missing username or password:', { username: !!username, password: !!password })
+    if (!email || !password) {
+      console.log('Missing email or password:', { email: !!email, password: !!password })
       return NextResponse.json(
-        { error: 'Username and password are required' },
+        { error: 'Email and password are required' },
         { status: 400 }
       )
     }
@@ -86,11 +86,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Validate username format (alphanumeric, 3-50 characters)
-    if (!validateUsername(username)) {
-      console.log('Username validation failed for:', username)
+    // Validate email format
+    if (!validateEmail(email)) {
+      console.log('Email validation failed for:', email)
       return NextResponse.json(
-        { error: 'Username must be 3-50 characters and contain only letters, numbers, and underscores' },
+        { error: 'Invalid email format' },
         { status: 400 }
       )
     }
@@ -106,9 +106,9 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the user
-    console.log('Creating user with username:', username.toLowerCase().trim())
+    console.log('Creating user with email:', email.toLowerCase().trim())
     const user = await createUser({
-      username: username.toLowerCase().trim(),
+      email: email.toLowerCase().trim(),
       password,
       name: name?.trim() || undefined
     })
@@ -116,7 +116,7 @@ export async function POST(req: NextRequest) {
     if (!user) {
       console.log('User creation failed - user already exists or database error')
       return NextResponse.json(
-        { error: 'Failed to create user. Username may already be in use.' },
+        { error: 'Failed to create user. Email may already be in use.' },
         { status: 400 }
       )
     }

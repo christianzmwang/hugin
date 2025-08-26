@@ -2,15 +2,15 @@ import bcrypt from 'bcryptjs'
 import { query } from './db'
 
 export interface CreateUserData {
-  username: string
+  email: string
   password: string
   name?: string
 }
 
 export interface User {
   id: string
-  username: string
-  email?: string | null
+  username?: string | null
+  email: string
   name: string | null
   emailVerified: Date | null
   image: string | null
@@ -19,21 +19,26 @@ export interface User {
 }
 
 /**
- * Creates a new user with username and password
+ * Creates a new user with email and password
  */
 export async function createUser(userData: CreateUserData): Promise<User | null> {
   try {
-    // Normalize username to lowercase and trim whitespace
-    const normalizedUsername = userData.username.toLowerCase().trim()
+    // Normalize email to lowercase and trim whitespace
+    const normalizedEmail = userData.email.toLowerCase().trim()
+
+    // Validate email format
+    if (!validateEmail(normalizedEmail)) {
+      throw new Error('Invalid email format')
+    }
 
     // Check if user already exists (case-insensitive)
     const existingUser = await query<{ id: string }>(
-      'SELECT id FROM users WHERE lower(username) = lower($1)',
-      [normalizedUsername]
+      'SELECT id FROM users WHERE lower(email) = lower($1)',
+      [normalizedEmail]
     )
 
     if (existingUser.rows.length > 0) {
-      throw new Error('User already exists with this username')
+      throw new Error('User already exists with this email')
     }
 
     // Hash the password
@@ -42,10 +47,10 @@ export async function createUser(userData: CreateUserData): Promise<User | null>
 
     // Create the user
     const result = await query<User>(
-      `INSERT INTO users (username, password_hash, name) 
+      `INSERT INTO users (email, password_hash, name) 
        VALUES ($1, $2, $3) 
-       RETURNING id, username, name, "emailVerified", image, created_at, updated_at`,
-      [normalizedUsername, passwordHash, userData.name || null]
+       RETURNING id, email, name, "emailVerified", image, created_at, updated_at`,
+      [normalizedEmail, passwordHash, userData.name || null]
     )
 
     return result.rows[0] || null
@@ -61,7 +66,7 @@ export async function createUser(userData: CreateUserData): Promise<User | null>
 export async function getUserByEmail(email: string): Promise<User | null> {
   try {
     const result = await query<User>(
-      'SELECT id, email, name, "emailVerified", image, created_at, updated_at FROM users WHERE email = $1',
+      'SELECT id, username, email, name, "emailVerified", image, created_at, updated_at FROM users WHERE email = $1',
       [email]
     )
 
@@ -122,7 +127,7 @@ export function validateUsername(username: string): boolean {
 export async function getUserByUsername(username: string): Promise<User | null> {
   try {
     const result = await query<User>(
-      'SELECT id, username, name, "emailVerified", image, created_at, updated_at FROM users WHERE lower(username) = lower($1)',
+      'SELECT id, username, email, name, "emailVerified", image, created_at, updated_at FROM users WHERE lower(username) = lower($1)',
       [username.toLowerCase().trim()]
     )
 

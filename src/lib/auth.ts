@@ -26,26 +26,26 @@ export const authOptions: any = {
     // Email/Password Provider
     CredentialsProvider({
       id: 'credentials',
-      name: 'Username and Password',
+      name: 'Email and Password',
       credentials: {
-        username: { label: 'Username', type: 'text' },
+        email: { label: 'Email', type: 'email' },
         password: { label: 'Password', type: 'password' }
       },
       async authorize(credentials) {
-        if (!credentials?.username || !credentials?.password) {
+        if (!credentials?.email || !credentials?.password) {
           return null
         }
 
         try {
-          // Find user by username
+          // Find user by email
           const result = await query<{
             id: string
-            username: string
+            email: string
             name: string | null
             password_hash: string | null
           }>(
-            'SELECT id, username, name, password_hash FROM users WHERE lower(username) = lower($1)',
-            [credentials.username.trim()]
+            'SELECT id, email, name, password_hash FROM users WHERE lower(email) = lower($1)',
+            [credentials.email.trim()]
           )
 
           const user = result.rows[0]
@@ -63,7 +63,7 @@ export const authOptions: any = {
 
           return {
             id: user.id,
-            username: user.username,
+            email: user.email,
             name: user.name,
           }
         } catch (error) {
