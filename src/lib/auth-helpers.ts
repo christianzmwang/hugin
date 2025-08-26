@@ -2,14 +2,15 @@ import bcrypt from 'bcryptjs'
 import { query } from './db'
 
 export interface CreateUserData {
-  email: string
+  username: string
   password: string
   name?: string
 }
 
 export interface User {
   id: string
-  email: string
+  username: string
+  email?: string | null
   name: string | null
   emailVerified: Date | null
   image: string | null
@@ -18,18 +19,21 @@ export interface User {
 }
 
 /**
- * Creates a new user with email and password
+ * Creates a new user with username and password
  */
 export async function createUser(userData: CreateUserData): Promise<User | null> {
   try {
-    // Check if user already exists
+    // Normalize username to lowercase and trim whitespace
+    const normalizedUsername = userData.username.toLowerCase().trim()
+
+    // Check if user already exists (case-insensitive)
     const existingUser = await query<{ id: string }>(
-      'SELECT id FROM users WHERE email = $1',
-      [userData.email]
+      'SELECT id FROM users WHERE lower(username) = lower($1)',
+      [normalizedUsername]
     )
 
     if (existingUser.rows.length > 0) {
-      throw new Error('User already exists with this email')
+      throw new Error('User already exists with this username')
     }
 
     // Hash the password
@@ -38,10 +42,10 @@ export async function createUser(userData: CreateUserData): Promise<User | null>
 
     // Create the user
     const result = await query<User>(
-      `INSERT INTO users (email, password_hash, name) 
+      `INSERT INTO users (username, password_hash, name) 
        VALUES ($1, $2, $3) 
-       RETURNING id, email, name, "emailVerified", image, created_at, updated_at`,
-      [userData.email, passwordHash, userData.name || null]
+       RETURNING id, username, name, "emailVerified", image, created_at, updated_at`,
+      [normalizedUsername, passwordHash, userData.name || null]
     )
 
     return result.rows[0] || null
@@ -102,4 +106,29 @@ export function validatePassword(password: string): { isValid: boolean; errors: 
 export function validateEmail(email: string): boolean {
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
   return emailRegex.test(email)
+}
+
+/**
+ * Validates username format (3-50 chars, alphanumeric + underscore)
+ */
+export function validateUsername(username: string): boolean {
+  const usernameRegex = /^[a-zA-Z0-9_]{3,50}$/
+  return usernameRegex.test(username)
+}
+
+/**
+ * Finds a user by username
+ */
+export async function getUserByUsername(username: string): Promise<User | null> {
+  try {
+    const result = await query<User>(
+      'SELECT id, username, name, "emailVerified", image, created_at, updated_at FROM users WHERE lower(username) = lower($1)',
+      [username.toLowerCase().trim()]
+    )
+
+    return result.rows[0] || null
+  } catch (error) {
+    console.error('Error finding user by username:', error)
+    return null
+  }
 }

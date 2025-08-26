@@ -16,15 +16,15 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/auth/[...nextauth]/route.js"
     ],
-    "/api/industries/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/industries/route.js"
-    ],
     "/api/businesses/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/businesses/route.js"
+    ],
+    "/api/industries/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/industries/route.js"
     ],
     "/api/events/types/route": [
       "static/chunks/webpack.js",

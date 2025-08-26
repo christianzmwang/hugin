@@ -13,7 +13,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
   const [formData, setFormData] = useState({
-    email: '',
+    username: '',
     password: '',
     name: ''
   })
@@ -21,77 +21,127 @@ export default function AuthForm({ mode }: AuthFormProps) {
   // State for password visibility
   const [showPassword, setShowPassword] = useState(false)
   
-  // reCAPTCHA state
-  const [recaptchaToken, setRecaptchaToken] = useState<string | null>(null)
-  const [recaptchaLoaded, setRecaptchaLoaded] = useState(false)
+  // State for successful signup
+  const [signupSuccess, setSignupSuccess] = useState(false)
+  const [signupCredentials, setSignupCredentials] = useState({
+    username: '',
+    password: ''
+  })
+  
+  // Cloudflare Turnstile state
+  const [turnstileToken, setTurnstileToken] = useState<string | null>(null)
+  const [turnstileLoaded, setTurnstileLoaded] = useState(false)
+  const [turnstileWidgetId, setTurnstileWidgetId] = useState<string | null>(null)
 
-  // Load reCAPTCHA Enterprise script
+  // Load Cloudflare Turnstile script
   useEffect(() => {
-    const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY
+    if (mode !== 'signup') return // Only load for signup
+
+    const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
     if (!siteKey) {
-      console.error('reCAPTCHA site key not configured')
+      console.error('Turnstile site key not configured')
       return
     }
 
     // Check if script is already loaded
-    if (window.grecaptcha?.enterprise) {
-      setRecaptchaLoaded(true)
+    if (window.turnstile?.ready) {
+      setTurnstileLoaded(true)
       return
     }
 
     const script = document.createElement('script')
-    script.src = `https://www.google.com/recaptcha/enterprise.js?render=${siteKey}`
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js'
     script.async = true
     script.defer = true
     script.onload = () => {
-      setRecaptchaLoaded(true)
+      setTurnstileLoaded(true)
     }
     script.onerror = () => {
-      console.error('Failed to load reCAPTCHA Enterprise script')
+      console.error('Failed to load Turnstile script')
     }
 
     document.head.appendChild(script)
 
     return () => {
       // Cleanup script on unmount
-      const existingScript = document.querySelector(`script[src*="recaptcha/enterprise.js"]`)
+      const existingScript = document.querySelector(`script[src*="challenges.cloudflare.com/turnstile"]`)
       if (existingScript) {
         document.head.removeChild(existingScript)
       }
     }
-  }, [])
+  }, [mode])
 
-  // Function to execute reCAPTCHA Enterprise
-  const executeRecaptcha = async (): Promise<string | null> => {
-    if (!recaptchaLoaded || !window.grecaptcha?.enterprise) {
-      console.error('reCAPTCHA Enterprise not loaded')
-      return null
+  // Auto-render invisible Turnstile widget when loaded
+  useEffect(() => {
+    if (mode === 'signup' && turnstileLoaded && !turnstileWidgetId) {
+      // Use a timeout to ensure DOM is ready
+      const timer = setTimeout(() => {
+        const container = document.getElementById('turnstile-container')
+        if (container && window.turnstile) {
+          const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
+          if (siteKey) {
+            try {
+              const widgetId = window.turnstile.render(container, {
+                sitekey: siteKey,
+                size: 'invisible',
+                callback: (token: string) => {
+                  console.log('Invisible Turnstile token received:', token ? 'Present' : 'Missing')
+                  setTurnstileToken(token)
+                },
+                'error-callback': () => {
+                  console.error('Turnstile error')
+                  setTurnstileToken(null)
+                },
+                'expired-callback': () => {
+                  console.log('Turnstile token expired')
+                  setTurnstileToken(null)
+                }
+              })
+              setTurnstileWidgetId(widgetId)
+            } catch (error) {
+              console.error('Failed to render Turnstile widget:', error)
+            }
+          }
+        }
+      }, 100)
+      
+      return () => clearTimeout(timer)
     }
+  }, [mode, turnstileLoaded, turnstileWidgetId])
 
-    try {
-      const siteKey = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY
-      if (!siteKey) {
-        console.error('reCAPTCHA site key not configured')
-        return null
+  // Function to execute invisible Turnstile challenge
+  const executeTurnstile = (): Promise<string | null> => {
+    return new Promise((resolve) => {
+      if (!turnstileLoaded || !window.turnstile || !turnstileWidgetId) {
+        console.error('Turnstile not ready for execution')
+        resolve(null)
+        return
       }
 
-      return new Promise((resolve) => {
-        window.grecaptcha!.enterprise!.ready(async () => {
-          try {
-            const token = await window.grecaptcha!.enterprise!.execute(siteKey, {
-              action: 'LOGIN'
-            })
-            resolve(token)
-          } catch (error) {
-            console.error('reCAPTCHA execution error:', error)
-            resolve(null)
+      try {
+        // Execute the invisible challenge
+        window.turnstile.execute(turnstileWidgetId)
+        
+        // The token will be delivered via the callback we set during render
+        // If we already have a token, resolve immediately
+        if (turnstileToken) {
+          resolve(turnstileToken)
+        } else {
+          // Wait for the callback to set the token
+          const checkToken = () => {
+            if (turnstileToken) {
+              resolve(turnstileToken)
+            } else {
+              setTimeout(checkToken, 100)
+            }
           }
-        })
-      })
-    } catch (error) {
-      console.error('reCAPTCHA Enterprise error:', error)
-      return null
-    }
+          checkToken()
+        }
+      } catch (error) {
+        console.error('Turnstile execution error:', error)
+        resolve(null)
+      }
+    })
   }
 
   // Crypto-grade randomness helper
@@ -182,13 +232,17 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
     try {
       if (mode === 'signup') {
-        // Execute reCAPTCHA Enterprise for signup
-        const token = await executeRecaptcha()
+        // Execute invisible Turnstile verification
+        console.log('Executing invisible Turnstile verification...')
+        const token = await executeTurnstile()
+        
         if (!token) {
-          setError('reCAPTCHA verification failed. Please try again.')
+          setError('Security verification failed. Please try again.')
           setIsLoading(false)
           return
         }
+        
+        console.log('Turnstile verification successful')
 
         // Register new user
         const response = await fetch('/api/auth/signup', {
@@ -197,10 +251,10 @@ export default function AuthForm({ mode }: AuthFormProps) {
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            email: formData.email,
+            username: formData.username,
             password: formData.password,
             name: formData.name,
-            recaptchaToken: token
+            turnstileToken: token
           }),
         })
 
@@ -214,38 +268,46 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
         // After successful registration, sign in the user
         const signInResult = await signIn('credentials', {
-          email: formData.email,
+          username: formData.username,
           password: formData.password,
           redirect: false,
         })
 
         if (signInResult?.error) {
           setError('Registration successful, but sign-in failed. Please try signing in manually.')
-        } else {
-          router.push('/')
         }
         
-        // Reset reCAPTCHA token state
-        setRecaptchaToken(null)
+        // Show success screen with credentials and let the user proceed
+        setSignupCredentials({ username: formData.username, password: formData.password })
+        setSignupSuccess(true)
+        
+        // Reset Turnstile token state
+        setTurnstileToken(null)
+        if (turnstileWidgetId && window.turnstile) {
+          window.turnstile.reset(turnstileWidgetId)
+        }
       } else {
         // Sign in existing user
         const result = await signIn('credentials', {
-          email: formData.email,
+          username: formData.username,
           password: formData.password,
           redirect: false,
         })
 
         if (result?.error) {
-          setError('Invalid email or password')
+          setError('Invalid username or password')
         } else {
           router.push('/')
         }
       }
     } catch {
       setError('An unexpected error occurred')
-      // Reset reCAPTCHA token state on error
+      // Reset Turnstile token state on error
       if (mode === 'signup') {
-        setRecaptchaToken(null)
+        setTurnstileToken(null)
+        if (turnstileWidgetId && window.turnstile) {
+          window.turnstile.reset(turnstileWidgetId)
+        }
       }
     } finally {
       setIsLoading(false)
@@ -259,6 +321,15 @@ export default function AuthForm({ mode }: AuthFormProps) {
     } catch {
       setError('Google sign-in failed')
       setIsLoading(false)
+    }
+  }
+
+  // Copy to clipboard function
+  const copyToClipboard = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+    } catch (err) {
+      console.error('Failed to copy:', err)
     }
   }
 
@@ -287,29 +358,109 @@ export default function AuthForm({ mode }: AuthFormProps) {
         {/* Right side - Form (50% width) */}
         <div className="w-full lg:w-1/2 flex items-center justify-center">
           <div className="max-w-lg w-full space-y-8 px-8">
-        <div>
-          <h2 className="mt-6 text-2xl lg:text-3xl font-extrabold text-white text-left whitespace-nowrap">
-            {mode === 'signin' ? 'Sign in to your account' : 'Create your account'}
-          </h2>
-          <p className="mt-2 text-sm text-gray-300 text-left">
-            {mode === 'signin' ? (
-              <>
-                Don&apos;t have an account?{' '}
-                <a href="/auth/signup" className="font-medium text-red-400 hover:text-red-300">
-                  Sign up
-                </a>
-              </>
-            ) : (
-              <>
-                Already have an account?{' '}
-                <a href="/auth/signin" className="font-medium text-red-400 hover:text-red-300">
-                  Sign in
-                </a>
-              </>
-            )}
-          </p>
-        </div>
+        {!signupSuccess && (
+          <div>
+            <h2 className="mt-6 text-2xl lg:text-3xl font-extrabold text-white text-left whitespace-nowrap">
+              {mode === 'signin' ? 'Sign in to your account' : 'Create your account'}
+            </h2>
+            <p className="mt-2 text-sm text-gray-300 text-left">
+              {mode === 'signin' ? (
+                <>
+                  Don&apos;t have an account?{' '}
+                  <a href="/auth/signup" className="font-medium text-red-400 hover:text-red-300">
+                    Sign up
+                  </a>
+                </>
+              ) : (
+                <>
+                  Already have an account?{' '}
+                  <a href="/auth/signin" className="font-medium text-red-400 hover:text-red-300">
+                    Sign in
+                  </a>
+                </>
+              )}
+            </p>
+          </div>
+        )}
         
+        {signupSuccess ? (
+          // Success view with credentials display
+          <div className="mt-8 space-y-6">
+            <div className="text-left">
+              <div className="mb-6">
+                <svg className="mx-auto h-12 w-12 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                </svg>
+                <h3 className="mt-2 text-lg font-medium text-white text-left">Account Created Successfully!</h3>
+                <p className="mt-1 text-sm text-gray-400 text-left">Your credentials are shown below. Please save them securely.</p>
+              </div>
+
+              {/* Username display with copy */}
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2 text-left">Username</label>
+                <div className="flex items-stretch space-x-2">
+                  <div className="flex-1 bg-transparent border-0 border-b border-gray-600 px-1 py-2 text-white font-mono text-sm overflow-x-auto text-left">
+                    {signupCredentials.username}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(signupCredentials.username)}
+                    className="px-3 py-2 text-white text-sm font-medium transition-colors bg-transparent hover:bg-transparent"
+                    title="Copy username"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Password display with copy */}
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2 text-left">Password</label>
+                <div className="flex items-stretch space-x-2">
+                  <div className="flex-1 bg-transparent border-0 border-b border-gray-600 px-1 py-2 text-white font-mono text-sm overflow-x-auto text-left">
+                    {signupCredentials.password}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(signupCredentials.password)}
+                    className="px-3 py-2 text-white text-sm font-medium transition-colors bg-transparent hover:bg-transparent"
+                    title="Copy password"
+                  >
+                    <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+
+              {/* Security message */}
+              <div className="bg-yellow-900/50 border border-yellow-500 p-4 mb-6 text-left">
+                <div className="flex">
+                  <svg className="h-5 w-5 text-yellow-400 mr-2 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 15.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                  <div>
+                    <h4 className="text-sm font-medium text-yellow-400">Important Security Notice</h4>
+                    <p className="mt-1 text-sm text-yellow-200">
+                      Please store your username and password securely. Consider using a password manager to keep your credentials safe.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Continue button */}
+              <button
+                type="button"
+                onClick={() => router.push('/')}
+                className="w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium text-white bg-red-700 hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400 transition-colors mt-4"
+              >
+                Get started
+              </button>
+            </div>
+          </div>
+        ) : (
         <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
           {error && (
             <div className="p-4 bg-red-900/50 border border-red-500">
@@ -317,30 +468,30 @@ export default function AuthForm({ mode }: AuthFormProps) {
             </div>
           )}
           
-          <div className="shadow-sm -space-y-px">
+          <div className="shadow-sm space-y-6">
             <div className="relative">
-              <label htmlFor="email" className="sr-only">
+              <label htmlFor="username" className="sr-only">
                 Username
               </label>
               <input
-                id="email"
-                name="email"
+                id="username"
+                name="username"
                 type="text"
                 autoComplete="username"
                 required
                 readOnly={mode === 'signup'}
-                className={`relative block w-full px-3 py-2 pr-12 border border-gray-600 bg-gray-900 text-white placeholder-gray-500 focus:outline-none focus:ring-red-600 focus:border-red-600 focus:z-10 sm:text-sm ${
-                  mode === 'signup' ? 'cursor-pointer' : ''
+                className={`relative block w-full px-1 py-2 pr-20 bg-transparent border-0 border-b border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-0 focus:z-10 sm:text-sm ${
+                  mode === 'signup' ? 'caret-transparent' : ''
                 }`}
                 placeholder={mode === 'signup' ? 'Use generator to create username' : 'Username'}
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               />
               {mode === 'signup' && (
                 <button
                   type="button"
-                  onClick={() => setFormData({ ...formData, email: generateUsername() })}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
+                  onClick={() => setFormData({ ...formData, username: generateUsername() })}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white z-20"
                   title="Generate username"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -361,8 +512,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 autoComplete={mode === 'signin' ? 'current-password' : 'new-password'}
                 required
                 readOnly={mode === 'signup'}
-                className={`relative block w-full px-3 py-2 border border-gray-600 bg-gray-900 text-white placeholder-gray-500 focus:outline-none focus:ring-red-600 focus:border-red-600 focus:z-10 sm:text-sm ${
-                  mode === 'signup' ? 'pr-20 cursor-pointer' : 'pr-12'
+                className={`relative block w-full px-1 py-2 pr-20 bg-transparent border-0 border-b border-gray-600 text-white placeholder-gray-500 focus:outline-none focus:border-red-600 focus:ring-0 focus:z-10 sm:text-sm ${
+                  mode === 'signup' ? 'caret-transparent' : ''
                 }`}
                 placeholder={mode === 'signup' ? 'Use generator to create password' : 'Password'}
                 value={formData.password}
@@ -373,7 +524,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}
-                className={`absolute inset-y-0 flex items-center text-gray-400 hover:text-white ${
+                className={`absolute inset-y-0 flex items-center text-gray-400 hover:text-white z-20 ${
                   mode === 'signup' ? 'right-8' : 'right-0'
                 } pr-3`}
                 title={showPassword ? 'Hide password' : 'Show password'}
@@ -397,7 +548,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 <button
                   type="button"
                   onClick={() => setFormData({ ...formData, password: generatePassword() })}
-                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white"
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-white z-20"
                   title="Generate password"
                 >
                   <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -408,12 +559,15 @@ export default function AuthForm({ mode }: AuthFormProps) {
             </div>
           </div>
 
-          {/* reCAPTCHA Enterprise runs invisibly during form submission */}
+          {/* Invisible Turnstile widget container */}
+          {mode === 'signup' && (
+            <div id="turnstile-container" className="hidden"></div>
+          )}
 
           <div>
             <button
               type="submit"
-              disabled={isLoading || (mode === 'signup' && !recaptchaLoaded)}
+              disabled={isLoading || (mode === 'signup' && !turnstileLoaded)}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium text-white bg-red-700 hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Loading...' : mode === 'signin' ? 'Sign in' : 'Sign up'}
@@ -460,6 +614,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
             </div>
           </div>
         </form>
+        )}
           </div>
         </div>
       </div>

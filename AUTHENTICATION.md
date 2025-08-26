@@ -74,37 +74,35 @@ GOOGLE_CLIENT_ID=your-google-client-id-here.apps.googleusercontent.com
 GOOGLE_CLIENT_SECRET=your-google-client-secret-here
 ```
 
-#### reCAPTCHA Enterprise Setup (Required for Signup)
+#### Cloudflare Turnstile Setup (Required for Signup)
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project or select existing project
-3. Enable the reCAPTCHA Enterprise API
-4. Go to "reCAPTCHA Enterprise" → "Site Keys" → "Create Site Key"
-5. Choose "Website" and configure:
-   - **For Development Key:**
-     - Domain: `localhost`
-     - reCAPTCHA type: "Score-based (v3)"
-   - **For Production Key:**
-     - Domain: `allvitr.com`, `allvitr.no` (your production domains)
-     - reCAPTCHA type: "Score-based (v3)"
-   
-   **Note:** Google recommends separate keys for development and production. If you get a "localhost not supported" error, you need to add `localhost` to your site key's supported domains list.
-6. Create an API key:
-   - Go to "APIs & Services" → "Credentials" → "Create Credentials" → "API Key"
-   - Restrict the key to "reCAPTCHA Enterprise API"
+1. Go to [Cloudflare Dashboard](https://dash.cloudflare.com/) and sign in
+2. Navigate to the "Turnstile" section (or go to https://dash.cloudflare.com/?to=/:account/turnstile)
+3. Click "Add a Site"
+4. Configure your site:
+   - **Site name**: Your app name (e.g., "Allvitr")
+   - **Domain**: Add your domains:
+     - `localhost` (for development)
+     - `allvitr.com` (for production)
+     - `allvitr.no` (for production)
+   - **Widget Mode**: Choose "Managed" (recommended) or "Non-interactive"
+5. Click "Create"
+6. Copy your **Site Key** and **Secret Key**
 
-Add the reCAPTCHA configuration to your `.env.local`:
+Add the Turnstile configuration to your `.env.local`:
 
 ```bash
-# reCAPTCHA Enterprise Configuration
-NEXT_PUBLIC_RECAPTCHA_SITE_KEY=your-site-key-here
-RECAPTCHA_PROJECT_ID=your-google-cloud-project-id
-RECAPTCHA_API_KEY=your-api-key-here
-
-# For separate dev/prod keys (recommended):
-# Development: Use the site key that includes localhost
-# Production: Use the site key that includes your production domains
+# Cloudflare Turnstile Configuration
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-site-key-here
+TURNSTILE_SECRET_KEY=your-secret-key-here
 ```
+
+**Benefits of Turnstile over reCAPTCHA:**
+- Better privacy (no tracking)
+- Faster performance
+- Better user experience
+- Free for unlimited requests
+- No Google dependency
 
 ### 3. Install Dependencies
 
@@ -130,20 +128,22 @@ pnpm dev
 
 ## 🔧 Troubleshooting
 
-### reCAPTCHA "localhost not supported" Error
+### Turnstile Issues
 
-If you see an error that "localhost domains are not supported by default":
+**"Domain not allowed" Error:**
+- Go to [Cloudflare Turnstile Dashboard](https://dash.cloudflare.com/?to=/:account/turnstile)
+- Click on your site
+- Under "Domains", add `localhost` for development
+- Save the changes
 
-1. **Quick Fix**: Add `localhost` to your existing site key
-   - Go to [Google Cloud Console](https://console.cloud.google.com/) → reCAPTCHA Enterprise
-   - Find your site key and click on it
-   - Under "Domains", click "Add a domain"
-   - Enter `localhost` and save
+**"Turnstile secret key missing" Error:**
+- Make sure your `.env.local` contains: `TURNSTILE_SECRET_KEY=your-secret-key`
+- Restart your dev server after adding the variable
 
-2. **Best Practice**: Create separate development and production keys
-   - **Development key**: Only includes `localhost`
-   - **Production key**: Only includes your production domains (`allvitr.com`, `allvitr.no`)
-   - Use the appropriate key in each environment
+**Turnstile widget not loading:**
+- Check that your site key is correct in `NEXT_PUBLIC_TURNSTILE_SITE_KEY`
+- Verify the domain is added in your Turnstile dashboard
+- Check browser console for any JavaScript errors
 
 ### Environment Variables Not Loading
 
@@ -157,16 +157,36 @@ If you see an error that "localhost domains are not supported by default":
 - Ensure the database is running and accessible
 - Run the auth schema SQL script if tables don't exist
 
+### Username Migration (For Existing Email-Based Users)
+
+If you already have users with email-based authentication, run the migration:
+
+```bash
+psql -h your-host -d your-database -f sql/add-username-migration.sql
+```
+
+This will:
+- Add username column to existing users table
+- Make email optional
+- Add proper indexes and constraints
+
+For fresh installations, just use the main auth schema which already includes username support.
+
 ## 📋 Authentication Features
 
-### Password Authentication
+### Username Authentication
 
-- **Email/Password Registration**: Users can sign up with email and password
+- **Username/Password Registration**: Users can sign up with username and password
+- **Username Requirements**: 
+  - 3-50 characters
+  - Letters, numbers, and underscores only
+  - Must be unique
 - **Password Requirements**: 
   - Minimum 8 characters
   - Must contain uppercase, lowercase, and numeric characters
 - **Secure Password Storage**: Passwords are hashed using bcryptjs with 12 salt rounds
-- **Login Validation**: Email and password verification during sign-in
+- **Login Validation**: Username and password verification during sign-in
+- **Username Generator**: Built-in cryptographically secure username generator for signup
 
 ### Google OAuth
 
@@ -230,6 +250,8 @@ NEXTAUTH_SECRET=your-production-secret-key
 DATABASE_URL=your-production-database-url
 GOOGLE_CLIENT_ID=your-production-google-client-id
 GOOGLE_CLIENT_SECRET=your-production-google-client-secret
+NEXT_PUBLIC_TURNSTILE_SITE_KEY=your-production-turnstile-site-key
+TURNSTILE_SECRET_KEY=your-production-turnstile-secret-key
 ```
 
 Don't forget to:

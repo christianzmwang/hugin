@@ -1,61 +1,49 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createUser, validateEmail, validatePassword } from '@/lib/auth-helpers'
+import { createUser, validateUsername, validatePassword } from '@/lib/auth-helpers'
 
-// Function to verify reCAPTCHA Enterprise token
-async function verifyRecaptcha(token: string): Promise<boolean> {
+// Function to verify Cloudflare Turnstile token
+async function verifyTurnstile(token: string): Promise<boolean> {
   try {
-    const projectId = process.env.RECAPTCHA_PROJECT_ID
-    const apiKey = process.env.RECAPTCHA_API_KEY
+    const secretKey = process.env.TURNSTILE_SECRET_KEY
     
-    if (!projectId || !apiKey) {
-      console.error('reCAPTCHA Enterprise configuration missing')
+    if (!secretKey) {
+      console.error('Turnstile secret key missing')
       return false
     }
 
-    const response = await fetch(
-      `https://recaptchaenterprise.googleapis.com/v1/projects/${projectId}/assessments?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          event: {
-            token: token,
-            expectedAction: 'LOGIN',
-            siteKey: process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY,
-          },
-        }),
-      }
-    )
+    const response = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+      body: `secret=${secretKey}&response=${token}`,
+    })
 
     if (!response.ok) {
-      console.error('reCAPTCHA Enterprise API error:', response.status, response.statusText)
+      console.error('Turnstile API error:', response.status, response.statusText)
       return false
     }
 
     const data = await response.json()
     
-    // Check if the token is valid and the score is acceptable
-    // reCAPTCHA Enterprise returns a risk score (0.0-1.0)
-    // Higher scores indicate lower risk
-    const isValid = data.tokenProperties?.valid === true
-    const score = data.riskAnalysis?.score || 0
-    const actionMatches = data.tokenProperties?.action === 'LOGIN'
+    // Check if the token is valid
+    // Turnstile returns a simple success/failure response
+    const isValid = data.success === true
     
-    // You can adjust the threshold (0.5) based on your security needs
-    const scoreThreshold = 0.5
-    
-    console.log('reCAPTCHA Enterprise result:', {
-      valid: isValid,
-      score: score,
-      action: data.tokenProperties?.action,
-      reasons: data.riskAnalysis?.reasons
+    console.log('Turnstile verification result:', {
+      success: isValid,
+      challenge_ts: data.challenge_ts,
+      hostname: data.hostname,
+      error_codes: data['error-codes'] || []
     })
     
-    return isValid && actionMatches && score >= scoreThreshold
+    if (!isValid && data['error-codes']) {
+      console.error('Turnstile validation failed:', data['error-codes'])
+    }
+    
+    return isValid
   } catch (error) {
-    console.error('reCAPTCHA verification error:', error)
+    console.error('Turnstile verification error:', error)
     return false
   }
 }
@@ -63,36 +51,46 @@ async function verifyRecaptcha(token: string): Promise<boolean> {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { email, password, name, recaptchaToken } = body
+    const { username, password, name, turnstileToken } = body
+
+    console.log('Signup attempt:', { 
+      hasUsername: !!username, 
+      hasPassword: !!password, 
+      hasName: !!name,
+      hasTurnstileToken: !!turnstileToken,
+      username: username?.substring(0, 3) + '***' // Only show first 3 chars for privacy
+    })
 
     // Validate required fields
-    if (!email || !password) {
+    if (!username || !password) {
+      console.log('Missing username or password:', { username: !!username, password: !!password })
       return NextResponse.json(
-        { error: 'Email and password are required' },
+        { error: 'Username and password are required' },
         { status: 400 }
       )
     }
 
-    // Verify reCAPTCHA token
-    if (!recaptchaToken) {
+    // Verify Turnstile token
+    if (!turnstileToken) {
       return NextResponse.json(
-        { error: 'reCAPTCHA verification is required' },
+        { error: 'Security verification is required' },
         { status: 400 }
       )
     }
 
-    const isRecaptchaValid = await verifyRecaptcha(recaptchaToken)
-    if (!isRecaptchaValid) {
+    const isTurnstileValid = await verifyTurnstile(turnstileToken)
+    if (!isTurnstileValid) {
       return NextResponse.json(
-        { error: 'reCAPTCHA verification failed' },
+        { error: 'Security verification failed' },
         { status: 400 }
       )
     }
 
-    // Validate email format
-    if (!validateEmail(email)) {
+    // Validate username format (alphanumeric, 3-50 characters)
+    if (!validateUsername(username)) {
+      console.log('Username validation failed for:', username)
       return NextResponse.json(
-        { error: 'Invalid email format' },
+        { error: 'Username must be 3-50 characters and contain only letters, numbers, and underscores' },
         { status: 400 }
       )
     }
@@ -100,6 +98,7 @@ export async function POST(req: NextRequest) {
     // Validate password strength
     const passwordValidation = validatePassword(password)
     if (!passwordValidation.isValid) {
+      console.log('Password validation failed:', passwordValidation.errors)
       return NextResponse.json(
         { error: 'Password does not meet requirements', details: passwordValidation.errors },
         { status: 400 }
@@ -107,11 +106,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Create the user
+    console.log('Creating user with username:', username.toLowerCase().trim())
     const user = await createUser({
-      email: email.toLowerCase().trim(),
+      username: username.toLowerCase().trim(),
       password,
       name: name?.trim() || undefined
     })
+    
+    if (!user) {
+      console.log('User creation failed - user already exists or database error')
+      return NextResponse.json(
+        { error: 'Failed to create user. Username may already be in use.' },
+        { status: 400 }
+      )
+    }
+    
+    console.log('User created successfully:', user.id)
 
     // Return user data (without password)
     return NextResponse.json({

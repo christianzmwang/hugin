@@ -5,12 +5,14 @@
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name VARCHAR(255),
-  email VARCHAR(255) UNIQUE NOT NULL,
+  username VARCHAR(50) UNIQUE, -- For username/password authentication
+  email VARCHAR(255) UNIQUE, -- Optional for OAuth providers
   "emailVerified" TIMESTAMPTZ,
   image TEXT,
-  password_hash TEXT, -- For email/password authentication
+  password_hash TEXT, -- For username/password authentication
   created_at TIMESTAMPTZ DEFAULT NOW(),
-  updated_at TIMESTAMPTZ DEFAULT NOW()
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  CONSTRAINT users_identity_check CHECK (username IS NOT NULL OR email IS NOT NULL)
 );
 
 -- Accounts table for OAuth providers (Google, etc.)
@@ -47,7 +49,8 @@ CREATE TABLE IF NOT EXISTS verification_tokens (
 );
 
 -- Create indexes for better performance
-CREATE INDEX IF NOT EXISTS users_email_idx ON users(email);
+CREATE INDEX IF NOT EXISTS users_username_idx ON users(username);
+CREATE INDEX IF NOT EXISTS users_email_idx ON users(email) WHERE email IS NOT NULL;
 CREATE INDEX IF NOT EXISTS accounts_user_id_idx ON accounts("userId");
 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions("userId");
 CREATE INDEX IF NOT EXISTS sessions_session_token_idx ON sessions("sessionToken");
