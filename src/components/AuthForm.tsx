@@ -1,8 +1,9 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import Image from 'next/image'
 
 interface AuthFormProps {
   mode: 'signin' | 'signup'
@@ -337,9 +338,11 @@ export default function AuthForm({ mode }: AuthFormProps) {
     <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-black relative">
       {/* Munin image in bottom left corner */}
       <div className="absolute bottom-6 left-6 w-6 h-6">
-        <img 
+        <Image 
           src="/whitemunin.jpg" 
           alt="Munin" 
+          width={24}
+          height={24}
           className="w-full h-full object-contain"
         />
       </div>
@@ -348,9 +351,11 @@ export default function AuthForm({ mode }: AuthFormProps) {
       <div className="flex w-full h-full">
         {/* Left side - Wave image (50% width) */}
         <div className="hidden lg:flex w-1/2 items-center justify-center">
-          <img 
+          <Image 
             src="/wave.png" 
             alt="Wave" 
+            width={800}
+            height={600}
             className="max-w-full max-h-[80vh] object-contain mt-16"
           />
         </div>

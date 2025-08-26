@@ -592,9 +592,6 @@
   .animate-spin {
     animation: var(--animate-spin);
   }
-  .cursor-pointer {
-    cursor: pointer;
-  }
   .resize {
     resize: both;
   }
@@ -639,13 +636,6 @@
   }
   .gap-6 {
     gap: calc(var(--spacing) * 6);
-  }
-  .-space-y-px {
-    :where(& > :not(:last-child)) {
-      --tw-space-y-reverse: 0;
-      margin-block-start: calc(-1px * var(--tw-space-y-reverse));
-      margin-block-end: calc(-1px * calc(1 - var(--tw-space-y-reverse)));
-    }
   }
   .space-y-2 {
     :where(& > :not(:last-child)) {
@@ -827,9 +817,6 @@
       background-color: color-mix(in oklab, var(--color-red-500) 20%, transparent);
     }
   }
-  .bg-red-600 {
-    background-color: var(--color-red-600);
-  }
   .bg-red-700 {
     background-color: var(--color-red-700);
   }
@@ -913,9 +900,6 @@
   }
   .pr-3 {
     padding-right: calc(var(--spacing) * 3);
-  }
-  .pr-12 {
-    padding-right: calc(var(--spacing) * 12);
   }
   .pr-20 {
     padding-right: calc(var(--spacing) * 20);
@@ -1127,13 +1111,6 @@
       }
     }
   }
-  .hover\:bg-red-700 {
-    &:hover {
-      @media (hover: hover) {
-        background-color: var(--color-red-700);
-      }
-    }
-  }
   .hover\:bg-red-800 {
     &:hover {
       @media (hover: hover) {
@@ -1279,11 +1256,6 @@
   .focus\:ring-red-400 {
     &:focus {
       --tw-ring-color: var(--color-red-400);
-    }
-  }
-  .focus\:ring-red-600 {
-    &:focus {
-      --tw-ring-color: var(--color-red-600);
     }
   }
   .focus\:ring-offset-2 {
