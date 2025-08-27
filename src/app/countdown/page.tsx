@@ -1,8 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useSession } from 'next-auth/react'
+import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
+import Image from 'next/image'
 
 // List of users who can access the main page
 const ALLOWED_USERS = [
@@ -63,8 +64,34 @@ export default function CountdownPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-black flex items-center justify-center">
+    <div className="min-h-screen bg-black flex items-center justify-center relative">
+      {/* Munin logo in bottom left corner */}
+      <div className="absolute bottom-6 left-6 w-6 h-6">
+        <Image 
+          src="/munin.svg" 
+          alt="Munin" 
+          width={24}
+          height={24}
+          className="w-full h-full object-contain"
+        />
+      </div>
+
+      {/* Signout button in top right corner */}
+      {session && (
+        <button
+          onClick={() => signOut({ callbackUrl: '/auth/signin' })}
+          className="absolute top-6 right-6 border border-white text-white px-4 py-2 font-semibold hover:bg-white hover:text-black transition-colors"
+        >
+          Sign Out
+        </button>
+      )}
+      
       <div className="text-center">
+        {/* Available in text */}
+        <h1 className="text-3xl md:text-4xl font-bold text-white mb-8 uppercase tracking-wider">
+          Available in
+        </h1>
+        
         <div className="grid grid-cols-4 gap-8 text-white">
           {/* Days */}
           <div className="flex flex-col items-center">
@@ -112,7 +139,7 @@ export default function CountdownPage() {
           <div className="mt-8">
             <Link 
               href="/"
-              className="inline-block bg-white hover:bg-gray-100 text-black px-6 py-3 rounded-lg font-semibold transition-colors"
+              className="inline-block bg-white hover:bg-gray-100 text-black px-6 py-3 font-semibold transition-colors"
             >
               Access Main Page
             </Link>
