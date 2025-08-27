@@ -382,8 +382,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
         <Image 
           src="/munin.svg" 
           alt="Munin" 
-          width={24}
-          height={24}
+          width={64}
+          height={64}
           className="w-full h-full object-contain"
         />
       </div>

@@ -16,6 +16,13 @@ export const authOptions: any = {
   adapter: PostgresAdapter(authPool),
   debug: false, // Disable debug to avoid console errors
   trustHost: true, // Allow multiple domains
+  
+  // Security: Configure shorter token expiry times
+  session: {
+    strategy: 'jwt',
+    maxAge: 7 * 24 * 60 * 60, // 7 days (default: 30 days)
+  },
+  
   providers: [
     // Google OAuth Provider
     GoogleProvider({
@@ -79,11 +86,17 @@ export const authOptions: any = {
     error: '/auth/error', // Custom error page
   },
   
-  session: {
-    strategy: 'jwt',
-  },
-  
   callbacks: {
+    async createVerificationToken({ identifier, expires, token }) {
+      // Override default 24-hour expiry with 30 minutes
+      const shortExpiry = new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
+      return {
+        identifier,
+        token,
+        expires: shortExpiry < expires ? shortExpiry : expires
+      }
+    },
+    
     async jwt({ token, user }: { token: any; user?: any }) {
       if (user) {
         token.id = user.id
