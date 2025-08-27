@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import Image from 'next/image'
+import Munin from '../../../public/munin.svg'
 
 // List of users who can access the main page
 const ALLOWED_USERS = [
@@ -66,14 +66,8 @@ export default function CountdownPage() {
   return (
     <div className="min-h-screen bg-black flex items-center justify-center relative">
       {/* Munin logo in bottom left corner */}
-      <div className="absolute bottom-6 left-6 w-6 h-6">
-        <Image 
-          src="/munin.svg" 
-          alt="Munin" 
-          width={24}
-          height={24}
-          className="w-full h-full object-contain"
-        />
+      <div className="absolute bottom-6 left-6">
+        <Munin className="w-6 h-6" />
       </div>
 
       {/* Signout button in top right corner */}
