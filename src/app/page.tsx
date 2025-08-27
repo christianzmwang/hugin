@@ -8,6 +8,14 @@ import AuthNav from '@/components/AuthNav'
 
 const numberFormatter = new Intl.NumberFormat('no-NO')
 
+// List of users who can access the main page
+const ALLOWED_USERS = [
+  'christian@allvitr.com',
+  'lars@allvitr.com', 
+  'thomas@allvitr.com',
+  'atlegram@gmail.com'
+]
+
 function useDebounce<T>(value: T, delay = 100) {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {
@@ -496,11 +504,18 @@ export default function BrregPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   
-  // Redirect to signin if not authenticated
+  // Redirect to signin if not authenticated, or to countdown if not allowed
   useEffect(() => {
     if (status === 'loading') return // Still loading
     if (!session) {
       router.push('/auth/signin')
+      return
+    }
+    
+    // Check if user is allowed to access main page
+    const userEmail = session.user?.email
+    if (userEmail && !ALLOWED_USERS.includes(userEmail)) {
+      router.push('/countdown')
       return
     }
   }, [session, status, router])

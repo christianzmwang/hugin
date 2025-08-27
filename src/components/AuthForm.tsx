@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
+import RedDotWave from './RedDotWave'
 
 interface AuthFormProps {
   mode: 'signin' | 'signup'
@@ -31,8 +32,6 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
   // Load Cloudflare Turnstile script
   useEffect(() => {
-    if (mode !== 'signup') return // Only load for signup
-
     const siteKey = process.env.NEXT_PUBLIC_TURNSTILE_SITE_KEY
     if (!siteKey) {
       console.error('Turnstile site key not configured')
@@ -73,7 +72,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
   // Auto-render invisible Turnstile widget when loaded
   useEffect(() => {
-    if (mode === 'signup' && turnstileLoaded && !turnstileWidgetId) {
+    if (turnstileLoaded && !turnstileWidgetId) {
       // Use a timeout to ensure DOM is ready
       const timer = setTimeout(() => {
         const container = document.getElementById('turnstile-container')
@@ -299,8 +298,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
         if (signInResult?.error) {
           setError('Registration successful, but sign-in failed. Please try signing in manually.')
         } else {
-          // Redirect to main program after successful signup and sign-in
-          router.push('/')
+          // Redirect to countdown page after successful signup and sign-in
+          router.push('/countdown')
         }
         
         // Reset Turnstile token state
@@ -313,6 +312,18 @@ export default function AuthForm({ mode }: AuthFormProps) {
           }
         }
       } else {
+        // Execute invisible Turnstile verification for signin
+        console.log('Executing invisible Turnstile verification for signin...')
+        const token = await executeTurnstile()
+        
+        if (!token) {
+          setError('Security verification failed. Please try again.')
+          setIsLoading(false)
+          return
+        }
+        
+        console.log('Turnstile verification successful for signin')
+
         // Sign in existing user
         const result = await signIn('credentials', {
           email: formData.email,
@@ -323,20 +334,28 @@ export default function AuthForm({ mode }: AuthFormProps) {
         if (result?.error) {
           setError('Invalid email or password')
         } else {
-          router.push('/')
+          router.push('/countdown')
         }
-      }
-    } catch {
-      setError('An unexpected error occurred')
-      // Reset Turnstile token state on error
-      if (mode === 'signup') {
+        
+        // Reset Turnstile token state
         setTurnstileToken(null)
         if (turnstileWidgetId && window.turnstile) {
           try {
             window.turnstile.reset(turnstileWidgetId)
           } catch (error) {
-            console.warn('Failed to reset Turnstile widget on error:', error)
+            console.warn('Failed to reset Turnstile widget:', error)
           }
+        }
+      }
+    } catch {
+      setError('An unexpected error occurred')
+      // Reset Turnstile token state on error
+      setTurnstileToken(null)
+      if (turnstileWidgetId && window.turnstile) {
+        try {
+          window.turnstile.reset(turnstileWidgetId)
+        } catch (error) {
+          console.warn('Failed to reset Turnstile widget on error:', error)
         }
       }
     } finally {
@@ -347,7 +366,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
     try {
-      await signIn('google', { callbackUrl: '/' })
+      await signIn('google', { callbackUrl: '/countdown' })
     } catch {
       setError('Google sign-in failed')
       setIsLoading(false)
@@ -357,7 +376,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
 
   return (
-    <div className="min-h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-black relative">
+    <div className="h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-black relative">
       {/* Munin image in bottom left corner */}
       <div className="absolute bottom-6 left-6 w-6 h-6">
         <Image 
@@ -371,14 +390,15 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
       {/* Two-column layout with wave image */}
       <div className="flex w-full h-full">
-        {/* Left side - Wave image (50% width) */}
-        <div className="hidden lg:flex w-1/2 items-center justify-center">
-          <Image 
-            src="/wave.png" 
-            alt="Wave" 
-            width={800}
-            height={600}
-            className="max-w-full max-h-[80vh] object-contain mt-16"
+        {/* Left side - RedDotWave (50% width, 100% height) */}
+        <div className="hidden lg:flex w-1/2 h-full">
+          <RedDotWave 
+            showControls={false}
+            color="#ff2d20"
+            background="#000000"
+            amplitude={4}
+            speed={0.8}
+            gridSize={80}
           />
         </div>
         
@@ -563,14 +583,12 @@ export default function AuthForm({ mode }: AuthFormProps) {
           </div>
 
           {/* Invisible Turnstile widget container */}
-          {mode === 'signup' && (
-            <div id="turnstile-container" className="hidden"></div>
-          )}
+          <div id="turnstile-container" className="hidden"></div>
 
           <div>
             <button
               type="submit"
-              disabled={isLoading || (mode === 'signup' && !turnstileLoaded)}
+              disabled={isLoading || !turnstileLoaded}
               className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium text-white bg-red-700 hover:bg-red-800 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {isLoading ? 'Loading...' : mode === 'signin' ? 'Sign in' : 'Sign up'}
