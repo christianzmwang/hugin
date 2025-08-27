@@ -87,7 +87,7 @@ export const authOptions: any = {
   },
   
   callbacks: {
-    async createVerificationToken({ identifier, expires, token }) {
+    async createVerificationToken({ identifier, expires, token }: { identifier: string; expires: Date; token: string }) {
       // Override default 24-hour expiry with 30 minutes
       const shortExpiry = new Date(Date.now() + 30 * 60 * 1000) // 30 minutes
       return {
