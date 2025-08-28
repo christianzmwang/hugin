@@ -11,13 +11,73 @@ function VerifyEmailPendingContent() {
   const [isLoading, setIsLoading] = useState(false)
   const [resendSuccess, setResendSuccess] = useState(false)
   const [resendError, setResendError] = useState<string>('')
+  
+  // Countdown state
+  const [countdownTime, setCountdownTime] = useState<number>(0)
+  const [resendAttempts, setResendAttempts] = useState<number>(0)
+  const [isCountdownActive, setIsCountdownActive] = useState(false)
 
   useEffect(() => {
     const emailParam = searchParams.get('email')
     if (emailParam) {
       setEmail(emailParam)
+      
+      // Load countdown state from localStorage for this email
+      const storageKey = `resend_countdown_${emailParam}`
+      const stored = localStorage.getItem(storageKey)
+      if (stored) {
+        try {
+          const { endTime, attempts } = JSON.parse(stored)
+          const now = Date.now()
+          const timeLeft = Math.max(0, endTime - now)
+          
+          if (timeLeft > 0) {
+            setCountdownTime(Math.ceil(timeLeft / 1000))
+            setResendAttempts(attempts)
+            setIsCountdownActive(true)
+          } else {
+            // Cleanup expired countdown
+            localStorage.removeItem(storageKey)
+            setResendAttempts(attempts)
+          }
+        } catch {
+          // Invalid stored data, ignore
+        }
+      }
     }
   }, [searchParams])
+
+  // Countdown timer effect
+  useEffect(() => {
+    if (!isCountdownActive || countdownTime <= 0) {
+      setIsCountdownActive(false)
+      return
+    }
+
+    const timer = setInterval(() => {
+      setCountdownTime(prev => {
+        if (prev <= 1) {
+          setIsCountdownActive(false)
+          // Clear from localStorage when countdown ends
+          if (email) {
+            const storageKey = `resend_countdown_${email}`
+            localStorage.removeItem(storageKey)
+          }
+          return 0
+        }
+        return prev - 1
+      })
+    }, 1000)
+
+    return () => clearInterval(timer)
+  }, [isCountdownActive, countdownTime, email])
+
+  // Helper function to format countdown time
+  const formatCountdownTime = (seconds: number): string => {
+    const minutes = Math.floor(seconds / 60)
+    const remainingSeconds = seconds % 60
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`
+  }
 
   const handleResendVerification = async () => {
     if (!email) {
@@ -42,6 +102,24 @@ function VerifyEmailPendingContent() {
       
       if (data.success) {
         setResendSuccess(true)
+        
+        // Start countdown: 2 minutes for first attempt, then double each time
+        const newAttempts = resendAttempts + 1
+        const baseTime = 2 * 60 // 2 minutes in seconds
+        const countdownSeconds = baseTime * Math.pow(2, resendAttempts) // Double each time
+        
+        setResendAttempts(newAttempts)
+        setCountdownTime(countdownSeconds)
+        setIsCountdownActive(true)
+        
+        // Store countdown state in localStorage
+        const storageKey = `resend_countdown_${email}`
+        const endTime = Date.now() + (countdownSeconds * 1000)
+        localStorage.setItem(storageKey, JSON.stringify({
+          endTime,
+          attempts: newAttempts
+        }))
+        
       } else {
         setResendError(data.message || data.error || 'Failed to resend verification email')
       }
@@ -157,11 +235,18 @@ function VerifyEmailPendingContent() {
 
             <button
               onClick={handleResendVerification}
-              disabled={isLoading || !email}
+              disabled={isLoading || !email || isCountdownActive}
               className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-sm font-medium text-white bg-red-800 hover:bg-red-900 focus:outline-none focus:ring-2 focus:ring-red-400 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
-              {isLoading ? 'Sending...' : 'Resend Verification Email'}
+              {isLoading 
+                ? 'Sending...' 
+                : isCountdownActive 
+                  ? `Wait ${formatCountdownTime(countdownTime)}` 
+                  : `Resend Verification Email${resendAttempts > 0 ? ` (Attempt ${resendAttempts + 1})` : ''}`
+              }
             </button>
+
+            
 
             <Link
               href="/auth/signin"
