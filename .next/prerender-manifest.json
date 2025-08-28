@@ -30,7 +30,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/auth/signin": {
+    "/admin": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -43,104 +43,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/auth/signin",
-      "dataRoute": "/auth/signin.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/auth/signup": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "Next-Action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/auth/signup",
-      "dataRoute": "/auth/signup.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "Next-Action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/",
-      "dataRoute": "/index.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/auth/verify-email/error": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "Next-Action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/auth/verify-email/error",
-      "dataRoute": "/auth/verify-email/error.rsc",
-      "allowHeader": [
-        "host",
-        "x-matched-path",
-        "x-prerender-revalidate",
-        "x-prerender-revalidate-if-generated",
-        "x-next-revalidated-tags",
-        "x-next-revalidate-tag-token"
-      ]
-    },
-    "/auth/verify-email/success": {
-      "experimentalBypassFor": [
-        {
-          "type": "header",
-          "key": "Next-Action"
-        },
-        {
-          "type": "header",
-          "key": "content-type",
-          "value": "multipart/form-data;.*"
-        }
-      ],
-      "initialRevalidateSeconds": false,
-      "srcRoute": "/auth/verify-email/success",
-      "dataRoute": "/auth/verify-email/success.rsc",
+      "srcRoute": "/admin",
+      "dataRoute": "/admin.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -174,7 +78,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/admin": {
+    "/auth/signin": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -187,8 +91,80 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/admin",
-      "dataRoute": "/admin.rsc",
+      "srcRoute": "/auth/signin",
+      "dataRoute": "/auth/signin.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
+    "/auth/verify-email/error": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "Next-Action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/auth/verify-email/error",
+      "dataRoute": "/auth/verify-email/error.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
+    "/auth/signup": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "Next-Action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/auth/signup",
+      "dataRoute": "/auth/signup.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
+    "/auth/verify-email/success": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "Next-Action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/auth/verify-email/success",
+      "dataRoute": "/auth/verify-email/success.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -222,7 +198,7 @@
         "x-next-revalidate-tag-token"
       ]
     },
-    "/auth/error": {
+    "/": {
       "experimentalBypassFor": [
         {
           "type": "header",
@@ -235,8 +211,8 @@
         }
       ],
       "initialRevalidateSeconds": false,
-      "srcRoute": "/auth/error",
-      "dataRoute": "/auth/error.rsc",
+      "srcRoute": "/",
+      "dataRoute": "/index.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",
@@ -261,6 +237,30 @@
       "initialRevalidateSeconds": false,
       "srcRoute": "/auth/verify-email/pending",
       "dataRoute": "/auth/verify-email/pending.rsc",
+      "allowHeader": [
+        "host",
+        "x-matched-path",
+        "x-prerender-revalidate",
+        "x-prerender-revalidate-if-generated",
+        "x-next-revalidated-tags",
+        "x-next-revalidate-tag-token"
+      ]
+    },
+    "/auth/error": {
+      "experimentalBypassFor": [
+        {
+          "type": "header",
+          "key": "Next-Action"
+        },
+        {
+          "type": "header",
+          "key": "content-type",
+          "value": "multipart/form-data;.*"
+        }
+      ],
+      "initialRevalidateSeconds": false,
+      "srcRoute": "/auth/error",
+      "dataRoute": "/auth/error.rsc",
       "allowHeader": [
         "host",
         "x-matched-path",

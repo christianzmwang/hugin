@@ -3,6 +3,29 @@ import { Resend } from 'resend'
 // Initialize Resend with API key - use dummy key during build if not set
 const resend = new Resend(process.env.RESEND_API_KEY || 'dummy-key-for-build')
 
+/**
+ * Get the base URL for the application with fallbacks
+ */
+function getBaseUrl(): string {
+  // First try NEXTAUTH_URL (most reliable)
+  if (process.env.NEXTAUTH_URL) {
+    return process.env.NEXTAUTH_URL
+  }
+  
+  // Fallback for Vercel production
+  if (process.env.VERCEL_URL) {
+    return `https://${process.env.VERCEL_URL}`
+  }
+  
+  // Fallback to known production domain
+  if (process.env.NODE_ENV === 'production') {
+    return 'https://hugin.allvitr.no'
+  }
+  
+  // Development fallback
+  return 'http://localhost:3000'
+}
+
 export interface EmailVerificationData {
   email: string
   name?: string
@@ -19,7 +42,7 @@ export async function sendVerificationEmail(data: EmailVerificationData) {
       return false
     }
 
-    const verificationUrl = `${process.env.NEXTAUTH_URL}/auth/verify-email?token=${data.verificationToken}`
+    const verificationUrl = `${getBaseUrl()}/auth/verify-email?token=${data.verificationToken}`
     
     const { data: emailResult, error } = await resend.emails.send({
       from: process.env.FROM_EMAIL || 'Allvitr <noreply@send.allvitr.com>',
@@ -126,7 +149,7 @@ export async function sendVerificationReminder(data: EmailVerificationData) {
       return false
     }
 
-    const verificationUrl = `${process.env.NEXTAUTH_URL}/auth/verify-email?token=${data.verificationToken}`
+    const verificationUrl = `${getBaseUrl()}/auth/verify-email?token=${data.verificationToken}`
     
     const { data: emailResult, error } = await resend.emails.send({
       from: process.env.FROM_EMAIL || 'Allvitr <noreply@send.allvitr.com>',
