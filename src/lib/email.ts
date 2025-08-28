@@ -4,22 +4,52 @@ import { Resend } from 'resend'
 const resend = new Resend(process.env.RESEND_API_KEY || 'dummy-key-for-build')
 
 /**
- * Get the base URL for the application
+ * Get the base URL from request host or fallback to environment
  */
-function getBaseUrl(): string {
-  // Use Vercel URL
+function getBaseUrl(requestHost?: string): string {
+  // If request host is provided, use it (this captures the actual domain user is visiting)
+  if (requestHost) {
+    // Handle localhost for development
+    if (requestHost.includes('localhost') || requestHost.includes('127.0.0.1')) {
+      return `http://${requestHost}`
+    }
+    // Production domains (ensure HTTPS)
+    return `https://${requestHost}`
+  }
+  
+  // Fallback to Vercel URL
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`
   }
   
   // If no URL is available, throw an error
-  throw new Error('Base URL not configured. Please ensure VERCEL_URL is available.')
+  throw new Error('Base URL not configured. Please ensure VERCEL_URL is available or pass request host.')
+}
+
+/**
+ * Extract host from NextRequest for email URL generation
+ */
+export function getHostFromRequest(request: Request): string | undefined {
+  // Try to get host from headers
+  const host = request.headers.get('host')
+  if (host) {
+    return host
+  }
+  
+  // Try to get from x-forwarded-host (common in proxied environments)
+  const forwardedHost = request.headers.get('x-forwarded-host')
+  if (forwardedHost) {
+    return forwardedHost
+  }
+  
+  return undefined
 }
 
 export interface EmailVerificationData {
   email: string
   name?: string
   verificationToken: string
+  baseUrl?: string // Optional: override base URL (e.g., from request host)
 }
 
 /**
@@ -32,7 +62,7 @@ export async function sendVerificationEmail(data: EmailVerificationData) {
       return false
     }
 
-    const verificationUrl = `${getBaseUrl()}/auth/verify-email?token=${data.verificationToken}`
+    const verificationUrl = `${getBaseUrl(data.baseUrl)}/auth/verify-email?token=${data.verificationToken}`
     
     const { data: emailResult, error } = await resend.emails.send({
       from: process.env.FROM_EMAIL || 'Allvitr <noreply@send.allvitr.com>',
@@ -139,7 +169,7 @@ export async function sendVerificationReminder(data: EmailVerificationData) {
       return false
     }
 
-    const verificationUrl = `${getBaseUrl()}/auth/verify-email?token=${data.verificationToken}`
+    const verificationUrl = `${getBaseUrl(data.baseUrl)}/auth/verify-email?token=${data.verificationToken}`
     
     const { data: emailResult, error } = await resend.emails.send({
       from: process.env.FROM_EMAIL || 'Allvitr <noreply@send.allvitr.com>',

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createUser, validateEmail, validatePassword, generateVerificationToken, storeVerificationToken } from '@/lib/auth-helpers'
-import { sendVerificationEmail } from '@/lib/email'
+import { sendVerificationEmail, getHostFromRequest } from '@/lib/email'
 
 // Function to verify Cloudflare Turnstile token
 async function verifyTurnstile(token: string): Promise<boolean> {
@@ -136,11 +136,13 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Send verification email
+    // Send verification email with the actual domain the user is visiting
+    const requestHost = getHostFromRequest(req)
     const emailSent = await sendVerificationEmail({
       email: user.email,
       name: user.name || undefined,
-      verificationToken
+      verificationToken,
+      baseUrl: requestHost
     })
 
     if (!emailSent) {

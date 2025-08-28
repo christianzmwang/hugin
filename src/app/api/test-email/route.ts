@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { sendVerificationEmail } from '@/lib/email'
+import { sendVerificationEmail, getHostFromRequest } from '@/lib/email'
 import { generateVerificationToken } from '@/lib/auth-helpers'
 
 export async function POST(req: NextRequest) {
@@ -25,11 +25,13 @@ export async function POST(req: NextRequest) {
       nextAuthUrl: process.env.NEXTAUTH_URL
     })
 
-    // Attempt to send test email
+    // Attempt to send test email with actual domain
+    const requestHost = getHostFromRequest(req)
     const emailSent = await sendVerificationEmail({
       email,
       name: 'Test User',
-      verificationToken
+      verificationToken,
+      baseUrl: requestHost
     })
 
     if (emailSent) {

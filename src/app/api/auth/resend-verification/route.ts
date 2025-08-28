@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { query } from '@/lib/db'
-import { sendVerificationEmail } from '@/lib/email'
+import { sendVerificationEmail, getHostFromRequest } from '@/lib/email'
 import crypto from 'crypto'
 
 export async function POST(request: Request) {
@@ -82,11 +82,13 @@ export async function POST(request: Request) {
       VALUES ($1, $2, $3)
     `, [user.email, verificationToken, expires])
 
-    // Send verification email
+    // Send verification email with the actual domain the user is visiting
+    const requestHost = getHostFromRequest(request)
     const emailSent = await sendVerificationEmail({
       email: user.email,
       name: user.name || undefined,
-      verificationToken
+      verificationToken,
+      baseUrl: requestHost
     })
 
     if (!emailSent) {
