@@ -4,26 +4,16 @@ import { Resend } from 'resend'
 const resend = new Resend(process.env.RESEND_API_KEY || 'dummy-key-for-build')
 
 /**
- * Get the base URL for the application with fallbacks
+ * Get the base URL for the application
  */
 function getBaseUrl(): string {
-  // First try NEXTAUTH_URL (most reliable)
-  if (process.env.NEXTAUTH_URL) {
-    return process.env.NEXTAUTH_URL
-  }
-  
-  // Fallback for Vercel production
+  // Use Vercel URL
   if (process.env.VERCEL_URL) {
     return `https://${process.env.VERCEL_URL}`
   }
   
-  // Fallback to known production domain
-  if (process.env.NODE_ENV === 'production') {
-    return 'https://hugin.allvitr.no'
-  }
-  
-  // Development fallback
-  return 'http://localhost:3000'
+  // If no URL is available, throw an error
+  throw new Error('Base URL not configured. Please ensure VERCEL_URL is available.')
 }
 
 export interface EmailVerificationData {
