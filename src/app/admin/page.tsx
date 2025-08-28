@@ -123,7 +123,7 @@ export default function AdminPage() {
         } else {
           failCount++
         }
-      } catch (error) {
+      } catch {
         failCount++
       }
     }
@@ -167,7 +167,7 @@ export default function AdminPage() {
         } else {
           failCount++
         }
-      } catch (error) {
+      } catch {
         failCount++
       }
     }
@@ -210,7 +210,7 @@ export default function AdminPage() {
         } else {
           failCount++
         }
-      } catch (error) {
+      } catch {
         failCount++
       }
     }
@@ -237,7 +237,7 @@ export default function AdminPage() {
       } else {
         alert(`Failed to verify user: ${data.message}`)
       }
-    } catch (error) {
+    } catch {
       alert('Failed to verify user')
     } finally {
       setUserActionLoading(userId, false)
@@ -259,7 +259,7 @@ export default function AdminPage() {
       } else {
         alert(`Failed to send verification email: ${data.message}`)
       }
-    } catch (error) {
+    } catch {
       alert('Failed to send verification email')
     } finally {
       setUserActionLoading(userId, false)
@@ -286,7 +286,7 @@ export default function AdminPage() {
       } else {
         alert(`Failed to delete user: ${data.message}`)
       }
-    } catch (error) {
+    } catch {
       alert('Failed to delete user')
     } finally {
       setUserActionLoading(userId, false)
@@ -311,7 +311,7 @@ export default function AdminPage() {
       } else {
         alert(`Failed to verify users: ${data.message}`)
       }
-    } catch (error) {
+    } catch {
       alert('Failed to verify users')
     } finally {
       setLoading(false)

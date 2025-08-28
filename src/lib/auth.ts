@@ -105,7 +105,7 @@ export const authOptions: any = {
       }
     },
 
-    async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
+    async signIn({ user, account }: { user: any; account: any; profile?: any }) {
       // Auto-verify email for Google OAuth users
       if (account?.provider === 'google' && user?.email) {
         try {

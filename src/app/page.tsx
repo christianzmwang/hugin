@@ -92,6 +92,11 @@ type Business = {
   // recommendation, rationale and score removed
 }
 
+// Raw business data from API (can have either orgNumber or org_number)
+type RawBusinessData = Partial<Business & {
+  org_number?: string
+}>
+
 type EventItem = {
   id?: string | number
   title?: string | null
@@ -701,13 +706,13 @@ export default function BrregPage() {
         if (Array.isArray(res)) {
           // Legacy shape
           setData((prev) => {
-            const normalize = (arr: any[]): Business[] =>
+            const normalize = (arr: RawBusinessData[]): Business[] =>
               (arr || [])
-                .map((b: any) => ({
+                .map((b: RawBusinessData) => ({
                   ...b,
                   orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(),
                 }))
-                .filter((b: any) => b && b.orgNumber.length > 0)
+                .filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
             if (offset > 0) {
               // Deduplicate by orgNumber when concatenating
               const combined = [...prev, ...normalize(res)]
@@ -725,13 +730,13 @@ export default function BrregPage() {
           setTotal(res.length)
         } else {
           setData((prev) => {
-            const normalize = (arr: any[]): Business[] =>
+            const normalize = (arr: RawBusinessData[]): Business[] =>
               (arr || [])
-                .map((b: any) => ({
+                .map((b: RawBusinessData) => ({
                   ...b,
                   orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(),
                 }))
-                .filter((b: any) => b && b.orgNumber.length > 0)
+                .filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
             if (offset > 0) {
               // Deduplicate by orgNumber when concatenating
               const combined = [...prev, ...normalize(res.items)]
