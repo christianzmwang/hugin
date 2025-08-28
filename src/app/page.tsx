@@ -5,16 +5,19 @@ import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import AuthNav from '@/components/AuthNav'
+import { ALLOWED_USERS } from '@/lib/constants'
 
-const numberFormatter = new Intl.NumberFormat('no-NO')
-
-// List of users who can access the main page
-const ALLOWED_USERS = [
-  'christian@allvitr.com',
-  'lars@allvitr.com', 
-  'thomas@allvitr.com',
-  'atlegram@gmail.com'
-]
+const numberFormatter: Intl.NumberFormat = (() => {
+  try {
+    return new Intl.NumberFormat('nb-NO')
+  } catch {
+    try {
+      return new Intl.NumberFormat('no')
+    } catch {
+      return new Intl.NumberFormat()
+    }
+  }
+})()
 
 function useDebounce<T>(value: T, delay = 100) {
   const [debounced, setDebounced] = useState(value)
@@ -25,26 +28,35 @@ function useDebounce<T>(value: T, delay = 100) {
   return debounced
 }
 
-function formatEventDate(dateString: string | null | undefined): string {
-  if (!dateString) return ''
-  
-  // Check if it's just a year (4 digits)
-  if (/^\d{4}$/.test(dateString.trim())) {
-    return dateString.trim()
-  }
-  
-  // Try to parse as a regular date
+function formatEventDate(dateValue: unknown): string {
+  if (dateValue == null) return ''
+
   try {
-    const date = new Date(dateString)
-    // Check if the date is valid
-    if (isNaN(date.getTime())) {
-      // If parsing failed, return the original string
-      return dateString
+    if (typeof dateValue === 'string') {
+      const trimmed = dateValue.trim()
+      if (/^\d{4}$/.test(trimmed)) return trimmed
+      const date = new Date(trimmed)
+      return isNaN(date.getTime()) ? trimmed : date.toLocaleDateString()
     }
-    return date.toLocaleDateString()
+
+    if (typeof dateValue === 'number') {
+      const yearCandidate = String(dateValue)
+      if (/^\d{4}$/.test(yearCandidate)) return yearCandidate
+      const date = new Date(dateValue)
+      return isNaN(date.getTime()) ? yearCandidate : date.toLocaleDateString()
+    }
+
+    if (dateValue instanceof Date) {
+      return isNaN(dateValue.getTime()) ? '' : dateValue.toLocaleDateString()
+    }
+
+    // Fallback stringification
+    const asString = String(dateValue)
+    if (/^\d{4}$/.test(asString)) return asString
+    const date = new Date(asString)
+    return isNaN(date.getTime()) ? asString : date.toLocaleDateString()
   } catch {
-    // If any error occurs, return the original string
-    return dateString
+    return String(dateValue)
   }
 }
 
@@ -174,9 +186,16 @@ const BusinessCard = memo(
           const items = Array.isArray(json) ? json : json.items || []
           const filtered =
             selectedEventTypes && selectedEventTypes.length > 0
-              ? (items || []).filter(
-                  (it) => !!it && !!it.source && selectedEventTypes.includes(it.source as string),
-                )
+              ? (items || []).filter((it) => {
+                  if (!it) return false
+                  const src =
+                    typeof it.source === 'string'
+                      ? it.source
+                      : it?.source == null
+                        ? ''
+                        : String(it.source)
+                  return !!src && selectedEventTypes.includes(src)
+                })
               : items
           if (!cancelled) setEvents(filtered)
         } catch (e) {
@@ -431,7 +450,12 @@ const BusinessCard = memo(
                       {ev.source ? (
                         <div className="mt-1 flex justify-end">
                           {(() => {
-                            const s = (ev.source as string) || ''
+                            const s =
+                              typeof ev.source === 'string'
+                                ? ev.source
+                                : ev?.source == null
+                                  ? ''
+                                  : String(ev.source)
                             const t = s.replace(/_/g, ' ')
                             const label = t.charAt(0).toUpperCase() + t.slice(1)
                             const weight = eventWeights[s] ?? 0
@@ -454,16 +478,21 @@ const BusinessCard = memo(
                       ) : null}
                     </div>
                   </div>
-                  {ev.url && (
-                    <a
-                      href={ev.url}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="text-xs text-sky-400 hover:text-sky-300 underline"
-                    >
-                      Source
-                    </a>
-                  )}
+                  {(() => {
+                    const href =
+                      typeof ev.url === 'string' ? ev.url : String(ev.url ?? '')
+                    if (!href || !/^https?:\/\//i.test(href)) return null
+                    return (
+                      <a
+                        href={href}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="text-xs text-sky-400 hover:text-sky-300 underline"
+                      >
+                        Source
+                      </a>
+                    )
+                  })()}
                 </li>
               ))}
             </ul>
@@ -519,6 +548,10 @@ export default function BrregPage() {
       return
     }
   }, [session, status, router])
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   const [data, setData] = useState<Business[]>([])
   const [total, setTotal] = useState<number>(0)
@@ -593,6 +626,7 @@ export default function BrregPage() {
     width: number
   } | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
   // Removed rationale expand/collapse state
 
   const queryParam = useMemo(() => {
@@ -667,38 +701,57 @@ export default function BrregPage() {
         if (Array.isArray(res)) {
           // Legacy shape
           setData((prev) => {
+            const normalize = (arr: any[]): Business[] =>
+              (arr || [])
+                .map((b: any) => ({
+                  ...b,
+                  orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(),
+                }))
+                .filter((b: any) => b && b.orgNumber.length > 0)
             if (offset > 0) {
               // Deduplicate by orgNumber when concatenating
-              const combined = [...prev, ...res]
+              const combined = [...prev, ...normalize(res)]
               const seen = new Set<string>()
-              return combined.filter(business => {
-                if (seen.has(business.orgNumber)) return false
-                seen.add(business.orgNumber)
+              return combined.filter((business) => {
+                const org = business?.orgNumber
+                if (!org) return false
+                if (seen.has(org)) return false
+                seen.add(org)
                 return true
               })
             }
-            return res
+            return normalize(res)
           })
           setTotal(res.length)
         } else {
           setData((prev) => {
+            const normalize = (arr: any[]): Business[] =>
+              (arr || [])
+                .map((b: any) => ({
+                  ...b,
+                  orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(),
+                }))
+                .filter((b: any) => b && b.orgNumber.length > 0)
             if (offset > 0) {
               // Deduplicate by orgNumber when concatenating
-              const combined = [...prev, ...res.items]
+              const combined = [...prev, ...normalize(res.items)]
               const seen = new Set<string>()
-              return combined.filter(business => {
-                if (seen.has(business.orgNumber)) return false
-                seen.add(business.orgNumber)
+              return combined.filter((business) => {
+                const org = business?.orgNumber
+                if (!org) return false
+                if (seen.has(org)) return false
+                seen.add(org)
                 return true
               })
             }
-            return res.items
+            return normalize(res.items)
           })
           // If server skipped count, keep current total for snappy UI
           if (typeof res.total === 'number' && res.total > 0)
             setTotal(res.total)
           if (typeof res.grandTotal === 'number') setGrandTotal(res.grandTotal)
         }
+
       })
       .finally(() => setLoading(false))
     }, delay)
@@ -845,6 +898,18 @@ export default function BrregPage() {
 
   // Data is now sorted server-side, no need for client-side sorting
   const sortedData = data
+
+  // Ensure a stable initial render between server and client to avoid hydration issues
+  if (!isMounted) {
+    return (
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
+          <div className="text-lg text-gray-400">Loading...</div>
+        </div>
+      </div>
+    )
+  }
 
   // Show loading state while checking authentication
   if (status === 'loading') {
@@ -1027,6 +1092,7 @@ export default function BrregPage() {
                     {dropdownOpen &&
                       suggestions.length > 0 &&
                       dropdownRect &&
+                      isMounted &&
                       createPortal(
                         <div
                           ref={dropdownRef}

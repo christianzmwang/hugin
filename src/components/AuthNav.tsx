@@ -60,15 +60,20 @@ export default function AuthNav() {
         onClick={() => setDropdownOpen(!dropdownOpen)}
         className="flex items-center space-x-2 text-white hover:text-gray-300 px-3 py-2 text-sm font-medium focus:outline-none w-full"
       >
-        {session.user?.image && (
-          <Image
-            src={session.user.image}
-            alt={session.user.name || 'User'}
-            width={32}
-            height={32}
-            className="w-8 h-8 rounded-full"
-          />
-        )}
+        {(() => {
+          const imageSrc = session.user?.image || ''
+          const canUseNextImage = typeof imageSrc === 'string' && /^(https?:\/\/|data:image\/)/.test(imageSrc)
+          if (!canUseNextImage) return null
+          return (
+            <Image
+              src={imageSrc}
+              alt={session.user?.name || 'User'}
+              width={32}
+              height={32}
+              className="w-8 h-8 rounded-full"
+            />
+          )
+        })()}
         <span>{session.user?.name || session.user?.email}</span>
         <svg
           className={`w-4 h-4 transition-transform ${dropdownOpen ? 'rotate-180' : ''}`}
@@ -81,7 +86,7 @@ export default function AuthNav() {
       </button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-full bg-black shadow-lg ring-1 ring-white ring-opacity-20 z-50">
+        <div className="absolute right-0 mt-2 w-48 bg-black shadow-lg ring-1 ring-white ring-opacity-20 z-50">
           <div className="py-1">
             <button
               onClick={() => {
@@ -95,6 +100,22 @@ export default function AuthNav() {
               </svg>
               Profile
             </button>
+            {session.user?.email === 'christian@allvitr.com' && (
+              <>
+                <hr className="border-gray-600" />
+                <Link
+                  href="/admin"
+                  onClick={() => setDropdownOpen(false)}
+                  className="flex items-center px-4 py-2 text-sm text-white hover:bg-gray-800 w-full text-left"
+                >
+                  <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+                  </svg>
+                  Admin Panel
+                </Link>
+              </>
+            )}
             <hr className="border-gray-600" />
             <button
               onClick={() => {

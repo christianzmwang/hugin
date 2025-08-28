@@ -1,1 +1,15 @@
-{}
+{
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
+  "/api/admin/users/route": "app/api/admin/users/route.js",
+  "/api/admin/delete-user/route": "app/api/admin/delete-user/route.js",
+  "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/industries/route": "app/api/industries/route.js",
+  "/api/businesses/route": "app/api/businesses/route.js",
+  "/api/events/types/route": "app/api/events/types/route.js",
+  "/auth/signin/page": "app/auth/signin/page.js",
+  "/auth/verify-email/page": "app/auth/verify-email/page.js",
+  "/page": "app/page.js",
+  "/admin/page": "app/admin/page.js",
+  "/auth/verify-email/success/page": "app/auth/verify-email/success/page.js",
+  "/countdown/page": "app/countdown/page.js"
+}

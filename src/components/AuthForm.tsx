@@ -284,31 +284,60 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
         if (!response.ok) {
           setError(data.error || 'Registration failed')
+          
+          // Reset and regenerate Turnstile token after error
+          setTurnstileToken(null)
+          if (turnstileWidgetId && window.turnstile) {
+            try {
+              window.turnstile.reset(turnstileWidgetId)
+              // Execute again to get a new token for the next attempt
+              setTimeout(() => {
+                if (window.turnstile && turnstileWidgetId) {
+                  window.turnstile.execute(turnstileWidgetId)
+                }
+              }, 100)
+            } catch (error) {
+              console.warn('Failed to reset Turnstile widget after signup error:', error)
+            }
+          }
+          
           setIsLoading(false)
           return
         }
 
-        // After successful registration, sign in the user
-        const signInResult = await signIn('credentials', {
-          email: formData.email,
-          password: formData.password,
-          redirect: false,
-        })
-
-        if (signInResult?.error) {
-          setError('Registration successful, but sign-in failed. Please try signing in manually.')
+        // Check if email verification is required
+        if (data.requiresVerification) {
+          // Redirect to email verification pending page
+          router.push(`/auth/verify-email/pending?email=${encodeURIComponent(formData.email)}`)
         } else {
-          // Redirect to countdown page after successful signup and sign-in
-          router.push('/countdown')
-        }
-        
-        // Reset Turnstile token state
-        setTurnstileToken(null)
-        if (turnstileWidgetId && window.turnstile) {
-          try {
-            window.turnstile.reset(turnstileWidgetId)
-          } catch (error) {
-            console.warn('Failed to reset Turnstile widget:', error)
+          // Fallback: try to sign in (for backward compatibility)
+          const signInResult = await signIn('credentials', {
+            email: formData.email,
+            password: formData.password,
+            redirect: false,
+          })
+
+          if (signInResult?.error) {
+            setError('Registration successful, but sign-in failed. Please try signing in manually.')
+            
+            // Reset and regenerate Turnstile token after post-signup signin error
+            setTurnstileToken(null)
+            if (turnstileWidgetId && window.turnstile) {
+              try {
+                window.turnstile.reset(turnstileWidgetId)
+                // Execute again to get a new token for the next attempt
+                setTimeout(() => {
+                  if (window.turnstile && turnstileWidgetId) {
+                    window.turnstile.execute(turnstileWidgetId)
+                  }
+                }, 100)
+              } catch (error) {
+                console.warn('Failed to reset Turnstile widget after post-signup signin error:', error)
+              }
+            }
+          } else {
+            // Redirect to countdown page after successful signup and sign-in
+            router.push('/countdown')
           }
         }
       } else {
@@ -332,28 +361,65 @@ export default function AuthForm({ mode }: AuthFormProps) {
         })
 
         if (result?.error) {
-          setError('Invalid email or password')
+          // Check if it's an email verification issue
+          if (result.error === 'CredentialsSignin') {
+            // This could be due to unverified email, check user status
+            try {
+              const checkResponse = await fetch('/api/auth/check-verification', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email: formData.email })
+              })
+              
+              if (checkResponse.ok) {
+                const checkData = await checkResponse.json()
+                if (checkData.exists && !checkData.verified) {
+                  setError('Please verify your email address before signing in. Check your inbox for the verification link.')
+                } else {
+                  setError('Invalid email or password')
+                }
+              } else {
+                setError('Invalid email or password')
+              }
+            } catch {
+              setError('Invalid email or password')
+            }
+          } else {
+            setError('Invalid email or password')
+          }
+          
+          // Reset and regenerate Turnstile token after signin error
+          setTurnstileToken(null)
+          if (turnstileWidgetId && window.turnstile) {
+            try {
+              window.turnstile.reset(turnstileWidgetId)
+              // Execute again to get a new token for the next attempt
+              setTimeout(() => {
+                if (window.turnstile && turnstileWidgetId) {
+                  window.turnstile.execute(turnstileWidgetId)
+                }
+              }, 100)
+            } catch (error) {
+              console.warn('Failed to reset Turnstile widget after signin error:', error)
+            }
+          }
         } else {
           router.push('/countdown')
-        }
-        
-        // Reset Turnstile token state
-        setTurnstileToken(null)
-        if (turnstileWidgetId && window.turnstile) {
-          try {
-            window.turnstile.reset(turnstileWidgetId)
-          } catch (error) {
-            console.warn('Failed to reset Turnstile widget:', error)
-          }
         }
       }
     } catch {
       setError('An unexpected error occurred')
-      // Reset Turnstile token state on error
+      // Reset Turnstile token state on error and generate new token
       setTurnstileToken(null)
       if (turnstileWidgetId && window.turnstile) {
         try {
           window.turnstile.reset(turnstileWidgetId)
+          // Execute again to get a new token for the next attempt
+          setTimeout(() => {
+            if (window.turnstile && turnstileWidgetId) {
+              window.turnstile.execute(turnstileWidgetId)
+            }
+          }, 100)
         } catch (error) {
           console.warn('Failed to reset Turnstile widget on error:', error)
         }

@@ -50,8 +50,9 @@ export const authOptions: any = {
             email: string
             name: string | null
             password_hash: string | null
+            emailVerified: Date | null
           }>(
-            'SELECT id, email, name, password_hash FROM users WHERE lower(email) = lower($1)',
+            'SELECT id, email, name, password_hash, "emailVerified" FROM users WHERE lower(email) = lower($1)',
             [credentials.email.trim()]
           )
 
@@ -68,10 +69,17 @@ export const authOptions: any = {
             return null
           }
 
+          // Check if email is verified
+          if (!user.emailVerified) {
+            console.log('Sign-in blocked: Email not verified for user:', user.email)
+            return null
+          }
+
           return {
             id: user.id,
             email: user.email,
             name: user.name,
+            emailVerified: user.emailVerified,
           }
         } catch (error) {
           console.error('Authentication error:', error)
@@ -96,10 +104,62 @@ export const authOptions: any = {
         expires: shortExpiry < expires ? shortExpiry : expires
       }
     },
+
+    async signIn({ user, account, profile }: { user: any; account: any; profile?: any }) {
+      // Auto-verify email for Google OAuth users
+      if (account?.provider === 'google' && user?.email) {
+        try {
+          // First, try to update existing user
+          const updateResult = await query(
+            'UPDATE users SET "emailVerified" = NOW() WHERE email = $1 AND "emailVerified" IS NULL RETURNING id',
+            [user.email]
+          )
+          
+          // If no rows were updated, the user might already be verified or doesn't exist yet
+          // In case of new user creation through adapter, ensure they get verified
+          if (updateResult.rows.length === 0) {
+            // Try to verify by user ID if available
+            if (user.id) {
+              await query(
+                'UPDATE users SET "emailVerified" = NOW() WHERE id = $1 AND "emailVerified" IS NULL',
+                [user.id]
+              )
+            }
+          }
+          
+          console.log('Auto-verified Google OAuth user:', user.email)
+        } catch (error) {
+          console.error('Error auto-verifying Google OAuth user:', error)
+        }
+      }
+      return true
+    },
+
+    async linkAccount({ user, account }: { user: any; account: any }) {
+      // Also verify when linking Google account to existing user
+      if (account?.provider === 'google' && user?.email) {
+        try {
+          await query(
+            'UPDATE users SET "emailVerified" = NOW() WHERE email = $1 AND "emailVerified" IS NULL',
+            [user.email]
+          )
+          console.log('Auto-verified user during Google account linking:', user.email)
+        } catch (error) {
+          console.error('Error auto-verifying during account linking:', error)
+        }
+      }
+      return true
+    },
     
-    async jwt({ token, user }: { token: any; user?: any }) {
+    async jwt({ token, user, account }: { token: any; user?: any; account?: any }) {
       if (user) {
         token.id = user.id
+        token.emailVerified = user.emailVerified
+        
+        // For Google OAuth users, ensure emailVerified is set
+        if (account?.provider === 'google' && user.email && !user.emailVerified) {
+          token.emailVerified = new Date()
+        }
       }
       return token
     },
@@ -107,6 +167,30 @@ export const authOptions: any = {
     async session({ session, token }: { session: any; token: any }) {
       if (token && session.user) {
         session.user.id = token.id as string
+        session.user.emailVerified = token.emailVerified as Date | null
+        
+        // Double-check: If this is a Google user without verified email, fix it
+        if (!session.user.emailVerified && session.user.email) {
+          try {
+            // Check if user has Google account linked
+            const hasGoogleAccount = await query(
+              'SELECT 1 FROM accounts WHERE "userId" = $1 AND provider = $2',
+              [token.id, 'google']
+            )
+            
+            if (hasGoogleAccount.rows.length > 0) {
+              // User has Google account but email not verified - fix it
+              await query(
+                'UPDATE users SET "emailVerified" = NOW() WHERE id = $1',
+                [token.id]
+              )
+              session.user.emailVerified = new Date()
+              console.log('Fixed verification status for Google user:', session.user.email)
+            }
+          } catch (error) {
+            console.error('Error checking/fixing Google user verification:', error)
+          }
+        }
       }
       return session
     },

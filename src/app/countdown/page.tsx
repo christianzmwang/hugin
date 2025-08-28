@@ -4,14 +4,7 @@ import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
 import Munin from '../../../public/munin.svg'
-
-// List of users who can access the main page
-const ALLOWED_USERS = [
-  'christian@allvitr.com',
-  'lars@allvitr.com', 
-  'thomas@allvitr.com',
-  'atlegram@gmail.com'
-]
+import { ALLOWED_USERS } from '@/lib/constants'
 
 export default function CountdownPage() {
   const { data: session } = useSession()

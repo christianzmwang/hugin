@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { dbConfigured, query } from '@/lib/db'
 import { apiCache } from '@/lib/api-cache'
+import { checkApiAccess } from '@/lib/access-control'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -8,6 +9,12 @@ export const preferredRegion = ['fra1', 'arn1', 'cdg1']
 export const maxDuration = 15
 
 export async function GET() {
+  // Check authentication and authorization first
+  const accessError = await checkApiAccess()
+  if (accessError) {
+    return accessError
+  }
+
   if (!dbConfigured) {
     return NextResponse.json({ items: [] })
   }

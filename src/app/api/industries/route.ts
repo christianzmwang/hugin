@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { dbConfigured } from '@/lib/db'
+import { checkApiAccess } from '@/lib/access-control'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 30
@@ -8,6 +9,12 @@ import { query } from '@/lib/db'
 import { apiCache } from '@/lib/api-cache'
 
 export async function GET(req: Request) {
+  // Check authentication and authorization first
+  const accessError = await checkApiAccess()
+  if (accessError) {
+    return accessError
+  }
+
   if (!dbConfigured) {
     return NextResponse.json([], { status: 503 })
   }

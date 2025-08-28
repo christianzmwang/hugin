@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import { query } from './db'
+import crypto from 'crypto'
 
 export interface CreateUserData {
   email: string
@@ -9,7 +10,6 @@ export interface CreateUserData {
 
 export interface User {
   id: string
-  username?: string | null
   email: string
   name: string | null
   emailVerified: Date | null
@@ -19,7 +19,14 @@ export interface User {
 }
 
 /**
- * Creates a new user with email and password
+ * Generate a secure verification token
+ */
+export function generateVerificationToken(): string {
+  return crypto.randomBytes(32).toString('hex')
+}
+
+/**
+ * Creates a new user with email and password (unverified)
  */
 export async function createUser(userData: CreateUserData): Promise<User | null> {
   try {
@@ -45,10 +52,10 @@ export async function createUser(userData: CreateUserData): Promise<User | null>
     const saltRounds = 12
     const passwordHash = await bcrypt.hash(userData.password, saltRounds)
 
-    // Create the user
+    // Create the user (emailVerified is NULL, requiring verification)
     const result = await query<User>(
-      `INSERT INTO users (email, password_hash, name) 
-       VALUES ($1, $2, $3) 
+      `INSERT INTO users (email, password_hash, name, "emailVerified") 
+       VALUES ($1, $2, $3, NULL) 
        RETURNING id, email, name, "emailVerified", image, created_at, updated_at`,
       [normalizedEmail, passwordHash, userData.name || null]
     )
@@ -61,24 +68,127 @@ export async function createUser(userData: CreateUserData): Promise<User | null>
 }
 
 /**
- * Finds a user by email
+ * Store verification token in database
  */
-export async function getUserByEmail(email: string): Promise<User | null> {
+export async function storeVerificationToken(email: string, token: string): Promise<boolean> {
   try {
-    const result = await query<User>(
-      'SELECT id, username, email, name, "emailVerified", image, created_at, updated_at FROM users WHERE email = $1',
+    // Set expiration to 24 hours from now
+    const expires = new Date(Date.now() + 24 * 60 * 60 * 1000)
+    
+    // Delete any existing tokens for this email
+    await query(
+      'DELETE FROM verification_tokens WHERE identifier = $1',
+      [email]
+    )
+    
+    // Insert new token
+    await query(
+      'INSERT INTO verification_tokens (identifier, token, expires) VALUES ($1, $2, $3)',
+      [email, token, expires]
+    )
+    
+    return true
+  } catch (error) {
+    console.error('Error storing verification token:', error)
+    return false
+  }
+}
+
+/**
+ * Verify email with token and mark user as verified
+ */
+export async function verifyEmailToken(token: string): Promise<{ success: boolean; email?: string; error?: string }> {
+  try {
+    // Find the token and check if it's still valid
+    const tokenResult = await query<{ identifier: string; expires: Date }>(
+      'SELECT identifier, expires FROM verification_tokens WHERE token = $1',
+      [token]
+    )
+
+    if (tokenResult.rows.length === 0) {
+      return { success: false, error: 'Invalid verification token' }
+    }
+
+    const { identifier: email, expires } = tokenResult.rows[0]
+
+    // Check if token has expired
+    if (new Date() > new Date(expires)) {
+      // Clean up expired token
+      await query('DELETE FROM verification_tokens WHERE token = $1', [token])
+      return { success: false, error: 'Verification token has expired' }
+    }
+
+    // Update user's emailVerified status
+    const userResult = await query<User>(
+      'UPDATE users SET "emailVerified" = NOW() WHERE email = $1 RETURNING id, email, name, "emailVerified"',
       [email]
     )
 
-    return result.rows[0] || null
+    if (userResult.rows.length === 0) {
+      return { success: false, error: 'User not found' }
+    }
+
+    // Clean up the used token
+    await query('DELETE FROM verification_tokens WHERE token = $1', [token])
+
+    return { success: true, email }
   } catch (error) {
-    console.error('Error finding user by email:', error)
+    console.error('Error verifying email token:', error)
+    return { success: false, error: 'Database error during verification' }
+  }
+}
+
+/**
+ * Check if user needs email verification
+ */
+export async function getUserVerificationStatus(email: string): Promise<{ verified: boolean; exists: boolean }> {
+  try {
+    const result = await query<{ emailVerified: Date | null }>(
+      'SELECT "emailVerified" FROM users WHERE lower(email) = lower($1)',
+      [email]
+    )
+
+    if (result.rows.length === 0) {
+      return { verified: false, exists: false }
+    }
+
+    return { 
+      verified: result.rows[0].emailVerified !== null, 
+      exists: true 
+    }
+  } catch (error) {
+    console.error('Error checking user verification status:', error)
+    return { verified: false, exists: false }
+  }
+}
+
+/**
+ * Get verification token for user (if exists and not expired)
+ */
+export async function getValidVerificationToken(email: string): Promise<string | null> {
+  try {
+    const result = await query<{ token: string; expires: Date }>(
+      'SELECT token, expires FROM verification_tokens WHERE identifier = $1 AND expires > NOW()',
+      [email]
+    )
+
+    return result.rows.length > 0 ? result.rows[0].token : null
+  } catch (error) {
+    console.error('Error getting verification token:', error)
     return null
   }
 }
 
 /**
- * Validates password strength
+ * Validate email format
+ */
+export function validateEmail(email: string): boolean {
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+  return emailRegex.test(email)
+}
+
+/**
+ * Validate password strength
  */
 export function validatePassword(password: string): { isValid: boolean; errors: string[] } {
   const errors: string[] = []
@@ -99,41 +209,12 @@ export function validatePassword(password: string): { isValid: boolean; errors: 
     errors.push('Password must contain at least one number')
   }
 
+  if (!/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)) {
+    errors.push('Password must contain at least one special character')
+  }
+
   return {
     isValid: errors.length === 0,
     errors
-  }
-}
-
-/**
- * Validates email format
- */
-export function validateEmail(email: string): boolean {
-  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-  return emailRegex.test(email)
-}
-
-/**
- * Validates username format (3-50 chars, alphanumeric + underscore)
- */
-export function validateUsername(username: string): boolean {
-  const usernameRegex = /^[a-zA-Z0-9_]{3,50}$/
-  return usernameRegex.test(username)
-}
-
-/**
- * Finds a user by username
- */
-export async function getUserByUsername(username: string): Promise<User | null> {
-  try {
-    const result = await query<User>(
-      'SELECT id, username, email, name, "emailVerified", image, created_at, updated_at FROM users WHERE lower(username) = lower($1)',
-      [username.toLowerCase().trim()]
-    )
-
-    return result.rows[0] || null
-  } catch (error) {
-    console.error('Error finding user by username:', error)
-    return null
   }
 }

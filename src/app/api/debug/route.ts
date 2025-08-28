@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { dbConfigured, pool } from '@/lib/db'
+import { checkApiAccess } from '@/lib/access-control'
 
 type ConnectionTestResult = {
   success: boolean
@@ -19,6 +20,12 @@ type DebugPayload = {
 }
 
 export async function GET() {
+  // Check authentication and authorization first
+  const accessError = await checkApiAccess()
+  if (accessError) {
+    return accessError
+  }
+
   const debug: DebugPayload = {
     timestamp: new Date().toISOString(),
     dbConfigured,

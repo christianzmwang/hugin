@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { createUser, validateEmail, validatePassword } from '@/lib/auth-helpers'
+import { createUser, validateEmail, validatePassword, generateVerificationToken, storeVerificationToken } from '@/lib/auth-helpers'
+import { sendVerificationEmail } from '@/lib/email'
 
 // Function to verify Cloudflare Turnstile token
 async function verifyTurnstile(token: string): Promise<boolean> {
@@ -105,7 +106,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Create the user
+    // Create the user (unverified)
     console.log('Creating user with email:', email.toLowerCase().trim())
     const user = await createUser({
       email: email.toLowerCase().trim(),
@@ -123,13 +124,44 @@ export async function POST(req: NextRequest) {
     
     console.log('User created successfully:', user.id)
 
-    // Return user data (without password)
+    // Generate verification token
+    const verificationToken = generateVerificationToken()
+    const tokenStored = await storeVerificationToken(user.email, verificationToken)
+    
+    if (!tokenStored) {
+      console.log('Failed to store verification token for user:', user.id)
+      return NextResponse.json(
+        { error: 'Failed to generate verification token' },
+        { status: 500 }
+      )
+    }
+
+    // Send verification email
+    const emailSent = await sendVerificationEmail({
+      email: user.email,
+      name: user.name || undefined,
+      verificationToken
+    })
+
+    if (!emailSent) {
+      console.log('Failed to send verification email for user:', user.id)
+      return NextResponse.json(
+        { error: 'User created but failed to send verification email. Please contact support.' },
+        { status: 500 }
+      )
+    }
+
+    console.log('Verification email sent successfully to:', user.email)
+
+    // Return success with verification instructions
     return NextResponse.json({
-      message: 'User created successfully',
+      message: 'User created successfully. Please check your email to verify your account.',
+      requiresVerification: true,
       user: {
-        id: user?.id,
-        email: user?.email,
-        name: user?.name
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        emailVerified: false
       }
     }, { status: 201 })
 
