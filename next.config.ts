@@ -3,6 +3,8 @@ const nextConfig = {
   // Optimize for production
   compress: true,
   poweredByHeader: false,
+  // Hide the Next.js dev/build indicator badge (Next.js 15+)
+  devIndicators: false,
   // Allow external images if needed
   images: {
     remotePatterns: [

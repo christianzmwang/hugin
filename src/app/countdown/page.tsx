@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
-import Munin from '../../../public/munin.svg'
+import Hugin from '../../../public/hugin.svg'
 import { ALLOWED_USERS } from '@/lib/constants'
 
 export default function CountdownPage() {
@@ -58,9 +58,9 @@ export default function CountdownPage() {
 
   return (
     <div className="min-h-screen bg-black flex items-center justify-center relative">
-      {/* Munin logo in bottom left corner */}
+      {/* Hugin logo in bottom left corner */}
       <div className="absolute bottom-6 left-6">
-        <Munin className="w-6 h-6" />
+        <Hugin className="w-6 h-6" />
       </div>
 
       {/* Signout button in top right corner */}

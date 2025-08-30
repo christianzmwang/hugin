@@ -35,6 +35,11 @@ export async function GET(req: Request) {
     (searchParams.get('countOnly') || '').toLowerCase(),
   )
   const singleIndustry = searchParams.get('industry')?.trim() || ''
+  const q = (searchParams.get('q') || '').trim()
+  const orgFormCodes = searchParams
+    .getAll('orgFormCode')
+    .map((s) => s.trim())
+    .filter(Boolean)
   const industries = [
     ...searchParams
       .getAll('industries')
@@ -42,6 +47,12 @@ export async function GET(req: Request) {
       .filter(Boolean),
     singleIndustry || undefined,
   ].filter(Boolean) as string[]
+
+  // Area filtering (city or postal code)
+  const areas = searchParams
+    .getAll('areas')
+    .map((s) => s.trim())
+    .filter(Boolean) as string[]
 
   // Revenue filtering
   const revenueRange = searchParams.get('revenueRange')?.trim()
@@ -146,6 +157,9 @@ export async function GET(req: Request) {
   eventTypes: eventTypes,
   eventWeights,
     sortBy: validSortBy,
+    q,
+    areas: areas.sort(),
+    orgFormCodes: orgFormCodes.sort(),
   }
 
   // Check cache first
@@ -165,6 +179,8 @@ export async function GET(req: Request) {
 
   const hasIndustries = industries.length > 0
   const industryParams = industries.map((v) => `%${v}%`)
+  const hasAreas = areas.length > 0
+  const areaParams = areas.map((v) => `%${v}%`)
   const perColumnClause = (col: string) =>
     industries.length > 0
       ? industries.map((_, i) => `${col} ILIKE $${i + 1}`).join(' OR ')
@@ -173,12 +189,44 @@ export async function GET(req: Request) {
     ? `AND ((${perColumnClause('b."industryCode1"')} ) OR (${perColumnClause('b."industryText1"')}) OR (${perColumnClause('b."industryCode2"')}) OR (${perColumnClause('b."industryText2"')}) OR (${perColumnClause('b."industryCode3"')}) OR (${perColumnClause('b."industryText3"')}))`
     : ''
 
+  // Build area clause using parameter indexes after industries
+  const areaClause = hasAreas
+    ? (() => {
+        const base = industryParams.length
+        const city = areas.map((_, i) => `b."addressCity" ILIKE $${base + i + 1}`).join(' OR ')
+        const postal = areas.map((_, i) => `b."addressPostalCode" ILIKE $${base + i + 1}`).join(' OR ')
+        return `AND ((${city}) OR (${postal}))`
+      })()
+    : ''
+
   // Combine all params - industries first, then revenue (we'll append event params below)
-  const params: SqlParam[] = [...industryParams, ...revenueParams]
+  const params: SqlParam[] = [...industryParams, ...areaParams, ...revenueParams]
+
+  // Optional company type (org form) filter - support multiple values
+  let orgFormIdx: number | null = null
+  if (orgFormCodes.length > 0) {
+    orgFormIdx = params.length + 1
+    params.push(orgFormCodes)
+  }
+
+  // Optional text search by company name or organization number
+  let searchClause = ''
+  let nameIdx: number | null = null
+  let orgIdx: number | null = null
+  let namePrefixIdx: number | null = null
+  if (q) {
+    nameIdx = params.length + 1
+    orgIdx = params.length + 2
+    params.push(`%${q}%`, `%${q}%`)
+    // Add starts-with pattern for better ranking
+    namePrefixIdx = params.length + 1
+    params.push(`${q}%`)
+    searchClause = `AND (b.name ILIKE $${nameIdx} OR b."orgNumber" ILIKE $${orgIdx})`
+  }
 
   // Update clause placeholders with actual parameter positions
   if (revenueClause) {
-    const revenueStartIndex = industryParams.length + 1
+    const revenueStartIndex = industryParams.length + areaParams.length + 1
     revenueClause = revenueClause
       .replace('$REVENUE_MIN', `$${revenueStartIndex}`)
       .replace('$REVENUE_MAX', `$${revenueStartIndex + 1}`)
@@ -188,6 +236,9 @@ export async function GET(req: Request) {
   const baseWhere = `
 		WHERE (b."registeredInForetaksregisteret" = true OR b."orgFormCode" IN ('AS','ASA','ENK','ANS','DA','NUF','SA','SAS','A/S','A/S/ASA'))
 		${industryClause}
+		${areaClause}
+    ${orgFormIdx ? `AND b."orgFormCode" = ANY($${orgFormIdx}::text[])` : ''}
+		${searchClause}
 	`
 
   // Compute parameter indexes for optional event filters/weights
@@ -294,6 +345,13 @@ export async function GET(req: Request) {
       return conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : ''
     })()}
     ORDER BY ${(() => {
+      if (q && nameIdx && orgIdx && namePrefixIdx) {
+        return `CASE 
+          WHEN b."orgNumber" ILIKE $${orgIdx} THEN 0
+          WHEN b.name ILIKE $${namePrefixIdx} THEN 1
+          WHEN b.name ILIKE $${nameIdx} THEN 2
+          ELSE 3 END, b.name ASC`
+      }
       switch (validSortBy) {
         case 'name':
           return 'b.name ASC'

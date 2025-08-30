@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import RedDotWave from './RedDotWave'
-import Munin from '../../public/munin.svg'
+import Hugin from '../../public/hugin.svg'
 
 interface AuthFormProps {
   mode: 'signin' | 'signup'
@@ -443,9 +443,9 @@ export default function AuthForm({ mode }: AuthFormProps) {
 
   return (
     <div className="h-screen flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 bg-black relative">
-      {/* Munin image in bottom left corner */}
+      {/* Hugin image in bottom left corner */}
       <div className="absolute bottom-6 left-6">
-        <Munin className="w-6 h-6" />
+        <Hugin className="w-6 h-6" />
       </div>
 
       {/* Two-column layout with wave image */}

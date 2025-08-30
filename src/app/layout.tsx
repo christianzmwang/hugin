@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from 'next'
 import { JetBrains_Mono, Inter } from 'next/font/google'
 import './globals.css'
 import Providers from '@/components/Providers'
+import AutoChrome from '@/components/AutoChrome'
 
 const jetbrainsMono = JetBrains_Mono({
   variable: '--font-jetbrains-mono',
@@ -35,9 +36,7 @@ export default function RootLayout({
         className={`${jetbrainsMono.variable} ${inter.variable} font-mono bg-black`}
       >
         <Providers>
-          <div className="min-h-screen flex flex-col">
-            <div className="flex-1">{children}</div>
-          </div>
+          <AutoChrome>{children}</AutoChrome>
         </Providers>
       </body>
     </html>

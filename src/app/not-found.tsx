@@ -1,14 +1,14 @@
 'use client'
 
 import Link from 'next/link'
-import Munin from '../../public/munin.svg'
+import Hugin from '../../public/hugin.svg'
 
 export default function NotFound() {
   return (
     <div className="min-h-screen bg-black flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8 relative">
-      {/* Munin logo in bottom left corner */}
+      {/* Hugin logo in bottom left corner */}
       <div className="absolute bottom-6 left-6">
-        <Munin className="w-6 h-6" />
+        <Hugin className="w-6 h-6" />
       </div>
 
       <div className="max-w-md w-full space-y-8 text-center">
