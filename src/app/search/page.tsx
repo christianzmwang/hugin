@@ -133,6 +133,7 @@ const BusinessCard = memo(
     eventWeights,
     isWatched,
     onToggle,
+    router,
   }: {
     business: Business
     numberFormatter: Intl.NumberFormat
@@ -140,6 +141,7 @@ const BusinessCard = memo(
     eventWeights: Record<string, number>
     isWatched: boolean
     onToggle: () => void
+    router: any
   }) => {
     const fmt = (v: number | string | null | undefined) =>
       v === null || v === undefined ? '—' : numberFormatter.format(Number(v))
@@ -238,7 +240,11 @@ const BusinessCard = memo(
     }, [business.eventWeightedScore, business.eventScore, selectedEventTypes])
 
     return (
-      <div ref={cardRef} className="py-6">
+      <div 
+        ref={cardRef} 
+        className="py-6 hover:bg-white/5 transition-colors duration-200 -mx-4 px-4 cursor-pointer"
+        onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(business.orgNumber)}`)}
+      >
         <div className="flex justify-between items-start mb-4">
           <div className="flex-1">
             <h3 className="text-xl font-semibold mb-2">{business.name}</h3>
@@ -1747,6 +1753,7 @@ export default function SearchPage() {
                     eventWeights={eventWeights}
                     isWatched={isWatched}
                     onToggle={() => (isWatched ? removeWatch(org) : addWatch(org))}
+                    router={router}
                   />
                 )
               })}
@@ -1756,9 +1763,9 @@ export default function SearchPage() {
             const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0
             const totalForPaging = hasAnyFilter ? total : (grandTotal ?? total)
             return (
-              <div className="mt-8 flex items-center justify-end gap-4">
+              <div className="mt-8">
                 {data.length < totalForPaging && (
-                  <button onClick={() => setOffset((prev) => prev + 100)} className="px-4 py-2 border border-white/10 bg-gray-900 hover:bg-gray-800 text-sm">Load more</button>
+                  <button onClick={() => setOffset((prev) => prev + 100)} className="w-full px-4 py-2 border border-white/10 hover:bg-white/5 text-sm transition-colors duration-200">Load more</button>
                 )}
               </div>
             )

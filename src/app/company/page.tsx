@@ -1,7 +1,7 @@
 'use client'
 
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { ALLOWED_USERS } from '@/lib/constants'
 
@@ -67,6 +67,63 @@ type Business = {
     sumEgenkapital: string
     sumGjeld: string
   }>
+  // Website analysis data
+  webFinalUrl?: string | null
+  webStatus?: number | null
+  webElapsedMs?: number | null
+  webIp?: string | null
+  webTlsValid?: boolean | null
+  webTlsNotBefore?: string | null
+  webTlsNotAfter?: string | null
+  webTlsDaysToExpiry?: number | null
+  webTlsIssuer?: string | null
+  webPrimaryCms?: string | null
+  webCmsWordpress?: boolean | null
+  webCmsDrupal?: boolean | null
+  webCmsJoomla?: boolean | null
+  webCmsTypo3?: boolean | null
+  webCmsShopify?: boolean | null
+  webCmsWix?: boolean | null
+  webCmsSquarespace?: boolean | null
+  webCmsWebflow?: boolean | null
+  webCmsGhost?: boolean | null
+  webCmsDuda?: boolean | null
+  webCmsCraft?: boolean | null
+  webEcomWoocommerce?: boolean | null
+  webEcomMagento?: boolean | null
+  webPayStripe?: boolean | null
+  webPayPaypal?: boolean | null
+  webPayKlarna?: boolean | null
+  webAnalyticsGa4?: boolean | null
+  webAnalyticsGtm?: boolean | null
+  webAnalyticsUa?: boolean | null
+  webAnalyticsFbPixel?: boolean | null
+  webAnalyticsLinkedin?: boolean | null
+  webAnalyticsHotjar?: boolean | null
+  webAnalyticsHubspot?: boolean | null
+  webJsReact?: boolean | null
+  webJsVue?: boolean | null
+  webJsAngular?: boolean | null
+  webJsNextjs?: boolean | null
+  webJsNuxt?: boolean | null
+  webJsSvelte?: boolean | null
+  webHasEmailText?: boolean | null
+  webHasPhoneText?: boolean | null
+  webHtmlKb?: number | null
+  webHtmlKbOver500?: boolean | null
+  webHeaderServer?: string | null
+  webHeaderXPoweredBy?: string | null
+  webSecurityHsts?: boolean | null
+  webSecurityCsp?: boolean | null
+  webCookiesPresent?: boolean | null
+  webCdnHint?: string | null
+  webServerHint?: string | null
+  webRiskFlags?: string | null
+  webErrors?: string | null
+  webCmsWordpressHash?: string | null
+  webRiskPlaceholderKw?: boolean | null
+  webRiskParkedKw?: boolean | null
+  webRiskSuspendedKw?: boolean | null
 }
 
 type EventItem = {
@@ -127,6 +184,7 @@ function formatEventDate(dateValue: unknown): string {
 export default function CompanyPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const searchParams = useSearchParams()
   const [topCompany, setTopCompany] = useState<Business | null>(null)
   const [events, setEvents] = useState<EventItem[]>([])
   const [loading, setLoading] = useState(true)
@@ -148,7 +206,7 @@ export default function CompanyPage() {
       if (stored) {
         const parsed = JSON.parse(stored)
         if (Array.isArray(parsed)) {
-          setRecentlyViewed(parsed.slice(0, 5)) // Keep only last 5
+          setRecentlyViewed(parsed.slice(0, 20)) // Keep only last 20
         }
       }
     } catch (error) {
@@ -160,7 +218,7 @@ export default function CompanyPage() {
   const addToRecentlyViewed = (company: { name: string; orgNumber: string }) => {
     setRecentlyViewed(prev => {
       const filtered = prev.filter(c => c.orgNumber !== company.orgNumber)
-      const updated = [company, ...filtered].slice(0, 5) // Keep only last 5
+      const updated = [company, ...filtered].slice(0, 20) // Keep only last 20
       try {
         localStorage.setItem('recentlyViewedCompanies', JSON.stringify(updated))
       } catch (error) {
@@ -183,55 +241,104 @@ export default function CompanyPage() {
     }
   }, [status, session, router])
 
-  // Fetch top news company
+  // Fetch company data
   useEffect(() => {
     if (status !== 'authenticated') return
     
     let cancelled = false
     
-    const fetchTopCompany = async () => {
+    const fetchCompanyData = async () => {
       try {
         setLoading(true)
         setError(null)
         
-        // Fetch companies with events, sorted by score descending, limit 1
-        const params = new URLSearchParams({
-          events: 'with',
-          sortBy: 'scoreDesc',
-          limit: '1'
-        })
+        // Check if orgNumber is provided in URL
+        const orgNumberFromUrl = searchParams.get('orgNumber')
         
-        const response = await fetch(`/api/businesses?${params.toString()}`)
-        if (!response.ok) throw new Error('Failed to fetch companies')
-        
-        const data = await response.json()
-        const items = Array.isArray(data) ? data : data.items || []
-        
-        if (cancelled) return
-        
-        if (items.length > 0) {
-          const company = items[0] as Business
-          setTopCompany(company)
+        if (orgNumberFromUrl) {
+          // Fetch specific company by orgNumber
+          const params = new URLSearchParams({
+            q: orgNumberFromUrl,
+            limit: '1'
+          })
           
-          // Fetch events for this company
-          if (company.orgNumber) {
+          const response = await fetch(`/api/businesses?${params.toString()}`)
+          if (!response.ok) throw new Error('Failed to fetch company')
+          
+          const data = await response.json()
+          const items = Array.isArray(data) ? data : data.items || []
+          
+          if (cancelled) return
+          
+          if (items.length > 0) {
+            const company = items[0] as Business
+            setTopCompany(company)
+            
+            // Add to recently viewed
+            addToRecentlyViewed({
+              name: company.name,
+              orgNumber: company.orgNumber
+            })
+            
+            // Fetch events for this company
             const eventsParams = new URLSearchParams({
               orgNumber: company.orgNumber,
               limit: '50'
             })
             
-            const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
-            if (eventsResponse.ok) {
-              const eventsData = await eventsResponse.json()
-              const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
-              if (!cancelled) {
-                setEvents(eventItems)
-              }
+                         const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
+             if (eventsResponse.ok) {
+               const eventsData = await eventsResponse.json()
+               const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+               if (!cancelled) {
+                 setEvents(eventItems)
+               }
+             }
+          } else {
+            if (!cancelled) {
+              setError('Company not found')
             }
           }
         } else {
-          if (!cancelled) {
-            setError('No companies with news events found')
+          // Fetch top company with events (original behavior)
+          const params = new URLSearchParams({
+            events: 'with',
+            sortBy: 'scoreDesc',
+            limit: '1'
+          })
+          
+          const response = await fetch(`/api/businesses?${params.toString()}`)
+          if (!response.ok) throw new Error('Failed to fetch companies')
+          
+          const data = await response.json()
+          const items = Array.isArray(data) ? data : data.items || []
+          
+          if (cancelled) return
+          
+          if (items.length > 0) {
+            const company = items[0] as Business
+            setTopCompany(company)
+            
+            // Fetch events for this company
+            if (company.orgNumber) {
+              const eventsParams = new URLSearchParams({
+                orgNumber: company.orgNumber,
+                limit: '50'
+              })
+              
+              const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
+              if (eventsResponse.ok) {
+                const eventsData = await eventsResponse.json()
+                const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+                if (!cancelled) {
+                  setEvents(eventItems)
+                }
+              }
+            }
+          } else {
+            if (!cancelled) {
+              setError('No companies with news events found')
+            }
           }
         }
       } catch (err) {
@@ -245,12 +352,12 @@ export default function CompanyPage() {
       }
     }
     
-    fetchTopCompany()
+    fetchCompanyData()
     
     return () => {
       cancelled = true
     }
-  }, [status])
+  }, [status, searchParams])
 
   // Fetch business statistics
   useEffect(() => {
@@ -399,59 +506,63 @@ export default function CompanyPage() {
     <div className="min-h-screen bg-black text-white">
       {/* Search Bar and Recently Viewed */}
       <div className="p-2 px-6 border-b border-white/10">
-        <div className="flex items-center gap-8 max-w-4xl">
-          {/* Search Bar */}
+        <div className="flex items-center gap-8">
+              {/* Search Bar */}
           <div className="relative w-64">
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Søk selskaper"
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
-              onFocus={() => {
-                if (companySuggestions.length > 0) {
-                  setShowSuggestions(true)
-                }
-              }}
-              onBlur={() => {
-                // Delay to allow click on suggestions
-                setTimeout(() => setShowSuggestions(false), 200)
-              }}
-            />
-            
-            {showSuggestions && companySuggestions.length > 0 && (
-              <div className="absolute top-full left-0 right-0 z-10 mt-2 border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10">
-                {companySuggestions.map((company, idx) => (
-                  <button
-                    key={`${company.orgNumber}-${idx}`}
-                    onClick={() => handleCompanySelect(company.orgNumber)}
-                    className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
-                  >
-                    <div className="flex items-center justify-between gap-3">
-                      <span>{company.name || 'Uten navn'}</span>
-                      <span className="text-xs text-gray-400">{company.orgNumber}</span>
-                    </div>
-                  </button>
-                ))}
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Søk selskaper"
+            className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
+            onFocus={() => {
+              if (companySuggestions.length > 0) {
+                setShowSuggestions(true)
+              }
+            }}
+            onBlur={() => {
+              // Delay to allow click on suggestions
+              setTimeout(() => setShowSuggestions(false), 200)
+            }}
+          />
+          
+          {showSuggestions && companySuggestions.length > 0 && (
+            <div className="absolute top-full left-0 right-0 z-10 mt-2 border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10">
+              {companySuggestions.map((company, idx) => (
+                <button
+                  key={`${company.orgNumber}-${idx}`}
+                  onClick={() => handleCompanySelect(company.orgNumber)}
+                  className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <span>{company.name || 'Uten navn'}</span>
+                    <span className="text-xs text-gray-400">{company.orgNumber}</span>
+                  </div>
+                </button>
+              ))}
               </div>
             )}
           </div>
 
           {/* Recently Viewed Companies */}
           {recentlyViewed.length > 0 && (
-            <div className="flex-1">
-              <div className="flex flex-wrap gap-2">
+            <div className="flex-1 relative flex items-center min-w-0">
+              <div className="flex gap-2 overflow-x-auto scrollbar-hide pr-4 pl-4 w-full">
                 {recentlyViewed.map((company, idx) => (
                   <button
                     key={`${company.orgNumber}-${idx}`}
                     onClick={() => handleCompanySelect(company.orgNumber)}
-                    className="px-3 py-1 text-xs border border-white/20 text-white/90 hover:bg-white/10 hover:border-white/40 transition-colors rounded"
+                    className="px-3 py-1 text-xs border border-white/20 text-white/90 hover:bg-white/10 hover:border-white/40 transition-colors rounded whitespace-nowrap flex-shrink-0"
                     title={`${company.name} (${company.orgNumber})`}
                   >
-                    <span className="truncate max-w-32 block">{company.name}</span>
+                    <span className="max-w-32 block truncate">{company.name}</span>
                   </button>
                 ))}
               </div>
+              {/* Fade effect on the left */}
+              <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-black to-transparent pointer-events-none"></div>
+              {/* Fade effect on the right */}
+              <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black to-transparent pointer-events-none"></div>
             </div>
           )}
         </div>
@@ -479,7 +590,7 @@ export default function CompanyPage() {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-semibold mb-2">{topCompany.name}</h2>
-                </div>
+                  </div>
                 {topCompany.website && topCompany.website.trim() && (
                   <a 
                     href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} 
@@ -723,6 +834,282 @@ export default function CompanyPage() {
                 </div>
               )}
             </div>
+
+            {/* Website Stats Section */}
+            {topCompany.website && (topCompany.webFinalUrl || topCompany.webStatus || topCompany.webTlsValid !== null) && (
+              <div className="border border-white/10 p-6 mb-8">
+                <h3 className="text-xl font-semibold mb-4">Nettstedsanalyse</h3>
+                <p className="text-sm text-gray-400 mb-4">Webanalyse-data er tilgjengelig for denne bedriften</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+                  
+                  {/* Basic Web Info */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Grunnleggende informasjon</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">URL:</span>
+                        <div className="text-white break-all">{topCompany.webFinalUrl || topCompany.website || '—'}</div>
+                    </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Status:</span>
+                        <div className="text-white">{topCompany.webStatus || '—'}</div>
+                  </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Response tid:</span>
+                        <div className="text-white">{topCompany.webElapsedMs ? `${topCompany.webElapsedMs}ms` : '—'}</div>
+                    </div>
+                      <div>
+                        <span className="font-medium text-gray-300">IP-adresse:</span>
+                        <div className="text-white">{topCompany.webIp || '—'}</div>
+                  </div>
+                      <div>
+                        <span className="font-medium text-gray-300">HTML størrelse:</span>
+                        <div className="text-white">{topCompany.webHtmlKb ? `${topCompany.webHtmlKb}KB` : '—'}</div>
+                    </div>
+                  </div>
+                </div>
+                
+                  {/* TLS/Security */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Sikkerhet & TLS</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">TLS gyldig:</span>
+                        <div className="text-white">
+                          {topCompany.webTlsValid === true ? 'Ja' : topCompany.webTlsValid === false ? 'Nei' : '—'}
+                    </div>
+                  </div>
+                      <div>
+                        <span className="font-medium text-gray-300">TLS utsteder:</span>
+                        <div className="text-white">{topCompany.webTlsIssuer || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Dager til utløp:</span>
+                        <div className="text-white">{topCompany.webTlsDaysToExpiry || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">HSTS:</span>
+                        <div className="text-white">
+                          {topCompany.webSecurityHsts === true ? 'Ja' : topCompany.webSecurityHsts === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">CSP:</span>
+                        <div className="text-white">
+                          {topCompany.webSecurityCsp === true ? 'Ja' : topCompany.webSecurityCsp === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* CMS & Technology */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">CMS & Teknologi</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">Primær CMS:</span>
+                        <div className="text-white">{topCompany.webPrimaryCms || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">WordPress:</span>
+                        <div className="text-white">
+                          {topCompany.webCmsWordpress === true ? 'Ja' : topCompany.webCmsWordpress === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Shopify:</span>
+                        <div className="text-white">
+                          {topCompany.webCmsShopify === true ? 'Ja' : topCompany.webCmsShopify === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">React:</span>
+                        <div className="text-white">
+                          {topCompany.webJsReact === true ? 'Ja' : topCompany.webJsReact === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Next.js:</span>
+                        <div className="text-white">
+                          {topCompany.webJsNextjs === true ? 'Ja' : topCompany.webJsNextjs === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Analytics & Marketing */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Analytics & Markedsføring</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">Google Analytics 4:</span>
+                        <div className="text-white">
+                          {topCompany.webAnalyticsGa4 === true ? 'Ja' : topCompany.webAnalyticsGa4 === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Google Tag Manager:</span>
+                        <div className="text-white">
+                          {topCompany.webAnalyticsGtm === true ? 'Ja' : topCompany.webAnalyticsGtm === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Facebook Pixel:</span>
+                        <div className="text-white">
+                          {topCompany.webAnalyticsFbPixel === true ? 'Ja' : topCompany.webAnalyticsFbPixel === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">LinkedIn Insight:</span>
+                        <div className="text-white">
+                          {topCompany.webAnalyticsLinkedin === true ? 'Ja' : topCompany.webAnalyticsLinkedin === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Hotjar:</span>
+                        <div className="text-white">
+                          {topCompany.webAnalyticsHotjar === true ? 'Ja' : topCompany.webAnalyticsHotjar === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* E-commerce & Payments */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">E-handel & Betalinger</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">WooCommerce:</span>
+                        <div className="text-white">
+                          {topCompany.webEcomWoocommerce === true ? 'Ja' : topCompany.webEcomWoocommerce === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Magento:</span>
+                        <div className="text-white">
+                          {topCompany.webEcomMagento === true ? 'Ja' : topCompany.webEcomMagento === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Stripe:</span>
+                        <div className="text-white">
+                          {topCompany.webPayStripe === true ? 'Ja' : topCompany.webPayStripe === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">PayPal:</span>
+                        <div className="text-white">
+                          {topCompany.webPayPaypal === true ? 'Ja' : topCompany.webPayPaypal === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Klarna:</span>
+                        <div className="text-white">
+                          {topCompany.webPayKlarna === true ? 'Ja' : topCompany.webPayKlarna === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Server & Headers */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Server & Headers</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">Server:</span>
+                        <div className="text-white">{topCompany.webHeaderServer || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">X-Powered-By:</span>
+                        <div className="text-white">{topCompany.webHeaderXPoweredBy || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">CDN Hint:</span>
+                        <div className="text-white">{topCompany.webCdnHint || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Server Hint:</span>
+                        <div className="text-white">{topCompany.webServerHint || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Cookies:</span>
+                        <div className="text-white">
+                          {topCompany.webCookiesPresent === true ? 'Ja' : topCompany.webCookiesPresent === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Contact & Content */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Kontakt & Innhold</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">E-post på nettside:</span>
+                        <div className="text-white">
+                          {topCompany.webHasEmailText === true ? 'Ja' : topCompany.webHasEmailText === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Telefon på nettside:</span>
+                        <div className="text-white">
+                          {topCompany.webHasPhoneText === true ? 'Ja' : topCompany.webHasPhoneText === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">HTML &gt; 500KB:</span>
+                        <div className="text-white">
+                          {topCompany.webHtmlKbOver500 === true ? 'Ja' : topCompany.webHtmlKbOver500 === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Risk Assessment */}
+                  <div className="space-y-4">
+                    <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Risikovurdering</h4>
+                    <div className="space-y-3 text-sm">
+                      <div>
+                        <span className="font-medium text-gray-300">Risikoflagg:</span>
+                        <div className="text-white">{topCompany.webRiskFlags || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Feil:</span>
+                        <div className="text-white">{topCompany.webErrors || '—'}</div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Placeholder nettside:</span>
+                        <div className="text-white">
+                          {topCompany.webRiskPlaceholderKw === true ? 'Ja' : topCompany.webRiskPlaceholderKw === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Parkert domene:</span>
+                        <div className="text-white">
+                          {topCompany.webRiskParkedKw === true ? 'Ja' : topCompany.webRiskParkedKw === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                      <div>
+                        <span className="font-medium text-gray-300">Suspendert:</span>
+                        <div className="text-white">
+                          {topCompany.webRiskSuspendedKw === true ? 'Ja' : topCompany.webRiskSuspendedKw === false ? 'Nei' : '—'}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                </div>
+              </div>
+            )}
+
+            {/* Website Data Not Available */}
+            {topCompany.website && !(topCompany.webFinalUrl || topCompany.webStatus || topCompany.webTlsValid !== null) && (
+              <div className="border border-white/10 p-6 mb-8">
+                <h3 className="text-xl font-semibold mb-4">Nettstedsanalyse</h3>
+                <p className="text-sm text-gray-400">Webanalyse-data er ikke tilgjengelig for denne bedriften ennå.</p>
+                <p className="text-sm text-gray-300 mt-2">Nettside: <a href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">{topCompany.website}</a></p>
+              </div>
+            )}
 
 
           </div>
