@@ -17,6 +17,9 @@ type EventItem = {
   date: string | null
   // Raw score for this event from the database (can be null)
   score: number | null
+  // Added for dashboard News section
+  orgNumber: string | null
+  businessName: string | null
 }
 
 // Shape from public.events_public / RPC (snake_case)
@@ -36,7 +39,9 @@ type PublicEvent = {
   created_at: string
 }
 
-function mapToClientItem(row: PublicEvent): EventItem {
+type PublicEventWithName = PublicEvent & { business_name?: string | null }
+
+function mapToClientItem(row: PublicEventWithName): EventItem {
   return {
     id: row.id,
     // Prefer a human title if available; fall back to event_type
@@ -46,6 +51,8 @@ function mapToClientItem(row: PublicEvent): EventItem {
     source: row.event_type,
   date: row.date,
   score: row.score,
+  orgNumber: row.org_number || null,
+  businessName: row.business_name || null,
   }
 }
 
@@ -77,9 +84,10 @@ export async function GET(req: Request) {
     // If orgNumber provided, use RPC first, then view fallback
     if (orgNumber) {
       // Apply event type filtering in the SQL query for better performance
-      let baseQuery = `SELECT *
-				 FROM public.events_public
-				 WHERE org_number = $1`
+      let baseQuery = `SELECT e.*, m.name AS business_name
+				 FROM public.events_public e
+				 LEFT JOIN public.business_filter_matrix m ON m.org_number = e.org_number
+				 WHERE e.org_number = $1`
               const queryParams: (string | number | string[])[] = [orgNumber]
       
       if (eventTypes.length > 0) {
@@ -92,7 +100,7 @@ export async function GET(req: Request) {
         queryParams.push(limit)
       }
       
-      const result = await query<PublicEvent>(baseQuery, queryParams)
+      const result = await query<PublicEventWithName>(baseQuery, queryParams)
       const rows = result.rows
 
       const items: EventItem[] = (rows || []).map(mapToClientItem)
@@ -100,10 +108,11 @@ export async function GET(req: Request) {
     }
 
     // Without orgNumber: latest events overall from the view
-    const view = await query<PublicEvent>(
-      `SELECT *
-			 FROM public.events_public
-			 ORDER BY date DESC NULLS LAST, created_at DESC
+    const view = await query<PublicEventWithName>(
+      `SELECT e.*, m.name AS business_name
+			 FROM public.events_public e
+			 LEFT JOIN public.business_filter_matrix m ON m.org_number = e.org_number
+			 ORDER BY e.date DESC NULLS LAST, e.created_at DESC
 			 LIMIT $1`,
       [limit],
     )

@@ -148,27 +148,27 @@ a,
   }
   .slider-square::-webkit-slider-thumb {
     -webkit-appearance: none;
-    width: 14px;
-    height: 14px;
-    background: #ef4444; /* red-500 */
+    width: 10px;
+    height: 10px;
+    background: #9ca3af; /* gray-400 solid */
     border-radius: 0; /* square */
-    border: 1px solid rgba(255,255,255,0.5);
+    border: 1px solid #6b7280; /* gray-500 border */
     cursor: pointer;
-    margin-top: -5px; /* centers thumb on 4px track */
+    margin-top: -3px; /* centers thumb on 4px track */
   }
   .slider-square::-moz-range-thumb {
-    width: 14px;
-    height: 14px;
-    background: #ef4444;
-    border: 1px solid rgba(255,255,255,0.5);
+    width: 10px;
+    height: 10px;
+    background: #9ca3af;
+    border: 1px solid #6b7280;
     border-radius: 0;
     cursor: pointer;
   }
   .slider-square::-ms-thumb {
-    width: 14px;
-    height: 14px;
-    background: #ef4444;
-    border: 1px solid rgba(255,255,255,0.5);
+    width: 10px;
+    height: 10px;
+    background: #9ca3af;
+    border: 1px solid #6b7280;
     border-radius: 0;
     cursor: pointer;
   }
@@ -179,6 +179,30 @@ a,
   .slider-square::-moz-range-track {
     height: 4px;
     border-radius: 2px;
+  }
+  /* Ghost track to overlay multiple thumbs on one custom track */
+  .slider-ghost {
+    appearance: none;
+    -webkit-appearance: none; /* Safari */
+    background: transparent !important;
+    pointer-events: none; /* let only thumbs handle pointer events */
+  }
+  .slider-ghost:focus {
+    outline: none;
+  }
+  .slider-ghost::-webkit-slider-runnable-track {
+    background: transparent;
+    pointer-events: none;
+  }
+  .slider-ghost::-moz-range-track {
+    background: transparent;
+    pointer-events: none;
+  }
+  .slider-ghost::-webkit-slider-thumb {
+    pointer-events: auto; /* allow dragging the thumb itself */
+  }
+  .slider-ghost::-moz-range-thumb {
+    pointer-events: auto;
   }
 
   .nav-links {

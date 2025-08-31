@@ -55,30 +55,54 @@ export async function GET(req: Request) {
     .filter(Boolean) as string[]
 
   // Revenue filtering
+  // New flexible filtering via revenueMin/revenueMax takes precedence over revenueRange buckets
   const revenueRange = searchParams.get('revenueRange')?.trim()
-  let revenueClause = ''
-  let revenueParams: number[] = []
+  const revenueMinRaw = searchParams.get('revenueMin')?.trim()
+  const revenueMaxRaw = searchParams.get('revenueMax')?.trim()
+  const hasRevenueMin = revenueMinRaw != null && revenueMinRaw !== '' && !Number.isNaN(Number(revenueMinRaw))
+  const hasRevenueMax = revenueMaxRaw != null && revenueMaxRaw !== '' && !Number.isNaN(Number(revenueMaxRaw))
+  // Allow negative lower bounds; only coerce to integers
+  const revenueMinVal = hasRevenueMin ? parseInt(revenueMinRaw as string, 10) : null
+  const revenueMaxVal = hasRevenueMax ? parseInt(revenueMaxRaw as string, 10) : null
 
-  if (revenueRange) {
+  let revenueClause = ''
+  const revenueParams: number[] = []
+  let revenueMinIdx: number | null = null
+  let revenueMaxIdx: number | null = null
+
+  if (hasRevenueMin || hasRevenueMax) {
+    // Flexible range: inclusive bounds
+    if (hasRevenueMin && hasRevenueMax) {
+      revenueClause = 'AND f.revenue >= $REVENUE_MIN AND f.revenue <= $REVENUE_MAX'
+      revenueParams.push(revenueMinVal as number, revenueMaxVal as number)
+    } else if (hasRevenueMin) {
+      revenueClause = 'AND f.revenue >= $REVENUE_MIN'
+      revenueParams.push(revenueMinVal as number)
+    } else if (hasRevenueMax) {
+      revenueClause = 'AND f.revenue <= $REVENUE_MAX'
+      revenueParams.push(revenueMaxVal as number)
+    }
+  } else if (revenueRange) {
+    // Backwards-compatible buckets
     switch (revenueRange) {
       case '0-1M':
         revenueClause =
           'AND f.revenue >= $REVENUE_MIN AND f.revenue < $REVENUE_MAX'
-        revenueParams = [0, 1000000]
+        revenueParams.push(0, 1000000)
         break
       case '1M-10M':
         revenueClause =
           'AND f.revenue >= $REVENUE_MIN AND f.revenue < $REVENUE_MAX'
-        revenueParams = [1000000, 10000000]
+        revenueParams.push(1000000, 10000000)
         break
       case '10M-100M':
         revenueClause =
           'AND f.revenue >= $REVENUE_MIN AND f.revenue < $REVENUE_MAX'
-        revenueParams = [10000000, 100000000]
+        revenueParams.push(10000000, 100000000)
         break
       case '100M+':
         revenueClause = 'AND f.revenue >= $REVENUE_MIN'
-        revenueParams = [100000000]
+        revenueParams.push(100000000)
         break
     }
   }
@@ -199,8 +223,26 @@ export async function GET(req: Request) {
       })()
     : ''
 
-  // Combine all params - industries first, then revenue (we'll append event params below)
-  const params: SqlParam[] = [...industryParams, ...areaParams, ...revenueParams]
+  // Combine all params - industries first, then areas, then revenue (we'll append event params below)
+  const params: SqlParam[] = [...industryParams, ...areaParams]
+  // Reserve parameter indexes for revenue and push actual values in order
+  if (revenueClause) {
+    const startIdx = params.length + 1
+    if (revenueParams.length === 2) {
+      revenueMinIdx = startIdx
+      revenueMaxIdx = startIdx + 1
+      params.push(revenueParams[0], revenueParams[1])
+    } else if (revenueParams.length === 1) {
+      // Determine which side is present by inspecting clause string
+      if (/\$REVENUE_MIN/.test(revenueClause)) {
+        revenueMinIdx = startIdx
+      }
+      if (/\$REVENUE_MAX/.test(revenueClause)) {
+        revenueMaxIdx = startIdx
+      }
+      params.push(revenueParams[0])
+    }
+  }
 
   // Optional company type (org form) filter - support multiple values
   let orgFormIdx: number | null = null
@@ -226,10 +268,9 @@ export async function GET(req: Request) {
 
   // Update clause placeholders with actual parameter positions
   if (revenueClause) {
-    const revenueStartIndex = industryParams.length + areaParams.length + 1
     revenueClause = revenueClause
-      .replace('$REVENUE_MIN', `$${revenueStartIndex}`)
-      .replace('$REVENUE_MAX', `$${revenueStartIndex + 1}`)
+      .replace('$REVENUE_MIN', revenueMinIdx ? `$${revenueMinIdx}` : '$REVENUE_MIN')
+      .replace('$REVENUE_MAX', revenueMaxIdx ? `$${revenueMaxIdx}` : '$REVENUE_MAX')
   }
 
   // Optimized query structure

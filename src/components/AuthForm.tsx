@@ -14,6 +14,10 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
+  const [isUnverified, setIsUnverified] = useState(false)
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMessage, setResendMessage] = useState<string | null>(null)
+  const [resendSuccess, setResendSuccess] = useState<boolean | null>(null)
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -251,6 +255,9 @@ export default function AuthForm({ mode }: AuthFormProps) {
     e.preventDefault()
     setIsLoading(true)
     setError('')
+    setIsUnverified(false)
+    setResendMessage(null)
+    setResendSuccess(null)
 
     try {
       if (mode === 'signup') {
@@ -375,6 +382,7 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 const checkData = await checkResponse.json()
                 if (checkData.exists && !checkData.verified) {
                   setError('Please verify your email address before signing in. Check your inbox for the verification link.')
+                  setIsUnverified(true)
                 } else {
                   setError('Invalid email or password')
                 }
@@ -426,6 +434,33 @@ export default function AuthForm({ mode }: AuthFormProps) {
       }
     } finally {
       setIsLoading(false)
+    }
+  }
+
+  const handleResendVerification = async () => {
+    if (!formData.email) return
+    setResendLoading(true)
+    setResendMessage(null)
+    setResendSuccess(null)
+    try {
+      const response = await fetch('/api/auth/resend-verification', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: formData.email })
+      })
+      const data = await response.json()
+      if (response.ok && data.success) {
+        setResendSuccess(true)
+        setResendMessage('Verification email sent. Please check your inbox.')
+      } else {
+        setResendSuccess(false)
+        setResendMessage(data.message || 'Failed to resend verification email.')
+      }
+    } catch {
+      setResendSuccess(false)
+      setResendMessage('Failed to resend verification email.')
+    } finally {
+      setResendLoading(false)
     }
   }
 
@@ -493,6 +528,23 @@ export default function AuthForm({ mode }: AuthFormProps) {
           {error && (
             <div className="p-4 bg-red-900/50 border border-red-500">
               <div className="text-sm text-red-200">{error}</div>
+              {isUnverified && (
+                <div className="mt-2">
+                  <button
+                    type="button"
+                    onClick={handleResendVerification}
+                    disabled={resendLoading}
+                    className="text-sm text-red-300 hover:text-red-200 underline disabled:opacity-50 disabled:no-underline"
+                  >
+                    {resendLoading ? 'Sending…' : 'Resend verification email'}
+                  </button>
+                  {resendMessage && (
+                    <div className={`mt-1 text-xs ${resendSuccess ? 'text-green-200' : 'text-red-200'}`}>
+                      {resendMessage}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
           

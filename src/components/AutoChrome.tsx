@@ -12,10 +12,11 @@ type AutoChromeProps = {
 export default function AutoChrome({ children, title }: AutoChromeProps) {
   const pathname = usePathname()
   const hideChrome = pathname?.startsWith('/auth/') || pathname === '/countdown'
+  const path = pathname || '/'
+  const isDashboard = path === '/' || path === '/dashboard'
 
   const computedTitle = (() => {
     if (title) return title
-    const path = pathname || '/'
     if (path === '/' || path === '/dashboard') return 'Dashboard'
     const map: Record<string, string> = {
       '/search': 'Search',
@@ -33,9 +34,9 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
   })()
 
   return (
-    <div className="min-h-screen bg-black text-white pb-20 md:pb-24">
+    <div className={`min-h-screen bg-black text-white ${isDashboard ? '' : 'pb-20 md:pb-24'} flex flex-col`}>
       {!hideChrome && <TopBar title={computedTitle} />}
-      <div>{children}</div>
+      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       {!hideChrome && (
         <BottomSidebar showGoToTop={pathname === '/search' || pathname?.startsWith('/search/')} />
       )}

@@ -131,11 +131,15 @@ const BusinessCard = memo(
     numberFormatter,
     selectedEventTypes,
     eventWeights,
+    isWatched,
+    onToggle,
   }: {
     business: Business
     numberFormatter: Intl.NumberFormat
     selectedEventTypes: string[]
     eventWeights: Record<string, number>
+    isWatched: boolean
+    onToggle: () => void
   }) => {
     const fmt = (v: number | string | null | undefined) =>
       v === null || v === undefined ? '—' : numberFormatter.format(Number(v))
@@ -300,6 +304,15 @@ const BusinessCard = memo(
                 </span>
               )
             })()}
+            <button
+              type="button"
+              onClick={onToggle}
+              className={`w-24 inline-flex justify-center text-xs px-2 py-1 border border-white/20 text-white/90 bg-red-500/10 hover:bg-red-500/20 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-red-500/40`}
+              aria-pressed={isWatched}
+              title={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
+            >
+              {isWatched ? 'Watching' : 'Watch'}
+            </button>
           </div>
         </div>
 
@@ -529,10 +542,27 @@ export default function SearchPage() {
   const [companyTypeDropdownRect, setCompanyTypeDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
   const [companyTypeDropdownOpen, setCompanyTypeDropdownOpen] = useState(false)
   const [companyTypeSuggestions, setCompanyTypeSuggestions] = useState<string[]>(COMPANY_TYPES)
+  const [revenueMin, setRevenueMin] = useState<number | ''>(() => {
+    if (typeof window === 'undefined') return ''
+    const sp = new URLSearchParams(window.location.search)
+    const v = sp.get('revenueMin')
+    const n = v == null ? NaN : Number(v)
+    return Number.isFinite(n) ? Math.floor(n) : ''
+  })
+  const [revenueMax, setRevenueMax] = useState<number | ''>(() => {
+    if (typeof window === 'undefined') return ''
+    const sp = new URLSearchParams(window.location.search)
+    const v = sp.get('revenueMax')
+    const n = v == null ? NaN : Number(v)
+    return Number.isFinite(n) ? Math.floor(n) : ''
+  })
   const [selectedRevenueRange, setSelectedRevenueRange] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('revenueRange') || ''
   })
+  const [maxRevenue, setMaxRevenue] = useState<number>(108070744000)
+  const [minRevenue, setMinRevenue] = useState<number>(-1868256000)
+  const [apiLoaded, setApiLoaded] = useState<boolean>(false)
   const [eventsFilter, setEventsFilter] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('events') || ''
@@ -570,13 +600,86 @@ export default function SearchPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const [operatingResults, setOperatingResults] = useState('')
+  const eventsRef = useRef<HTMLDivElement>(null);
+
+  // Watchlist state
+  const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
+  useEffect(() => {
+    if (status !== 'authenticated') return
+    let cancelled = false
+    fetch('/api/watchlist', { cache: 'no-store' })
+      .then((r) => r.json())
+      .then((res) => {
+        if (cancelled) return
+        const items = Array.isArray(res) ? res : res.items || []
+        const next = new Set<string>()
+        for (const it of items) {
+          const org = String((it?.orgNumber ?? it?.org_number ?? '') as string)
+          if (org) next.add(org)
+        }
+        setWatchlist(next)
+      })
+      .catch(() => setWatchlist(new Set()))
+    return () => {
+      cancelled = true
+    }
+  }, [status])
+
+  const addWatch = async (org: string) => {
+    try {
+      await fetch('/api/watchlist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orgNumber: org }),
+      })
+      setWatchlist((prev) => new Set(prev).add(org))
+    } catch {}
+  }
+  const removeWatch = async (org: string) => {
+    try {
+      await fetch('/api/watchlist?orgNumber=' + encodeURIComponent(org), { method: 'DELETE' })
+      setWatchlist((prev) => {
+        const next = new Set(prev)
+        next.delete(org)
+        return next
+      })
+    } catch {}
+  }
+
+  // Use hardcoded revenue bounds for immediate loading
+  const uiMaxRevenue = useMemo(() => {
+    return maxRevenue
+  }, [maxRevenue])
+
+  const uiMinRevenue = useMemo(() => {
+    return minRevenue
+  }, [minRevenue])
+
+  // Derived revenue bounds for UI and query
+  const numericRevenueMin = revenueMin === '' ? uiMinRevenue : revenueMin
+  const numericRevenueMax = revenueMax === '' ? uiMaxRevenue : revenueMax
+  const derivedLower = Math.min(Math.max(numericRevenueMin, uiMinRevenue), uiMaxRevenue)
+  const derivedUpper = Math.max(Math.min(numericRevenueMax, uiMaxRevenue), uiMinRevenue)
+  
+  // Only apply revenue filter if user has explicitly set bounds different from global range
+  const hasRevenueFilter = !(
+    (revenueMin === '' || revenueMin === uiMinRevenue) && 
+    (revenueMax === '' || revenueMax === uiMaxRevenue)
+  )
+  
+  // Only send revenue params to API if there's an actual filter applied
+  const shouldApplyRevenueFilter = hasRevenueFilter && 
+    (derivedLower !== uiMinRevenue || derivedUpper !== uiMaxRevenue)
 
   const queryParam = useMemo(() => {
     const sp = new URLSearchParams()
     selectedIndustries.forEach((si) => sp.append('industries', si.value))
     selectedAreas.forEach((a) => sp.append('areas', a))
     if (committedGlobalSearch.trim()) sp.append('q', committedGlobalSearch.trim())
-    if (selectedRevenueRange) sp.append('revenueRange', selectedRevenueRange)
+    if (shouldApplyRevenueFilter) {
+      sp.append('revenueMin', String(derivedLower))
+      sp.append('revenueMax', String(derivedUpper))
+    }
     if (eventsFilter) sp.append('events', eventsFilter)
     if (selectedEventTypes.length > 0) sp.append('eventTypes', selectedEventTypes.join(','))
     if (selectedEventTypes.length > 0) sp.append('eventWeights', JSON.stringify(eventWeights))
@@ -586,7 +689,7 @@ export default function SearchPage() {
     if (offset) sp.append('offset', String(offset))
     if (offset === 0) sp.append('skipCount', '1')
     return sp.toString() ? `?${sp.toString()}` : ''
-  }, [selectedIndustries, selectedAreas, committedGlobalSearch, selectedRevenueRange, eventsFilter, selectedEventTypes, eventWeights, sortBy, offset, selectedCompanyTypes])
+  }, [selectedIndustries, selectedAreas, committedGlobalSearch, shouldApplyRevenueFilter, derivedLower, derivedUpper, eventsFilter, selectedEventTypes, eventWeights, sortBy, offset, selectedCompanyTypes])
 
   const addSelectedIndustry = (value: string, label?: string) => {
     const v = value.trim()
@@ -694,7 +797,72 @@ export default function SearchPage() {
   useEffect(() => {
     setOffset(0)
     setData([])
-  }, [selectedIndustries, selectedAreas, selectedRevenueRange, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes])
+  }, [selectedIndustries, selectedAreas, revenueMin, revenueMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes])
+
+  // Fetch both min and max revenue bounds from API
+  useEffect(() => {
+    let cancelled = false
+    
+    const fetchBounds = async () => {
+      try {
+        const [maxRes, minRes] = await Promise.all([
+          fetch('/api/businesses/max-revenue').then((r) => r.json()),
+          fetch('/api/businesses/min-revenue').then((r) => r.json())
+        ])
+        
+        if (cancelled) return
+        
+        const maxVal = Number(maxRes?.maxRevenue)
+        const minVal = Number(minRes?.minRevenue)
+        
+        setMaxRevenue(Number.isFinite(maxVal) ? Math.floor(maxVal) : 0)
+        setMinRevenue(Number.isFinite(minVal) ? Math.floor(minVal) : 0)
+        setApiLoaded(true)
+      } catch (error) {
+        if (!cancelled) {
+          console.error('Failed to fetch revenue bounds:', error)
+          setMaxRevenue(0)
+          setMinRevenue(0)
+          setApiLoaded(true) // Mark as loaded even on error to prevent infinite loading
+        }
+      }
+    }
+    
+    fetchBounds()
+    return () => { cancelled = true }
+  }, [])
+
+  // Set initial revenue range to hardcoded values if no URL params were provided
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    
+    // Check if URL had revenue parameters - if so, don't override
+    const sp = new URLSearchParams(window.location.search)
+    if (sp.get('revenueMin') || sp.get('revenueMax')) return
+    
+    // Only set once on initial load if values are empty
+    if (revenueMin === '' && revenueMax === '') {
+      console.log('Setting initial revenue range to full bounds:', { minRevenue, maxRevenue })
+      setRevenueMin(minRevenue)
+      setRevenueMax(maxRevenue)
+    }
+  }, [minRevenue, maxRevenue, revenueMin, revenueMax])
+
+  // Back-compat: map revenueRange buckets from URL into min/max if provided and min/max are empty
+  useEffect(() => {
+    if (!selectedRevenueRange) return
+    if (revenueMin !== '' || revenueMax !== '') return
+    switch (selectedRevenueRange) {
+      case '0-1M':
+        setRevenueMin(0); setRevenueMax(1000000); break
+      case '1M-10M':
+        setRevenueMin(1000000); setRevenueMax(10000000); break
+      case '10M-100M':
+        setRevenueMin(10000000); setRevenueMax(100000000); break
+      case '100M+':
+        setRevenueMin(100000000); setRevenueMax(''); break
+    }
+  }, [selectedRevenueRange, revenueMin, revenueMax])
 
   useEffect(() => {
     fetch('/api/industries')
@@ -882,6 +1050,18 @@ export default function SearchPage() {
     document.addEventListener('mousedown', handleDown)
     return () => document.removeEventListener('mousedown', handleDown)
   }, [dropdownOpen])
+
+  useEffect(() => {
+    const updateHeight = () => {
+      if (eventsRef.current) {
+        const height = eventsRef.current.getBoundingClientRect().height;
+        document.documentElement.style.setProperty('--events-height', `${height}px`);
+      }
+    };
+    updateHeight();
+    window.addEventListener('resize', updateHeight);
+    return () => window.removeEventListener('resize', updateHeight);
+  }, [eventsFilter]);  // Re-run when eventsFilter changes as it affects height
 
   const sortedData = data
 
@@ -1149,20 +1329,12 @@ export default function SearchPage() {
         const hasAnyAppliedFilter =
           selectedIndustries.length > 0 ||
           selectedAreas.length > 0 ||
-          !!selectedRevenueRange ||
+          hasRevenueFilter ||
           !!eventsFilter ||
           selectedEventTypes.length > 0 ||
           selectedCompanyTypes.length > 0
         if (!hasAnyAppliedFilter) return null
-        const revenueLabel = selectedRevenueRange === '0-1M'
-          ? '0 - 1M NOK'
-          : selectedRevenueRange === '1M-10M'
-            ? '1M - 10M NOK'
-            : selectedRevenueRange === '10M-100M'
-              ? '10M - 100M NOK'
-              : selectedRevenueRange === '100M+'
-                ? '100M+ NOK'
-                : selectedRevenueRange
+        const revenueLabel = `${numberFormatter.format(derivedLower)} - ${derivedUpper === uiMaxRevenue ? 'Max' : numberFormatter.format(derivedUpper)} NOK`
         return (
           <div className="px-6 py-2 border-b border-white/10">
             <div className="flex flex-wrap items-center gap-2">
@@ -1211,7 +1383,7 @@ export default function SearchPage() {
                   </button>
                 </span>
               ))}
-              {!!selectedRevenueRange && (
+              {hasRevenueFilter && (
                 <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
                   <span>Revenue: {revenueLabel}</span>
                   <button
@@ -1219,7 +1391,7 @@ export default function SearchPage() {
                     title="Remove revenue filter"
                     aria-label="Remove revenue filter"
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => setSelectedRevenueRange('')}
+                    onClick={() => { setRevenueMin(''); setRevenueMax(''); setSelectedRevenueRange('') }}
                   >
                     ×
                   </button>
@@ -1270,6 +1442,8 @@ export default function SearchPage() {
                   setAreaQuery('')
                   setSelectedCompanyTypes([])
                   setCompanyTypeQuery('')
+                  setRevenueMin('')
+                  setRevenueMax('')
                   setSelectedRevenueRange('')
                   setEventsFilter('')
                   setSelectedEventTypes([])
@@ -1285,58 +1459,51 @@ export default function SearchPage() {
       })()}
 
       <div className="flex">
-        <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6">
-          <div className="sticky top-6">
-            <h2 className="text-xl font-semibold mb-6">Signals</h2>
-            <div className="mb-6">
+        <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6 sticky top-0 self-start overflow-y-auto">
+          <div className="mb-6">
+            <div className="sticky top-0 z-20 bg-black pb-2" ref={eventsRef}>
               <label className="block text-sm font-medium mb-2">Events</label>
-              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-gray-900 text-white border border-white/10 focus:border-green-400 focus:ring-1 focus:ring-green-400">
+              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-white/40">
                 <option value="">All companies</option>
                 <option value="with">With events</option>
                 <option value="without">Without events</option>
               </select>
-              {eventsFilter && (
-                <div className="mt-3 flex items-center gap-3">
-                  <span className="text-sm text-gray-400">Events filter:</span>
-                  <span className="inline-flex items-center gap-2 bg-purple-600 px-3 py-1 text-sm">
-                    <span className="font-medium">{eventsFilter === 'with' ? 'With events' : 'Without events'}</span>
-                    <button className="opacity-80 hover:opacity-100" onClick={() => setEventsFilter('')}>×</button>
-                  </span>
-                </div>
-              )}
-              <div className="mt-6">
-                <label className="block text-sm font-medium mb-2">Event types</label>
-                <div className="max-h-[28rem] overflow-auto space-y-3 pr-1">
-                  {availableEventTypes.map((raw) => {
-                    const t = raw
-                    const selected = selectedEventTypes.includes(t)
-                    const weight = eventWeights[t] ?? 0
-                    const display = (t || '').replace(/_/g, ' ')
-                    const displayCap = display.charAt(0).toUpperCase() + display.slice(1)
-                    return (
-                      <div key={t} className={`p-3 bg-gray-900 border ${selected ? (weight > 0 ? 'border-green-500' : weight < 0 ? 'border-red-500' : 'border-yellow-500') : 'border-white/10'}`} onClick={() => {
-                        setSelectedEventTypes((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t])
-                        if (selected) {
-                          setEventWeights((prev) => ({ ...prev, [t]: 0 }))
-                        } else if (eventWeights[t] === undefined) {
-                          setEventWeights((prev) => ({ ...prev, [t]: 0 }))
-                        }
-                      }}>
-                        <div className="flex items-center justify-between gap-3">
-                          <span className="text-sm">{displayCap}</span>
-                          <span className="text-xs text-gray-400">{weight}</span>
-                        </div>
-                        <input type="range" min={-10} max={10} step={1} value={weight} onClick={(e) => e.stopPropagation()} onChange={(e) => {
-                          const val = Number(e.target.value)
-                          setEventWeights((prev) => ({ ...prev, [t]: val }))
-                          if (!selectedEventTypes.includes(t)) {
-                            setSelectedEventTypes((prev) => [...prev, t])
-                          }
-                        }} className="w-full mt-3 slider-square" />
+            
+            </div>
+            <div className="mt-6">
+              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2">
+                <label className="block text-sm font-medium">Event types</label>
+              </div>
+              <div className="space-y-3 pr-1">
+                {availableEventTypes.map((raw) => {
+                  const t = raw
+                  const selected = selectedEventTypes.includes(t)
+                  const weight = eventWeights[t] ?? 0
+                  const display = (t || '').replace(/_/g, ' ')
+                  const displayCap = display.charAt(0).toUpperCase() + display.slice(1)
+                  return (
+                    <div key={t} className={`p-3 bg-transparent border ${selected ? (weight > 0 ? 'border-green-500' : weight < 0 ? 'border-red-500' : 'border-yellow-500') : 'border-white/10'}`} onClick={() => {
+                      setSelectedEventTypes((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t])
+                      if (selected) {
+                        setEventWeights((prev) => ({ ...prev, [t]: 0 }))
+                      } else if (eventWeights[t] === undefined) {
+                        setEventWeights((prev) => ({ ...prev, [t]: 0 }))
+                      }
+                    }}>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm">{displayCap}</span>
+                        <span className="text-xs text-gray-400">{weight}</span>
                       </div>
-                    )
-                  })}
-                </div>
+                      <input type="range" min={-10} max={10} step={1} value={weight} onClick={(e) => e.stopPropagation()} onChange={(e) => {
+                        const val = Number(e.target.value)
+                        setEventWeights((prev) => ({ ...prev, [t]: val }))
+                        if (!selectedEventTypes.includes(t)) {
+                          setSelectedEventTypes((prev) => [...prev, t])
+                        }
+                      }} className="w-full mt-3 slider-square" />
+                    </div>
+                  )
+                })}
               </div>
             </div>
           </div>
@@ -1347,24 +1514,103 @@ export default function SearchPage() {
             <div className="p-0">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 <div>
-                  <h3 className="text-lg font-semibold mb-4">Revenue Filter</h3>
+                  <h3 className="text-lg font-semibold mb-1">Revenue <span className="ml-2 text-xs text-gray-400 align-middle">in 1000 NOK</span></h3>
                   <div>
-                    <select value={selectedRevenueRange} onChange={(e) => setSelectedRevenueRange(e.target.value)} className="w-full px-4 py-3 bg-gray-900 text-white border border-white/10 focus:border-green-400 focus:ring-1 focus:ring-green-400">
-                      <option value="">All revenue ranges</option>
-                      <option value="0-1M">0 - 1M NOK</option>
-                      <option value="1M-10M">1M - 10M NOK</option>
-                      <option value="10M-100M">10M - 100M NOK</option>
-                      <option value="100M+">100M+ NOK</option>
-                    </select>
-                    {selectedRevenueRange && (
-                      <div className="mt-3 flex items-center gap-3">
-                        <span className="text-sm text-gray-400">Revenue filter:</span>
-                        <span className="inline-flex items-center gap-2 bg-blue-600 px-3 py-1 text-sm">
-                          <span className="font-medium">
-                            {selectedRevenueRange === '0-1M' ? '0 - 1M NOK' : selectedRevenueRange === '1M-10M' ? '1M - 10M NOK' : selectedRevenueRange === '10M-100M' ? '10M - 100M NOK' : selectedRevenueRange === '100M+' ? '100M+ NOK' : selectedRevenueRange}
-                          </span>
-                          <button className="opacity-80 hover:opacity-100" onClick={() => setSelectedRevenueRange('')}>×</button>
-                        </span>
+                    {true && (
+                      <div className="mt-4">
+                        {(() => {
+                          const lower = Math.min(derivedLower, uiMaxRevenue)
+                          const upper = Math.min(derivedUpper, uiMaxRevenue)
+                          const range = Math.max(1, uiMaxRevenue - uiMinRevenue)
+                          const leftPct = ((lower - uiMinRevenue) / range) * 100
+                          const widthPct = ((upper - lower) / range) * 100
+                          return (
+                            <div className="relative">
+                              {/* Base track */}
+                              <div className="h-1 bg-white/20 rounded" />
+                              {/* Selected range fill */}
+                              <div
+                                className="absolute top-0 h-1 bg-white/40"
+                                style={{ left: `${leftPct}%`, width: `${Math.max(0, widthPct)}%` }}
+                              />
+                              {/* Two thumbs overlaid, using ghost track to hide native track */}
+                              <input
+                                type="range"
+                                min={uiMinRevenue}
+                                max={uiMaxRevenue}
+                                step={1000}
+                                value={lower}
+                                onChange={(e) => {
+                                  const n = Math.min(Math.max(Number(e.target.value), uiMinRevenue), uiMaxRevenue)
+                                  const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
+                                  const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
+                                  const lowerIsMin = minVal <= maxVal
+                                  if (lowerIsMin) setRevenueMin(n)
+                                  else setRevenueMax(n)
+                                }}
+                                className="absolute inset-0 w-full slider-square slider-ghost"
+                                aria-label="Minimum revenue"
+                              />
+                              <input
+                                type="range"
+                                min={uiMinRevenue}
+                                max={uiMaxRevenue}
+                                step={1000}
+                                value={upper}
+                                onChange={(e) => {
+                                  const n = Math.min(Math.max(Number(e.target.value), uiMinRevenue), uiMaxRevenue)
+                                  const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
+                                  const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
+                                  const lowerIsMin = minVal <= maxVal
+                                  if (lowerIsMin) setRevenueMax(n)
+                                  else setRevenueMin(n)
+                                }}
+                                className="absolute inset-0 w-full slider-square slider-ghost"
+                                aria-label="Maximum revenue"
+                              />
+                              <div className="flex justify-between items-center gap-4 mt-3">
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={numberFormatter.format(Math.floor(lower / 1000))}
+                                  onChange={(e) => {
+                                    const text = (e.target.value || '').trim()
+                                    const neg = text.startsWith('-')
+                                    const digits = text.replace(/[^\d]/g, '')
+                                    const thousands = digits.length === 0 ? 0 : Math.floor(Number(digits))
+                                    const valueNok = Math.min(Math.max(thousands * 1000, uiMinRevenue), uiMaxRevenue)
+                                    const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
+                                    const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
+                                    const lowerIsMin = minVal <= maxVal
+                                    const finalVal = neg ? Math.max(-valueNok, uiMinRevenue) : valueNok
+                                    if (lowerIsMin) setRevenueMin(finalVal)
+                                    else setRevenueMax(finalVal)
+                                  }}
+                                  className="w-28 bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                                />
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={numberFormatter.format(Math.floor(upper / 1000))}
+                                  onChange={(e) => {
+                                    const text = (e.target.value || '').trim()
+                                    const neg = text.startsWith('-')
+                                    const digits = text.replace(/[^\d]/g, '')
+                                    const thousands = digits.length === 0 ? Math.floor(uiMaxRevenue / 1000) : Math.floor(Number(digits))
+                                    const valueNok = Math.min(Math.max(thousands * 1000, uiMinRevenue), uiMaxRevenue)
+                                    const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
+                                    const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
+                                    const lowerIsMin = minVal <= maxVal
+                                    const finalVal = neg ? Math.max(-valueNok, uiMinRevenue) : valueNok
+                                    if (lowerIsMin) setRevenueMax(finalVal)
+                                    else setRevenueMin(finalVal)
+                                  }}
+                                  className="w-28 bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                                />
+                              </div>
+                            </div>
+                          )
+                        })()}
                       </div>
                     )}
                   </div>
@@ -1373,7 +1619,7 @@ export default function SearchPage() {
                 <div>
                   <h3 className="text-lg font-semibold mb-4">Operating results</h3>
                   <div>
-                    <select value={operatingResults} onChange={(e) => setOperatingResults(e.target.value)} className="w-full px-4 py-3 bg-gray-900 text-white border border-white/10 focus:border-green-400 focus:ring-1 focus:ring-green-400">
+                    <select value={operatingResults} onChange={(e) => setOperatingResults(e.target.value)} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-white/40">
                       <option value="">Any</option>
                       <option value="profitable">Profitable</option>
                       <option value="loss">Loss-making</option>
@@ -1391,7 +1637,7 @@ export default function SearchPage() {
                       } else {
                         setSortBy(newValue)
                       }
-                    }} className="w-full px-4 py-3 bg-gray-900 text-white border border-white/10 focus:border-green-400 focus:ring-1 focus:ring-green-400">
+                    }} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-white/40">
                       <option value="updatedAt">Last Updated</option>
                       <option value="name">Company Name</option>
                       <option value="revenue">Revenue (High to Low)</option>
@@ -1432,9 +1678,21 @@ export default function SearchPage() {
             })()
           ) : (
             <div className="mt-4 border-t border-white/10 divide-y divide-white/10">
-              {sortedData.map((business) => (
-                <BusinessCard key={business.orgNumber} business={{ ...business, hasEvents: eventsFilter === 'with' ? true : business.hasEvents }} numberFormatter={numberFormatter} selectedEventTypes={selectedEventTypes} eventWeights={eventWeights} />
-              ))}
+              {sortedData.map((business) => {
+                const org = business.orgNumber
+                const isWatched = watchlist.has(org)
+                return (
+                  <BusinessCard
+                    key={org}
+                    business={{ ...business, hasEvents: eventsFilter === 'with' ? true : business.hasEvents }}
+                    numberFormatter={numberFormatter}
+                    selectedEventTypes={selectedEventTypes}
+                    eventWeights={eventWeights}
+                    isWatched={isWatched}
+                    onToggle={() => (isWatched ? removeWatch(org) : addWatch(org))}
+                  />
+                )
+              })}
             </div>
           )}
           {(() => {
