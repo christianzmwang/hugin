@@ -556,12 +556,34 @@ export default function SearchPage() {
     const n = v == null ? NaN : Number(v)
     return Number.isFinite(n) ? Math.floor(n) : ''
   })
+  // Draft values for revenue inputs; only applied when clicking Apply
+  const [draftRevenueMin, setDraftRevenueMin] = useState<string>('')
+  const [draftRevenueMax, setDraftRevenueMax] = useState<string>('')
   const [selectedRevenueRange, setSelectedRevenueRange] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('revenueRange') || ''
   })
   const [maxRevenue, setMaxRevenue] = useState<number>(108070744000)
   const [minRevenue, setMinRevenue] = useState<number>(-1868256000)
+  const [profitMin, setProfitMin] = useState<number | ''>(() => {
+    if (typeof window === 'undefined') return ''
+    const sp = new URLSearchParams(window.location.search)
+    const v = sp.get('profitMin')
+    const n = v == null ? NaN : Number(v)
+    return Number.isFinite(n) ? Math.floor(n) : ''
+  })
+  const [profitMax, setProfitMax] = useState<number | ''>(() => {
+    if (typeof window === 'undefined') return ''
+    const sp = new URLSearchParams(window.location.search)
+    const v = sp.get('profitMax')
+    const n = v == null ? NaN : Number(v)
+    return Number.isFinite(n) ? Math.floor(n) : ''
+  })
+  // Draft values for profit inputs; only applied when clicking Apply  
+  const [draftProfitMin, setDraftProfitMin] = useState<string>('')
+  const [draftProfitMax, setDraftProfitMax] = useState<string>('')
+  const [maxProfit, setMaxProfit] = useState<number>(0)
+  const [minProfit, setMinProfit] = useState<number>(0)
   const [apiLoaded, setApiLoaded] = useState<boolean>(false)
   const [eventsFilter, setEventsFilter] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
@@ -586,6 +608,7 @@ export default function SearchPage() {
     return {}
   })
   const selectedSource = 'general'
+  const [metricMode, setMetricMode] = useState<'revenue' | 'operating'>('revenue')
   const [sortBy, setSortBy] = useState<string>(() => {
     if (typeof window === 'undefined') return 'updatedAt'
     const v = new URLSearchParams(window.location.search).get('sortBy') || 'updatedAt'
@@ -599,7 +622,6 @@ export default function SearchPage() {
   const [dropdownRect, setDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
-  const [operatingResults, setOperatingResults] = useState('')
   const eventsRef = useRef<HTMLDivElement>(null);
 
   // Watchlist state
@@ -655,30 +677,33 @@ export default function SearchPage() {
     return minRevenue
   }, [minRevenue])
 
-  // Derived revenue bounds for UI and query
-  const numericRevenueMin = revenueMin === '' ? uiMinRevenue : revenueMin
-  const numericRevenueMax = revenueMax === '' ? uiMaxRevenue : revenueMax
-  const derivedLower = Math.min(Math.max(numericRevenueMin, uiMinRevenue), uiMaxRevenue)
-  const derivedUpper = Math.max(Math.min(numericRevenueMax, uiMaxRevenue), uiMinRevenue)
-  
-  // Only apply revenue filter if user has explicitly set bounds different from global range
-  const hasRevenueFilter = !(
-    (revenueMin === '' || revenueMin === uiMinRevenue) && 
-    (revenueMax === '' || revenueMax === uiMaxRevenue)
-  )
-  
-  // Only send revenue params to API if there's an actual filter applied
-  const shouldApplyRevenueFilter = hasRevenueFilter && 
-    (derivedLower !== uiMinRevenue || derivedUpper !== uiMaxRevenue)
+  // Only apply revenue filter if user has explicitly set values
+  const hasRevenueFilter = revenueMin !== '' || revenueMax !== ''
+
+  // Use hardcoded profit bounds for immediate loading
+  const uiMaxProfit = useMemo(() => {
+    return maxProfit
+  }, [maxProfit])
+
+  const uiMinProfit = useMemo(() => {
+    return minProfit
+  }, [minProfit])
+
+  // Only apply profit filter if user has explicitly set values
+  const hasProfitFilter = profitMin !== '' || profitMax !== ''
 
   const queryParam = useMemo(() => {
     const sp = new URLSearchParams()
     selectedIndustries.forEach((si) => sp.append('industries', si.value))
     selectedAreas.forEach((a) => sp.append('areas', a))
     if (committedGlobalSearch.trim()) sp.append('q', committedGlobalSearch.trim())
-    if (shouldApplyRevenueFilter) {
-      sp.append('revenueMin', String(derivedLower))
-      sp.append('revenueMax', String(derivedUpper))
+    if (hasRevenueFilter) {
+      if (revenueMin !== '') sp.append('revenueMin', String(revenueMin))
+      if (revenueMax !== '') sp.append('revenueMax', String(revenueMax))
+    }
+    if (hasProfitFilter) {
+      if (profitMin !== '') sp.append('profitMin', String(profitMin))
+      if (profitMax !== '') sp.append('profitMax', String(profitMax))
     }
     if (eventsFilter) sp.append('events', eventsFilter)
     if (selectedEventTypes.length > 0) sp.append('eventTypes', selectedEventTypes.join(','))
@@ -689,7 +714,7 @@ export default function SearchPage() {
     if (offset) sp.append('offset', String(offset))
     if (offset === 0) sp.append('skipCount', '1')
     return sp.toString() ? `?${sp.toString()}` : ''
-  }, [selectedIndustries, selectedAreas, committedGlobalSearch, shouldApplyRevenueFilter, derivedLower, derivedUpper, eventsFilter, selectedEventTypes, eventWeights, sortBy, offset, selectedCompanyTypes])
+  }, [selectedIndustries, selectedAreas, committedGlobalSearch, hasRevenueFilter, revenueMin, revenueMax, hasProfitFilter, profitMin, profitMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, offset, selectedCompanyTypes])
 
   const addSelectedIndustry = (value: string, label?: string) => {
     const v = value.trim()
@@ -797,56 +822,59 @@ export default function SearchPage() {
   useEffect(() => {
     setOffset(0)
     setData([])
-  }, [selectedIndustries, selectedAreas, revenueMin, revenueMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes])
+  }, [selectedIndustries, selectedAreas, revenueMin, revenueMax, profitMin, profitMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes])
 
-  // Fetch both min and max revenue bounds from API
+  // Keep draft inputs in sync with applied values
+  useEffect(() => {
+    setDraftRevenueMin(revenueMin === '' ? '' : String(Math.floor(Number(revenueMin) / 1000)))
+    setDraftRevenueMax(revenueMax === '' ? '' : String(Math.floor(Number(revenueMax) / 1000)))
+  }, [revenueMin, revenueMax])
+
+  useEffect(() => {
+    setDraftProfitMin(profitMin === '' ? '' : String(Math.floor(Number(profitMin) / 1000)))
+    setDraftProfitMax(profitMax === '' ? '' : String(Math.floor(Number(profitMax) / 1000)))
+  }, [profitMin, profitMax])
+
+  // Fetch all financial bounds (revenue and profit) in a single optimized call
   useEffect(() => {
     let cancelled = false
     
-    const fetchBounds = async () => {
+    const fetchAllBounds = async () => {
       try {
-        const [maxRes, minRes] = await Promise.all([
+        const [maxRevenueRes, minRevenueRes, maxProfitRes, minProfitRes] = await Promise.all([
           fetch('/api/businesses/max-revenue').then((r) => r.json()),
-          fetch('/api/businesses/min-revenue').then((r) => r.json())
+          fetch('/api/businesses/min-revenue').then((r) => r.json()),
+          fetch('/api/businesses/max-profit').then((r) => r.json()),
+          fetch('/api/businesses/min-profit').then((r) => r.json())
         ])
         
         if (cancelled) return
         
-        const maxVal = Number(maxRes?.maxRevenue)
-        const minVal = Number(minRes?.minRevenue)
+        const maxRevenueVal = Number(maxRevenueRes?.maxRevenue)
+        const minRevenueVal = Number(minRevenueRes?.minRevenue)
+        const maxProfitVal = Number(maxProfitRes?.maxProfit)
+        const minProfitVal = Number(minProfitRes?.minProfit)
         
-        setMaxRevenue(Number.isFinite(maxVal) ? Math.floor(maxVal) : 0)
-        setMinRevenue(Number.isFinite(minVal) ? Math.floor(minVal) : 0)
+        setMaxRevenue(Number.isFinite(maxRevenueVal) ? Math.floor(maxRevenueVal) : 0)
+        setMinRevenue(Number.isFinite(minRevenueVal) ? Math.floor(minRevenueVal) : 0)
+        setMaxProfit(Number.isFinite(maxProfitVal) ? Math.floor(maxProfitVal) : 0)
+        setMinProfit(Number.isFinite(minProfitVal) ? Math.floor(minProfitVal) : 0)
         setApiLoaded(true)
       } catch (error) {
         if (!cancelled) {
-          console.error('Failed to fetch revenue bounds:', error)
+          console.error('Failed to fetch financial bounds:', error)
           setMaxRevenue(0)
           setMinRevenue(0)
+          setMaxProfit(0)
+          setMinProfit(0)
           setApiLoaded(true) // Mark as loaded even on error to prevent infinite loading
         }
       }
     }
     
-    fetchBounds()
+    fetchAllBounds()
     return () => { cancelled = true }
   }, [])
-
-  // Set initial revenue range to hardcoded values if no URL params were provided
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    
-    // Check if URL had revenue parameters - if so, don't override
-    const sp = new URLSearchParams(window.location.search)
-    if (sp.get('revenueMin') || sp.get('revenueMax')) return
-    
-    // Only set once on initial load if values are empty
-    if (revenueMin === '' && revenueMax === '') {
-      console.log('Setting initial revenue range to full bounds:', { minRevenue, maxRevenue })
-      setRevenueMin(minRevenue)
-      setRevenueMax(maxRevenue)
-    }
-  }, [minRevenue, maxRevenue, revenueMin, revenueMax])
 
   // Back-compat: map revenueRange buckets from URL into min/max if provided and min/max are empty
   useEffect(() => {
@@ -854,13 +882,13 @@ export default function SearchPage() {
     if (revenueMin !== '' || revenueMax !== '') return
     switch (selectedRevenueRange) {
       case '0-1M':
-        setRevenueMin(0); setRevenueMax(1000000); break
+        setDraftRevenueMin('0'); setDraftRevenueMax('1000'); break
       case '1M-10M':
-        setRevenueMin(1000000); setRevenueMax(10000000); break
+        setDraftRevenueMin('1000'); setDraftRevenueMax('10000'); break
       case '10M-100M':
-        setRevenueMin(10000000); setRevenueMax(100000000); break
+        setDraftRevenueMin('10000'); setDraftRevenueMax('100000'); break
       case '100M+':
-        setRevenueMin(100000000); setRevenueMax(''); break
+        setDraftRevenueMin('100000'); setDraftRevenueMax(''); break
     }
   }, [selectedRevenueRange, revenueMin, revenueMax])
 
@@ -1330,11 +1358,13 @@ export default function SearchPage() {
           selectedIndustries.length > 0 ||
           selectedAreas.length > 0 ||
           hasRevenueFilter ||
+          hasProfitFilter ||
           !!eventsFilter ||
           selectedEventTypes.length > 0 ||
           selectedCompanyTypes.length > 0
         if (!hasAnyAppliedFilter) return null
-        const revenueLabel = `${numberFormatter.format(derivedLower)} - ${derivedUpper === uiMaxRevenue ? 'Max' : numberFormatter.format(derivedUpper)} NOK`
+        const revenueLabel = `${revenueMin !== '' ? numberFormatter.format(Math.floor(revenueMin / 1000)) : 'Min'} - ${revenueMax !== '' ? numberFormatter.format(Math.floor(revenueMax / 1000)) : 'Max'} NOK`
+        const profitLabel = `${profitMin !== '' ? numberFormatter.format(Math.floor(profitMin / 1000)) : 'Min'} - ${profitMax !== '' ? numberFormatter.format(Math.floor(profitMax / 1000)) : 'Max'} NOK`
         return (
           <div className="px-6 py-2 border-b border-white/10">
             <div className="flex flex-wrap items-center gap-2">
@@ -1391,7 +1421,21 @@ export default function SearchPage() {
                     title="Remove revenue filter"
                     aria-label="Remove revenue filter"
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
-                    onClick={() => { setRevenueMin(''); setRevenueMax(''); setSelectedRevenueRange('') }}
+                    onClick={() => { setRevenueMin(''); setRevenueMax(''); setSelectedRevenueRange(''); setDraftRevenueMin(''); setDraftRevenueMax('') }}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {hasProfitFilter && (
+                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
+                  <span>Operating results: {profitLabel}</span>
+                  <button
+                    type="button"
+                    title="Remove operating results filter"
+                    aria-label="Remove operating results filter"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { setProfitMin(''); setProfitMax(''); setDraftProfitMin(''); setDraftProfitMax('') }}
                   >
                     ×
                   </button>
@@ -1444,7 +1488,13 @@ export default function SearchPage() {
                   setCompanyTypeQuery('')
                   setRevenueMin('')
                   setRevenueMax('')
+                  setDraftRevenueMin('')
+                  setDraftRevenueMax('')
                   setSelectedRevenueRange('')
+                  setProfitMin('')
+                  setProfitMax('')
+                  setDraftProfitMin('')
+                  setDraftProfitMax('')
                   setEventsFilter('')
                   setSelectedEventTypes([])
                   setEventWeights({})
@@ -1512,118 +1562,125 @@ export default function SearchPage() {
         <div className="flex-1 p-6">
           <div className="mb-8 space-y-6">
             <div className="p-0">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">Revenue <span className="ml-2 text-xs text-gray-400 align-middle">in 1000 NOK</span></h3>
-                  <div>
-                    {true && (
-                      <div className="mt-4">
-                        {(() => {
-                          const lower = Math.min(derivedLower, uiMaxRevenue)
-                          const upper = Math.min(derivedUpper, uiMaxRevenue)
-                          const range = Math.max(1, uiMaxRevenue - uiMinRevenue)
-                          const leftPct = ((lower - uiMinRevenue) / range) * 100
-                          const widthPct = ((upper - lower) / range) * 100
-                          return (
-                            <div className="relative">
-                              {/* Base track */}
-                              <div className="h-1 bg-white/20 rounded" />
-                              {/* Selected range fill */}
-                              <div
-                                className="absolute top-0 h-1 bg-white/40"
-                                style={{ left: `${leftPct}%`, width: `${Math.max(0, widthPct)}%` }}
-                              />
-                              {/* Two thumbs overlaid, using ghost track to hide native track */}
-                              <input
-                                type="range"
-                                min={uiMinRevenue}
-                                max={uiMaxRevenue}
-                                step={1000}
-                                value={lower}
-                                onChange={(e) => {
-                                  const n = Math.min(Math.max(Number(e.target.value), uiMinRevenue), uiMaxRevenue)
-                                  const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
-                                  const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
-                                  const lowerIsMin = minVal <= maxVal
-                                  if (lowerIsMin) setRevenueMin(n)
-                                  else setRevenueMax(n)
-                                }}
-                                className="absolute inset-0 w-full slider-square slider-ghost"
-                                aria-label="Minimum revenue"
-                              />
-                              <input
-                                type="range"
-                                min={uiMinRevenue}
-                                max={uiMaxRevenue}
-                                step={1000}
-                                value={upper}
-                                onChange={(e) => {
-                                  const n = Math.min(Math.max(Number(e.target.value), uiMinRevenue), uiMaxRevenue)
-                                  const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
-                                  const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
-                                  const lowerIsMin = minVal <= maxVal
-                                  if (lowerIsMin) setRevenueMax(n)
-                                  else setRevenueMin(n)
-                                }}
-                                className="absolute inset-0 w-full slider-square slider-ghost"
-                                aria-label="Maximum revenue"
-                              />
-                              <div className="flex justify-between items-center gap-4 mt-3">
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={numberFormatter.format(Math.floor(lower / 1000))}
-                                  onChange={(e) => {
-                                    const text = (e.target.value || '').trim()
-                                    const neg = text.startsWith('-')
-                                    const digits = text.replace(/[^\d]/g, '')
-                                    const thousands = digits.length === 0 ? 0 : Math.floor(Number(digits))
-                                    const valueNok = Math.min(Math.max(thousands * 1000, uiMinRevenue), uiMaxRevenue)
-                                    const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
-                                    const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
-                                    const lowerIsMin = minVal <= maxVal
-                                    const finalVal = neg ? Math.max(-valueNok, uiMinRevenue) : valueNok
-                                    if (lowerIsMin) setRevenueMin(finalVal)
-                                    else setRevenueMax(finalVal)
-                                  }}
-                                  className="w-28 bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
-                                />
-                                <input
-                                  type="text"
-                                  inputMode="numeric"
-                                  value={numberFormatter.format(Math.floor(upper / 1000))}
-                                  onChange={(e) => {
-                                    const text = (e.target.value || '').trim()
-                                    const neg = text.startsWith('-')
-                                    const digits = text.replace(/[^\d]/g, '')
-                                    const thousands = digits.length === 0 ? Math.floor(uiMaxRevenue / 1000) : Math.floor(Number(digits))
-                                    const valueNok = Math.min(Math.max(thousands * 1000, uiMinRevenue), uiMaxRevenue)
-                                    const minVal = revenueMin === '' ? uiMinRevenue : revenueMin
-                                    const maxVal = revenueMax === '' ? uiMaxRevenue : revenueMax
-                                    const lowerIsMin = minVal <= maxVal
-                                    const finalVal = neg ? Math.max(-valueNok, uiMinRevenue) : valueNok
-                                    if (lowerIsMin) setRevenueMax(finalVal)
-                                    else setRevenueMin(finalVal)
-                                  }}
-                                  className="w-28 bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
-                                />
-                              </div>
-                            </div>
-                          )
-                        })()}
-                      </div>
-                    )}
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="text-lg font-semibold">
+                      {metricMode === 'revenue' ? 'Revenue' : 'Operating results'}
+                      <span className="ml-2 text-xs text-gray-400 align-middle">in 1000 NOK</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="text-xl leading-none px-3 py-0.5 border border-white/20 text-white bg-transparent hover:bg-white/10"
+                        title={metricMode === 'revenue' ? 'Switch to Operating results' : 'Switch to Revenue'}
+                        onClick={() => setMetricMode((m) => (m === 'revenue' ? 'operating' : 'revenue'))}
+                      >
+                        ⇄
+                      </button>
+                      <button
+                        type="button"
+                        className="text-xs px-2 py-1 border border-white/20 text-white/90 bg-transparent hover:bg-white/10"
+                        onClick={() => {
+                          if (metricMode === 'revenue') {
+                            const minVal = draftRevenueMin.trim() === '' ? '' : Number(draftRevenueMin.replace(/[^-\d]/g, '')) * 1000
+                            const maxVal = draftRevenueMax.trim() === '' ? '' : Number(draftRevenueMax.replace(/[^-\d]/g, '')) * 1000
+                            
+                            // Validation: check if max is lower than min
+                            if (minVal !== '' && maxVal !== '' && maxVal < minVal) {
+                              alert('Maximum value cannot be lower than minimum value')
+                              return
+                            }
+                            
+                            setRevenueMin(minVal)
+                            setRevenueMax(maxVal)
+                            setSelectedRevenueRange('')
+                            setOffset(0)
+                          } else {
+                            const minVal = draftProfitMin.trim() === '' ? '' : Number(draftProfitMin.replace(/[^-\d]/g, '')) * 1000
+                            const maxVal = draftProfitMax.trim() === '' ? '' : Number(draftProfitMax.replace(/[^-\d]/g, '')) * 1000
+                            
+                            // Validation: check if max is lower than min
+                            if (minVal !== '' && maxVal !== '' && maxVal < minVal) {
+                              alert('Maximum value cannot be lower than minimum value')
+                              return
+                            }
+                            
+                            setProfitMin(minVal)
+                            setProfitMax(maxVal)
+                            setOffset(0)
+                          }
+                        }}
+                      >
+                        Apply
+                      </button>
+                    </div>
                   </div>
-                </div>
-
-                <div>
-                  <h3 className="text-lg font-semibold mb-4">Operating results</h3>
-                  <div>
-                    <select value={operatingResults} onChange={(e) => setOperatingResults(e.target.value)} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-white/40">
-                      <option value="">Any</option>
-                      <option value="profitable">Profitable</option>
-                      <option value="loss">Loss-making</option>
-                    </select>
+                  <div className="mt-4">
+                    {(() => {
+                      if (metricMode === 'revenue') {
+                        return (
+                          <div className="flex items-center gap-4">
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="Min"
+                                value={draftRevenueMin}
+                                onChange={(e) => {
+                                  const value = e.target.value.replace(/[^0-9-]/g, '')
+                                  setDraftRevenueMin(value)
+                                }}
+                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                              />
+                            </div>
+                            <div className="flex-1">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                placeholder="Max"
+                                value={draftRevenueMax}
+                                onChange={(e) => {
+                                  const value = e.target.value.replace(/[^0-9-]/g, '')
+                                  setDraftRevenueMax(value)
+                                }}
+                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                              />
+                            </div>
+                          </div>
+                        )
+                      }
+                      return (
+                        <div className="flex items-center gap-4">
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="Min"
+                              value={draftProfitMin}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^0-9-]/g, '')
+                                setDraftProfitMin(value)
+                              }}
+                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                            />
+                          </div>
+                          <div className="flex-1">
+                            <input
+                              type="text"
+                              inputMode="numeric"
+                              placeholder="Max"
+                              value={draftProfitMax}
+                              onChange={(e) => {
+                                const value = e.target.value.replace(/[^0-9-]/g, '')
+                                setDraftProfitMax(value)
+                              }}
+                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                            />
+                          </div>
+                        </div>
+                      )
+                    })()}
                   </div>
                 </div>
 
@@ -1699,10 +1756,9 @@ export default function SearchPage() {
             const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0
             const totalForPaging = hasAnyFilter ? total : (grandTotal ?? total)
             return (
-              <div className="mt-8 flex items-center justify-between gap-4">
-                <button onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })} className="px-4 py-2 border border-white/10 bg-gray-900 hover:bg-gray-800 text-sm">Go to top</button>
+              <div className="mt-8 flex items-center justify-end gap-4">
                 {data.length < totalForPaging && (
-                  <button onClick={() => setOffset((prev) => prev + 100)} className="ml-auto px-4 py-2 border border-white/10 bg-gray-900 hover:bg-gray-800 text-sm">Load more</button>
+                  <button onClick={() => setOffset((prev) => prev + 100)} className="px-4 py-2 border border-white/10 bg-gray-900 hover:bg-gray-800 text-sm">Load more</button>
                 )}
               </div>
             )

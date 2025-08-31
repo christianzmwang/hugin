@@ -18,7 +18,11 @@ export function useWatchlist(options?: { limit?: number }) {
     const cached = apiCache.get<WatchlistItem[]>({ k: 'watchlist', limit })
     return cached || []
   })
-  const [isLoading, setIsLoading] = useState<boolean>(() => !apiCache.get<WatchlistItem[]>({ k: 'watchlist', limit }))
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    const cached = apiCache.get<WatchlistItem[]>({ k: 'watchlist', limit })
+    if (!cached) return true
+    return cached.length === 0
+  })
   const [error, setError] = useState<string | null>(null)
 
   const lastLoadRef = useRef<number>(0)
@@ -28,15 +32,15 @@ export function useWatchlist(options?: { limit?: number }) {
     const cached = apiCache.get<WatchlistItem[]>(cacheKey)
     if (cached) {
       setItems(cached)
-      setIsLoading(false)
-      return
+      // If cached is empty, keep loading to avoid showing empty state while we fetch
+      setIsLoading(cached.length === 0)
     }
 
     inflight.get(key)?.abort()
     const ctl = new AbortController()
     inflight.set(key, ctl)
 
-    setIsLoading(true)
+    if (!cached || cached.length === 0) setIsLoading(true)
     setError(null)
 
     const sp = new URLSearchParams()

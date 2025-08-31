@@ -1,13 +1,10 @@
 {
-  "/api/watchlist/route": "app/api/watchlist/route.js",
-  "/api/events/route": "app/api/events/route.js",
-  "/api/businesses/max-revenue/route": "app/api/businesses/max-revenue/route.js",
-  "/api/businesses/min-revenue/route": "app/api/businesses/min-revenue/route.js",
-  "/api/industries/route": "app/api/industries/route.js",
-  "/api/events/types/route": "app/api/events/types/route.js",
   "/favicon.ico/route": "app/favicon.ico/route.js",
+  "/api/events/route": "app/api/events/route.js",
+  "/api/watchlist/route": "app/api/watchlist/route.js",
+  "/api/auth/[...nextauth]/route": "app/api/auth/[...nextauth]/route.js",
   "/api/businesses/route": "app/api/businesses/route.js",
+  "/company/page": "app/company/page.js",
   "/page": "app/page.js",
-  "/search/page": "app/search/page.js",
-  "/watchlist/page": "app/watchlist/page.js"
+  "/_not-found/page": "app/_not-found/page.js"
 }

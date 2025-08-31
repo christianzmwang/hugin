@@ -107,6 +107,34 @@ export async function GET(req: Request) {
     }
   }
 
+  // Profit filtering
+  const profitMinRaw = searchParams.get('profitMin')?.trim()
+  const profitMaxRaw = searchParams.get('profitMax')?.trim()
+  const hasProfitMin = profitMinRaw != null && profitMinRaw !== '' && !Number.isNaN(Number(profitMinRaw))
+  const hasProfitMax = profitMaxRaw != null && profitMaxRaw !== '' && !Number.isNaN(Number(profitMaxRaw))
+  // Allow negative lower bounds; only coerce to integers
+  const profitMinVal = hasProfitMin ? parseInt(profitMinRaw as string, 10) : null
+  const profitMaxVal = hasProfitMax ? parseInt(profitMaxRaw as string, 10) : null
+
+  let profitClause = ''
+  const profitParams: number[] = []
+  let profitMinIdx: number | null = null
+  let profitMaxIdx: number | null = null
+
+  if (hasProfitMin || hasProfitMax) {
+    // Flexible range: inclusive bounds
+    if (hasProfitMin && hasProfitMax) {
+      profitClause = 'AND f.profit >= $PROFIT_MIN AND f.profit <= $PROFIT_MAX'
+      profitParams.push(profitMinVal as number, profitMaxVal as number)
+    } else if (hasProfitMin) {
+      profitClause = 'AND f.profit >= $PROFIT_MIN'
+      profitParams.push(profitMinVal as number)
+    } else if (hasProfitMax) {
+      profitClause = 'AND f.profit <= $PROFIT_MAX'
+      profitParams.push(profitMaxVal as number)
+    }
+  }
+
   // Removed recommendation and score filtering
 
   // Events filtering: events=with|without
@@ -177,6 +205,8 @@ export async function GET(req: Request) {
     countOnly,
     industries: industries.sort(), // Sort for consistent cache keys
     revenueRange,
+    profitMin: profitMinRaw,
+    profitMax: profitMaxRaw,
     eventsFilter: eventsFilter || '',
   eventTypes: eventTypes,
   eventWeights,
@@ -223,7 +253,7 @@ export async function GET(req: Request) {
       })()
     : ''
 
-  // Combine all params - industries first, then areas, then revenue (we'll append event params below)
+  // Combine all params - industries first, then areas, then revenue, then profit (we'll append event params below)
   const params: SqlParam[] = [...industryParams, ...areaParams]
   // Reserve parameter indexes for revenue and push actual values in order
   if (revenueClause) {
@@ -241,6 +271,25 @@ export async function GET(req: Request) {
         revenueMaxIdx = startIdx
       }
       params.push(revenueParams[0])
+    }
+  }
+
+  // Reserve parameter indexes for profit and push actual values in order
+  if (profitClause) {
+    const startIdx = params.length + 1
+    if (profitParams.length === 2) {
+      profitMinIdx = startIdx
+      profitMaxIdx = startIdx + 1
+      params.push(profitParams[0], profitParams[1])
+    } else if (profitParams.length === 1) {
+      // Determine which side is present by inspecting clause string
+      if (/\$PROFIT_MIN/.test(profitClause)) {
+        profitMinIdx = startIdx
+      }
+      if (/\$PROFIT_MAX/.test(profitClause)) {
+        profitMaxIdx = startIdx
+      }
+      params.push(profitParams[0])
     }
   }
 
@@ -271,6 +320,12 @@ export async function GET(req: Request) {
     revenueClause = revenueClause
       .replace('$REVENUE_MIN', revenueMinIdx ? `$${revenueMinIdx}` : '$REVENUE_MIN')
       .replace('$REVENUE_MAX', revenueMaxIdx ? `$${revenueMaxIdx}` : '$REVENUE_MAX')
+  }
+
+  if (profitClause) {
+    profitClause = profitClause
+      .replace('$PROFIT_MIN', profitMinIdx ? `$${profitMinIdx}` : '$PROFIT_MIN')
+      .replace('$PROFIT_MAX', profitMaxIdx ? `$${profitMaxIdx}` : '$PROFIT_MAX')
   }
 
   // Optimized query structure
@@ -336,13 +391,43 @@ export async function GET(req: Request) {
       fLatest."totalAssets" as "totalAssets",
       fLatest.equity as equity,
 			fLatest."employeesAvg" as "employeesAvg",
+      fLatest."operatingIncome" as "operatingIncome",
+      fLatest."operatingResult" as "operatingResult",
+      fLatest."profitBeforeTax" as "profitBeforeTax",
+      fLatest.valuta as valuta,
+      fLatest."fraDato" as "fraDato",
+      fLatest."tilDato" as "tilDato",
+      fLatest."sumDriftsinntekter" as "sumDriftsinntekter",
+      fLatest.driftsresultat as driftsresultat,
+      fLatest.aarsresultat as aarsresultat,
+      fLatest."sumEiendeler" as "sumEiendeler",
+      fLatest."sumEgenkapital" as "sumEgenkapital",
+      fLatest."sumGjeld" as "sumGjeld",
       /* Raw and weighted event scores for sorting */
       evRaw."eventScore",
       ${hasWeights ? 'evScore."eventWeightedScore"' : 'NULL::int as "eventWeightedScore"'},
 			EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber") as "hasEvents"
 		FROM "Business" b
     LEFT JOIN LATERAL (
-      SELECT f."fiscalYear", f.revenue, f.profit, f."totalAssets", f.equity, f."employeesAvg"
+      SELECT 
+        f."fiscalYear", 
+        f.revenue, 
+        f.profit, 
+        f."totalAssets", 
+        f.equity, 
+        f."employeesAvg",
+        f."operatingIncome",
+        f."operatingResult", 
+        f."profitBeforeTax",
+        f.valuta,
+        f."fraDato",
+        f."tilDato",
+        f."sumDriftsinntekter",
+        f.driftsresultat,
+        f.aarsresultat,
+        f."sumEiendeler",
+        f."sumEgenkapital",
+        f."sumGjeld"
       FROM "FinancialReport" f
       WHERE f."businessId" = b.id
       ORDER BY f."fiscalYear" DESC NULLS LAST
@@ -366,6 +451,7 @@ export async function GET(req: Request) {
     ) evScore ON TRUE` : ''}
     ${baseWhere}
     ${revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
+    ${profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${(() => {
       const conditions = []
       
@@ -424,6 +510,7 @@ export async function GET(req: Request) {
     ) fLatest ON TRUE
     ${baseWhere}
     ${revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
+    ${profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${(() => {
       const conditions = []
       

@@ -21,6 +21,8 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
     const map: Record<string, string> = {
       '/search': 'Search',
       '/watchlist': 'Watchlist',
+      '/company': 'Company',
+      '/configuration': 'Configuration',
       '/export': 'Export',
       '/sandbox': 'Sandbox',
     }
