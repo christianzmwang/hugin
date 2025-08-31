@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { ALLOWED_USERS } from '@/lib/constants'
 
 type Business = {
@@ -181,7 +181,7 @@ function formatEventDate(dateValue: unknown): string {
   }
 }
 
-export default function CompanyPage() {
+function CompanyPageContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -192,7 +192,7 @@ export default function CompanyPage() {
   const [searchQuery, setSearchQuery] = useState('')
   const [companySuggestions, setCompanySuggestions] = useState<Array<{ name: string; orgNumber: string }>>([])
   const [showSuggestions, setShowSuggestions] = useState(false)
-  const [businessStats, setBusinessStats] = useState<{
+  const [, setBusinessStats] = useState<{
     totalCompanies: number
     totalEvents: number
     companiesWithEvents: number
@@ -377,7 +377,7 @@ export default function CompanyPage() {
         
         // Get total events count (approximate from latest events)
         const eventsResponse = await fetch('/api/events?limit=1')
-        const eventsData = await eventsResponse.json()
+        await eventsResponse.json()
         
         if (!cancelled) {
           setBusinessStats({
@@ -386,8 +386,8 @@ export default function CompanyPage() {
             totalEvents: 50000 // Approximate since we don't have a direct count API
           })
         }
-      } catch (err) {
-        console.error('Failed to fetch business stats:', err)
+      } catch {
+        console.error('Failed to fetch business stats')
       }
     }
     
@@ -425,7 +425,7 @@ export default function CompanyPage() {
           })))
           setShowSuggestions(true)
         }
-      } catch (err) {
+      } catch {
         if (!cancelled) {
           setCompanySuggestions([])
           setShowSuggestions(false)
@@ -479,7 +479,7 @@ export default function CompanyPage() {
           setEvents(eventItems)
         }
       }
-    } catch (err) {
+    } catch {
       setError('Failed to load selected company')
     } finally {
       setLoading(false)
@@ -1125,5 +1125,17 @@ export default function CompanyPage() {
   )
 }
 
-
-
+export default function CompanyPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
+          <div className="text-lg text-gray-400">Loading...</div>
+        </div>
+      </div>
+    }>
+      <CompanyPageContent />
+    </Suspense>
+  )
+}

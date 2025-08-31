@@ -41,7 +41,7 @@ export async function GET() {
     const payload = { minRevenue }
     apiCache.set(cacheKey, payload, 5 * 60 * 1000)
     return NextResponse.json(payload)
-  } catch (e) {
+  } catch {
     return NextResponse.json({ minRevenue: 0 }, { status: 200 })
   }
 }

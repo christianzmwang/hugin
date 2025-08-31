@@ -141,7 +141,7 @@ const BusinessCard = memo(
     eventWeights: Record<string, number>
     isWatched: boolean
     onToggle: () => void
-    router: any
+    router: ReturnType<typeof useRouter>
   }) => {
     const fmt = (v: number | string | null | undefined) =>
       v === null || v === undefined ? '—' : numberFormatter.format(Number(v))
@@ -211,9 +211,9 @@ const BusinessCard = memo(
                 })
               : items
           if (!cancelled) setEvents(filtered)
-        } catch (e) {
+        } catch {
           if (!cancelled) {
-            setEventsError(e)
+            setEventsError(null)
             setEvents([])
           }
         } finally {
@@ -535,7 +535,7 @@ export default function SearchPage() {
   })
   const areaInputRef = useRef<HTMLInputElement | null>(null)
   const areaDropdownRef = useRef<HTMLDivElement | null>(null)
-  const [areaDropdownRect, setAreaDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [areaDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false)
   const [areaSuggestions, setAreaSuggestions] = useState<string[]>([])
   const [companyTypeQuery, setCompanyTypeQuery] = useState('')
@@ -590,7 +590,7 @@ export default function SearchPage() {
   const [draftProfitMax, setDraftProfitMax] = useState<string>('')
   const [maxProfit, setMaxProfit] = useState<number>(0)
   const [minProfit, setMinProfit] = useState<number>(0)
-  const [apiLoaded, setApiLoaded] = useState<boolean>(false)
+  const [, setApiLoaded] = useState<boolean>(false)
   const [eventsFilter, setEventsFilter] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('events') || ''
@@ -675,25 +675,13 @@ export default function SearchPage() {
   }
 
   // Use hardcoded revenue bounds for immediate loading
-  const uiMaxRevenue = useMemo(() => {
-    return maxRevenue
-  }, [maxRevenue])
 
-  const uiMinRevenue = useMemo(() => {
-    return minRevenue
-  }, [minRevenue])
 
   // Only apply revenue filter if user has explicitly set values
   const hasRevenueFilter = revenueMin !== '' || revenueMax !== ''
 
   // Use hardcoded profit bounds for immediate loading
-  const uiMaxProfit = useMemo(() => {
-    return maxProfit
-  }, [maxProfit])
 
-  const uiMinProfit = useMemo(() => {
-    return minProfit
-  }, [minProfit])
 
   // Only apply profit filter if user has explicitly set values
   const hasProfitFilter = profitMin !== '' || profitMax !== ''
@@ -1214,7 +1202,7 @@ export default function SearchPage() {
               onChange={(e) => setAreaQuery(e.target.value)}
               placeholder="Area filter"
               ref={areaInputRef}
-              onFocus={(e) => {
+              onFocus={() => {
                 setAreaDropdownOpen(true)
               }}
               onKeyDown={(e) => {

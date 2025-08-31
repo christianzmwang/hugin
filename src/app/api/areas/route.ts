@@ -55,7 +55,7 @@ export async function GET(req: Request) {
       if (set.size >= 100) break
     }
     return NextResponse.json({ items: Array.from(set) })
-  } catch (err) {
+  } catch {
     return NextResponse.json({ items: [] })
   }
 }

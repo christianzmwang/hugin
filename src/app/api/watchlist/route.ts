@@ -22,20 +22,7 @@ async function ensureTable() {
   await query(`CREATE INDEX IF NOT EXISTS watchlist_org_idx ON watchlist(org_number);`)
 }
 
-function getUserIdFromRequest(req: Request): string | null {
-  try {
-    // Access control already verified session; the id is attached to JWT-based session via cookies
-    // Reuse the access-control guard which ensures an authorized session
-    // For now, extract from a lightweight endpoint call to the DB via next-auth JWT is not trivial here
-    // Instead, query the current session via /api/auth/session is not available server-side
-    // Workaround: decode token via headers is not set; so fetch via helper in access-control would be ideal
-    // Since checkApiAccess already ensures session, we can fetch it again using getAuthorizedSession
-    // To avoid circular imports, inline minimal call
-    return null
-  } catch {
-    return null
-  }
-}
+
 
 import { getAuthorizedSession } from '@/lib/access-control'
 

@@ -42,7 +42,7 @@ export async function GET() {
     const payload = { maxRevenue }
     apiCache.set(cacheKey, payload, 5 * 60 * 1000) // cache 5 minutes
     return NextResponse.json(payload)
-  } catch (e) {
+  } catch {
     return NextResponse.json({ maxRevenue: 0 }, { status: 200 })
   }
 }
