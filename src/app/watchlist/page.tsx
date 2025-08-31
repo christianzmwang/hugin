@@ -21,7 +21,7 @@ export default function WatchlistPage() {
       <div className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
-          <div className="text-lg text-gray-400">Loading...</div>
+          <div className="text-lg text-gray-400">Loading companies…</div>
         </div>
       </div>
     )
@@ -52,7 +52,7 @@ function WatchlistList({
 }) {
 
   if (loading) {
-    return <div className="text-sm text-gray-400">Loading watchlist…</div>
+    return <div className="text-sm text-gray-400">Loading companies…</div>
   }
   if (error) {
     return <div className="text-sm text-red-400">{error}</div>
