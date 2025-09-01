@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { dbConfigured, query } from '@/lib/db'
+import { dbConfigured, query, hasErrorCode } from '@/lib/db'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 import type { Session } from 'next-auth'
@@ -87,7 +87,7 @@ export async function GET() {
   } catch (error) {
     console.error('Error fetching users:', error)
     const message = error instanceof Error ? error.message : 'Unknown error'
-    const status = (error as any)?.code === 'DB_NOT_CONFIGURED' ? 503 : 500
+  const status = hasErrorCode(error) && error.code === 'DB_NOT_CONFIGURED' ? 503 : 500
     return NextResponse.json(
       { success: false, error: 'Failed to fetch users', message },
       { status }

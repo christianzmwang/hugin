@@ -50,23 +50,46 @@ export async function query<T = unknown>(
   let client: import('pg').PoolClient | null = null
   try {
     if (!pool) {
-      const err = new Error(
-        '[db] No database connection configured. Ensure DATABASE_URL or DATABASE_POOLING_URL is set.'
+      throw createCodedError(
+        '[db] No database connection configured. Ensure DATABASE_URL or DATABASE_POOLING_URL is set.',
+        'DB_NOT_CONFIGURED'
       )
-      ;(err as any).code = 'DB_NOT_CONFIGURED'
-      throw err
     }
     client = await pool.connect()
     const result = await client.query(text, params)
     return { rows: result.rows as T[] }
   } catch (error) {
     // Surface DB errors to callers so the UI can report connection issues
-    const e = error instanceof Error ? error : new Error('Unknown DB error')
-    if (!(e as any).code) {
-      ;(e as any).code = 'DB_QUERY_FAILED'
+    if (hasErrorCode(error)) {
+      // Preserve coded errors (e.g., DB_NOT_CONFIGURED)
+      throw error
     }
-    throw e
+    const message = error instanceof Error ? error.message : 'Unknown DB error'
+    throw createCodedError(message, 'DB_QUERY_FAILED')
   } finally {
     if (client) client.release()
   }
+}
+
+// Narrowing helper to detect errors with a string `code` property
+export function hasErrorCode(value: unknown): value is { code: string } {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    'code' in value &&
+    typeof (value as { code?: unknown }).code === 'string'
+  )
+}
+
+// Create an Error with a typed `code` without using `any` casts
+type DbErrorCode = 'DB_NOT_CONFIGURED' | 'DB_QUERY_FAILED'
+type CodedError = Error & { code: DbErrorCode | string }
+
+export function createCodedError(
+  message: string,
+  code: DbErrorCode | string
+): CodedError {
+  const err = new Error(message) as CodedError
+  err.code = code
+  return err
 }
