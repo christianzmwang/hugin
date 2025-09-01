@@ -11,6 +11,7 @@ interface User {
   emailVerified: Date | null
   created_at: Date
   updated_at: Date
+  main_access?: boolean | null
 }
 
 interface ApiResponse {
@@ -24,6 +25,7 @@ export default function AdminPage() {
   const router = useRouter()
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
@@ -54,13 +56,18 @@ export default function AdminPage() {
   const loadUsers = async () => {
     try {
       setLoading(true)
+      setError(null)
       const response = await fetch('/api/admin/users')
       const data = await response.json()
-      if (data.success) {
+  if (data.success) {
         setUsers(data.users)
+      } else {
+        setUsers([])
+        setError(data.message || data.error || 'Failed to load users')
       }
     } catch (error) {
       console.error('Failed to load users:', error)
+      setError('DB connection unsuccessful')
     } finally {
       setLoading(false)
     }
@@ -293,6 +300,27 @@ export default function AdminPage() {
     }
   }
 
+  const handleToggleMainAccess = async (userId: string, allow: boolean) => {
+    setUserActionLoading(userId, true)
+    try {
+      const response = await fetch('/api/admin/toggle-main-access', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, allow })
+      })
+      const data: ApiResponse & { user?: { id: string; main_access: boolean } } = await response.json()
+      if (data.success) {
+        await loadUsers()
+      } else {
+        alert(data.message || 'Failed to update access')
+      }
+    } catch (e) {
+      alert('Failed to update access')
+    } finally {
+      setUserActionLoading(userId, false)
+    }
+  }
+
   const handleVerifyAllUsers = async () => {
     if (!confirm('Are you sure you want to verify all unverified users?')) {
       return
@@ -423,6 +451,11 @@ export default function AdminPage() {
             <div className="px-6 py-4 border-b border-gray-700">
               <h2 className="text-xl font-semibold">All Users ({users.length})</h2>
             </div>
+            {error && (
+              <div className="px-6 py-4 bg-red-900/30 border-b border-red-700 text-red-300">
+                {error}
+              </div>
+            )}
             
             {loading ? (
               <div className="p-8 text-center">
@@ -445,6 +478,7 @@ export default function AdminPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">User</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Main Access</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Created</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                     </tr>
@@ -483,11 +517,25 @@ export default function AdminPage() {
                             </div>
                           )}
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
+                            user.main_access ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                          }`}>
+                            {user.main_access ? 'Allowed' : 'No Access'}
+                          </span>
+                        </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                           {new Date(user.created_at).toLocaleDateString()}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <div className="flex space-x-2">
+                            <button
+                              onClick={() => handleToggleMainAccess(user.id, !Boolean(user.main_access))}
+                              disabled={actionLoading[user.id]}
+                              className={`${user.main_access ? 'bg-yellow-600 hover:bg-yellow-700' : 'bg-indigo-600 hover:bg-indigo-700'} disabled:bg-gray-600 text-white px-3 py-1 rounded text-xs`}
+                            >
+                              {actionLoading[user.id] ? '...' : (user.main_access ? 'Revoke Access' : 'Grant Access')}
+                            </button>
                             {!user.emailVerified && (
                               <>
                                 <button
@@ -520,7 +568,7 @@ export default function AdminPage() {
                   </tbody>
                 </table>
                 
-                {users.length === 0 && (
+                {users.length === 0 && !error && (
                   <div className="p-8 text-center text-gray-400">
                     No users found
                   </div>

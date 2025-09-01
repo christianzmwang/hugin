@@ -9,6 +9,7 @@ declare module 'next-auth' {
       name?: string | null
       image?: string | null
       emailVerified?: Date | null
+  mainAccess?: boolean
     }
   }
 
@@ -19,12 +20,15 @@ declare module 'next-auth' {
     name?: string | null
     image?: string | null
     emailVerified?: Date | null
+  mainAccess?: boolean
   }
 }
 
 declare module 'next-auth/jwt' {
   interface JWT {
     id: string
+  emailVerified?: Date | null
+  mainAccess?: boolean
   }
 }
 

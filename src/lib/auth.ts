@@ -7,9 +7,15 @@ import bcrypt from 'bcryptjs'
 import { query } from './db'
 
 // Create a separate pool for NextAuth adapter
+const authConnStr = process.env.DATABASE_URL || process.env.DATABASE_POOLING_URL
+if (!authConnStr) {
+  console.warn('[auth] No database URL set for NextAuth. Authentication DB operations will fail.')
+}
+const isLocalAuth = !!authConnStr && (authConnStr.includes('localhost') || authConnStr.includes('127.0.0.1'))
 const authPool = new Pool({
-  connectionString: process.env.DATABASE_URL || process.env.DATABASE_POOLING_URL,
-  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : undefined,
+  connectionString: authConnStr,
+  // Supabase requires SSL even in dev; disable only for localhost
+  ssl: isLocalAuth ? undefined : { rejectUnauthorized: false },
 })
 
 export const authOptions: any = {
@@ -155,6 +161,16 @@ export const authOptions: any = {
       if (user) {
         token.id = user.id
         token.emailVerified = user.emailVerified
+        // Fetch mainAccess from DB on initial login
+        try {
+          const res = await query<{ main_access: boolean | null }>(
+            'SELECT main_access FROM users WHERE id = $1',
+            [user.id]
+          )
+          token.mainAccess = Boolean(res.rows[0]?.main_access)
+        } catch (e) {
+          token.mainAccess = false
+        }
         
         // For Google OAuth users, ensure emailVerified is set
         if (account?.provider === 'google' && user.email && !user.emailVerified) {
@@ -168,7 +184,19 @@ export const authOptions: any = {
       if (token && session.user) {
         session.user.id = token.id as string
         session.user.emailVerified = token.emailVerified as Date | null
-        
+        // Always fetch latest main_access so admin toggles apply immediately
+        try {
+          const res = await query<{ main_access: boolean | null }>(
+            'SELECT main_access FROM users WHERE id = $1',
+            [token.id]
+          )
+          const current = Boolean(res.rows[0]?.main_access)
+          session.user.mainAccess = current
+          token.mainAccess = current
+        } catch {
+          session.user.mainAccess = Boolean(token.mainAccess)
+        }
+
         // Double-check: If this is a Google user without verified email, fix it
         if (!session.user.emailVerified && session.user.email) {
           try {

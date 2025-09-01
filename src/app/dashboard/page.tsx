@@ -29,6 +29,15 @@ export default function DashboardPage() {
     }
   }, [status, session, router])
 
+  // Gate main app strictly by mainAccess flag
+  useEffect(() => {
+    if (!session) return
+    const hasDbAccess = Boolean(session.user?.mainAccess)
+    if (!hasDbAccess) {
+  router.push('/noaccess')
+    }
+  }, [session, router])
+
   useEffect(() => {
     if (!session) return
     let cancelled = false
@@ -118,6 +127,11 @@ export default function DashboardPage() {
   }
 
   if (!session) return null
+
+  // Extra guard: if authenticated but no main access, prevent rendering while middleware redirects
+  if (!session.user?.mainAccess) {
+    return null
+  }
 
   function Sparkline({
     data,

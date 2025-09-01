@@ -28,6 +28,11 @@ export async function GET(req: Request) {
     0,
     parseInt(searchParams.get('offset') || '0', 10) || 0,
   )
+  // Optional page size (default 100, max 100)
+  const limit = Math.max(
+    1,
+    Math.min(100, parseInt(searchParams.get('limit') || '100', 10) || 100),
+  )
   const skipCount = ['1', 'true'].includes(
     (searchParams.get('skipCount') || '').toLowerCase(),
   )
@@ -36,6 +41,7 @@ export async function GET(req: Request) {
   )
   const singleIndustry = searchParams.get('industry')?.trim() || ''
   const q = (searchParams.get('q') || '').trim()
+  const orgNumberParam = (searchParams.get('orgNumber') || '').trim()
   const orgFormCodes = searchParams
     .getAll('orgFormCode')
     .map((s) => s.trim())
@@ -201,6 +207,7 @@ export async function GET(req: Request) {
   const cacheParams = {
     source,
     offset,
+  limit,
     skipCount,
     countOnly,
     industries: industries.sort(), // Sort for consistent cache keys
@@ -211,7 +218,8 @@ export async function GET(req: Request) {
   eventTypes: eventTypes,
   eventWeights,
     sortBy: validSortBy,
-    q,
+  q,
+  orgNumberParam,
     areas: areas.sort(),
     orgFormCodes: orgFormCodes.sort(),
   }
@@ -305,7 +313,7 @@ export async function GET(req: Request) {
   let nameIdx: number | null = null
   let orgIdx: number | null = null
   let namePrefixIdx: number | null = null
-  if (q) {
+  if (q && !orgNumberParam) {
     nameIdx = params.length + 1
     orgIdx = params.length + 2
     params.push(`%${q}%`, `%${q}%`)
@@ -313,6 +321,15 @@ export async function GET(req: Request) {
     namePrefixIdx = params.length + 1
     params.push(`${q}%`)
     searchClause = `AND (b.name ILIKE $${nameIdx} OR b."orgNumber" ILIKE $${orgIdx})`
+  }
+
+  // Exact orgNumber filter takes precedence over q when provided
+  let orgNumberIdx: number | null = null
+  let orgNumberClause = ''
+  if (orgNumberParam) {
+    orgNumberIdx = params.length + 1
+    params.push(orgNumberParam)
+    orgNumberClause = `AND b."orgNumber" = $${orgNumberIdx}`
   }
 
   // Update clause placeholders with actual parameter positions
@@ -334,7 +351,8 @@ export async function GET(req: Request) {
 		${industryClause}
 		${areaClause}
     ${orgFormIdx ? `AND b."orgFormCode" = ANY($${orgFormIdx}::text[])` : ''}
-		${searchClause}
+    ${searchClause}
+    ${orgNumberClause}
 	`
 
   // Compute parameter indexes for optional event filters/weights
@@ -547,12 +565,12 @@ export async function GET(req: Request) {
           // Always prefer weighted score when event types are selected, as that's what frontend displays
           return `${hasWeights && eventTypes.length > 0 ? 'evScore."eventWeightedScore" ASC NULLS FIRST' : 'evRaw."eventScore" ASC NULLS FIRST'}`
         case 'scoreDesc':
-          return `${hasWeights && eventTypes.length > 0 ? 'evScore."eventWeightedScore" DESC NULLS LAST' : 'evRaw."eventWeightedScore" DESC NULLS LAST'}`
+      return `${hasWeights && eventTypes.length > 0 ? 'evScore."eventWeightedScore" DESC NULLS LAST' : 'evRaw."eventScore" DESC NULLS LAST'}`
         default:
           return 'b."updatedAt" DESC'
       }
     })()}
-    LIMIT 100 OFFSET ${offset}
+    LIMIT ${limit} OFFSET ${offset}
   `
 
   const countSql = `

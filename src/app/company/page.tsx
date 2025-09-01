@@ -3,7 +3,6 @@
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense } from 'react'
-import { ALLOWED_USERS } from '@/lib/constants'
 
 type Business = {
   orgNumber: string
@@ -234,9 +233,9 @@ function CompanyPageContent() {
       router.push('/auth/signin')
       return
     }
-    const userEmail = session.user?.email
-    if (userEmail && !ALLOWED_USERS.includes(userEmail)) {
-      router.push('/countdown')
+  const hasDbAccess = Boolean(session.user?.mainAccess)
+  if (!hasDbAccess) {
+  router.push('/noaccess')
       return
     }
   }, [status, session, router])
@@ -256,12 +255,12 @@ function CompanyPageContent() {
         const orgNumberFromUrl = searchParams.get('orgNumber')
         
         if (orgNumberFromUrl) {
-          // Fetch specific company by orgNumber
+          // Fetch specific company by exact orgNumber
           const params = new URLSearchParams({
-            q: orgNumberFromUrl,
+            orgNumber: orgNumberFromUrl,
             limit: '1'
           })
-          
+
           const response = await fetch(`/api/businesses?${params.toString()}`)
           if (!response.ok) throw new Error('Failed to fetch company')
           
@@ -449,7 +448,7 @@ function CompanyPageContent() {
     try {
       // Fetch selected company
       const params = new URLSearchParams({
-        q: orgNumber,
+        orgNumber,
         limit: '1'
       })
       const response = await fetch(`/api/businesses?${params.toString()}`)
@@ -514,7 +513,7 @@ function CompanyPageContent() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Søk selskaper"
-            className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
+            className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
             onFocus={() => {
               if (companySuggestions.length > 0) {
                 setShowSuggestions(true)
@@ -552,7 +551,7 @@ function CompanyPageContent() {
                   <button
                     key={`${company.orgNumber}-${idx}`}
                     onClick={() => handleCompanySelect(company.orgNumber)}
-                    className="px-3 py-1 text-xs border border-white/20 text-white/90 hover:bg-white/10 hover:border-white/40 transition-colors rounded whitespace-nowrap flex-shrink-0"
+                    className="px-3 py-1 text-xs border border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60 transition-colors rounded-none whitespace-nowrap flex-shrink-0"
                     title={`${company.name} (${company.orgNumber})`}
                   >
                     <span className="max-w-32 block truncate">{company.name}</span>
@@ -596,7 +595,7 @@ function CompanyPageContent() {
                     href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} 
                     target="_blank" 
                     rel="noreferrer"
-                    className="px-4 py-2 border border-white/20 text-white/90 hover:bg-white/10 hover:border-white/40 transition-colors"
+                    className="px-4 py-2 border border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 transition-colors"
                   >
                     Besøk nettside
                   </a>

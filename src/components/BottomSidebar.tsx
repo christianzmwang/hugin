@@ -25,99 +25,91 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
             <nav className="flex items-center gap-3">
               <Link
                 href="/"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80`}
               >
                 <LayoutDashboard size={16} />
                 <span>Dashboard</span>
                 <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
                     isActive('/') ? 'opacity-100' : 'group-hover:opacity-100'
                   }`}
                 />
               </Link>
               <Link
                 href="/search"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80`}
               >
                 <Search size={16} />
                 <span>Search</span>
                 <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
                     isActive('/search') ? 'opacity-100' : 'group-hover:opacity-100'
                   }`}
                 />
               </Link>
               <Link
                 href="/company"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80`}
               >
                 <Building2 size={16} />
                 <span>Company</span>
                 <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
                     isActive('/company') ? 'opacity-100' : 'group-hover:opacity-100'
                   }`}
                 />
               </Link>
               <Link
                 href="/watchlist"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80`}
               >
                 <Eye size={16} />
                 <span>Watchlist</span>
                 <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
                     isActive('/watchlist') ? 'opacity-100' : 'group-hover:opacity-100'
                   }`}
                 />
               </Link>
-              <Link
-                href="/configuration"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+              {/* Unavailable items (visible but disabled) */}
+              <div
+                aria-disabled="true"
+                title="Not available"
+                className="group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/40 select-none"
               >
                 <Settings size={16} />
                 <span>Configuration</span>
-                <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
-                    isActive('/configuration') ? 'opacity-100' : 'group-hover:opacity-100'
-                  }`}
-                />
-              </Link>
-              <Link
-                href="/sandbox"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+                <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0" />
+              </div>
+              <div
+                aria-disabled="true"
+                title="Not available"
+                className="group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/40 select-none"
               >
                 <FlaskConical size={16} />
                 <span>Sandbox</span>
-                <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
-                    isActive('/sandbox') ? 'opacity-100' : 'group-hover:opacity-100'
-                  }`}
-                />
-              </Link>
-              <Link
-                href="/export"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white`}
+                <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0" />
+              </div>
+              <div
+                aria-disabled="true"
+                title="Not available"
+                className="group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/40 select-none"
               >
                 <Download size={16} />
                 <span>Export</span>
-                <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 ${
-                    isActive('/export') ? 'opacity-100' : 'group-hover:opacity-100'
-                  }`}
-                />
-              </Link>
+                <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0" />
+              </div>
             </nav>
 
             {/* Right actions */}
             <div className="ml-auto flex items-center gap-3">
               {showGoToTop ? (
                 <button
-                  className="group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80 hover:text-white"
+                  className="group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80"
                   onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}
                 >
                   Go to top
-                  <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-white/70 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+                  <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
                 </button>
               ) : null}
               {showClearFilters && onClearFilters ? null : null}

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { ALLOWED_USERS } from '@/lib/constants'
 
 const numberFormatter: Intl.NumberFormat = (() => {
   try {
@@ -242,7 +241,7 @@ const BusinessCard = memo(
     return (
       <div 
         ref={cardRef} 
-        className="py-6 hover:bg-white/5 transition-colors duration-200 -mx-4 px-4 cursor-pointer"
+        className="py-6 hover:bg-red-600/10 transition-colors duration-200 -mx-4 px-4 cursor-pointer first:border-t first:border-white/10"
         onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(business.orgNumber)}`)}
       >
         <div className="flex justify-between items-start mb-4">
@@ -312,8 +311,12 @@ const BusinessCard = memo(
             })()}
             <button
               type="button"
-              onClick={onToggle}
-              className={`w-24 inline-flex justify-center text-xs px-2 py-1 border border-white/20 text-white/90 bg-red-500/10 hover:bg-red-500/20 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-red-500/40`}
+              onClick={(e) => {
+                e.preventDefault()
+                e.stopPropagation()
+                onToggle()
+              }}
+              className={`w-24 inline-flex justify-center text-xs px-2 py-1 border border-white/20 text-white/90 bg-black hover:bg-black hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40`}
               aria-pressed={isWatched}
               title={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
             >
@@ -488,9 +491,9 @@ export default function SearchPage() {
       router.push('/auth/signin')
       return
     }
-    const userEmail = session.user?.email
-    if (userEmail && !ALLOWED_USERS.includes(userEmail)) {
-      router.push('/countdown')
+  const hasDbAccess = Boolean(session.user?.mainAccess)
+  if (!hasDbAccess) {
+  router.push('/noaccess')
       return
     }
   }, [session, status, router])
@@ -1159,7 +1162,7 @@ export default function SearchPage() {
                   setGlobalDropdownOpen(false)
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
+              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
             />
           </div>
           <div className="w-full md:w-2/3 grid grid-cols-1 sm:grid-cols-3 gap-3 md:pl-3">
@@ -1194,7 +1197,7 @@ export default function SearchPage() {
                   )
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
+              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
             />
             <input
               type="text"
@@ -1218,7 +1221,7 @@ export default function SearchPage() {
                   removeSelectedArea(selectedAreas[selectedAreas.length - 1])
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
+              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
             />
             <input
               type="text"
@@ -1252,7 +1255,7 @@ export default function SearchPage() {
                   setSelectedCompanyTypes((prev) => prev.slice(0, -1))
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40"
+              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
             />
           </div>
         </div>
@@ -1472,7 +1475,7 @@ export default function SearchPage() {
               })}
               <button
                 type="button"
-                className="ml-2 text-xs px-2 py-1 border border-white/20 text-white/90 bg-red-500/10 hover:bg-red-500/20 hover:text-white hover:border-white/40 focus:outline-none focus:ring-1 focus:ring-red-500/40"
+                className="ml-2 text-xs px-2 py-1 border border-white/20 text-white/90 bg-red-600/10 hover:bg-red-600/20 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
                 onClick={() => {
                   setSelectedIndustries([])
                   setIndustryQuery('')
@@ -1507,7 +1510,7 @@ export default function SearchPage() {
           <div className="mb-6">
             <div className="sticky top-0 z-20 bg-black pb-2" ref={eventsRef}>
               <label className="block text-sm font-medium mb-2">Events</label>
-              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-white/40">
+              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
                 <option value="">All companies</option>
                 <option value="with">With events</option>
                 <option value="without">Without events</option>
@@ -1566,7 +1569,7 @@ export default function SearchPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="text-xl leading-none px-3 py-0.5 border border-white/20 text-white bg-transparent hover:bg-white/10"
+                        className="text-xl leading-none px-3 py-0.5 border border-white/20 text-white bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
                         title={metricMode === 'revenue' ? 'Switch to Operating results' : 'Switch to Revenue'}
                         onClick={() => setMetricMode((m) => (m === 'revenue' ? 'operating' : 'revenue'))}
                       >
@@ -1574,7 +1577,7 @@ export default function SearchPage() {
                       </button>
                       <button
                         type="button"
-                        className="text-xs px-2 py-1 border border-white/20 text-white/90 bg-transparent hover:bg-white/10"
+                        className="text-xs px-2 py-1 border border-white/20 text-white/90 bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
                         onClick={() => {
                           if (metricMode === 'revenue') {
                             const minVal = draftRevenueMin.trim() === '' ? '' : Number(draftRevenueMin.replace(/[^-\d]/g, '')) * 1000
@@ -1625,7 +1628,7 @@ export default function SearchPage() {
                                   const value = e.target.value.replace(/[^0-9-]/g, '')
                                   setDraftRevenueMin(value)
                                 }}
-                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
                               />
                             </div>
                             <div className="flex-1">
@@ -1638,7 +1641,7 @@ export default function SearchPage() {
                                   const value = e.target.value.replace(/[^0-9-]/g, '')
                                   setDraftRevenueMax(value)
                                 }}
-                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
                               />
                             </div>
                           </div>
@@ -1656,7 +1659,7 @@ export default function SearchPage() {
                                 const value = e.target.value.replace(/[^0-9-]/g, '')
                                 setDraftProfitMin(value)
                               }}
-                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
                             />
                           </div>
                           <div className="flex-1">
@@ -1669,7 +1672,7 @@ export default function SearchPage() {
                                 const value = e.target.value.replace(/[^0-9-]/g, '')
                                 setDraftProfitMax(value)
                               }}
-                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-white/40 text-sm"
+                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
                             />
                           </div>
                         </div>
@@ -1688,7 +1691,7 @@ export default function SearchPage() {
                       } else {
                         setSortBy(newValue)
                       }
-                    }} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-white/40">
+                    }} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
                       <option value="updatedAt">Last Updated</option>
                       <option value="name">Company Name</option>
                       <option value="revenue">Revenue (High to Low)</option>
@@ -1728,7 +1731,7 @@ export default function SearchPage() {
               )
             })()
           ) : (
-            <div className="mt-4 border-t border-white/10 divide-y divide-white/10">
+            <div className="mt-4 divide-y divide-white/10">
               {sortedData.map((business) => {
                 const org = business.orgNumber
                 const isWatched = watchlist.has(org)
@@ -1753,7 +1756,7 @@ export default function SearchPage() {
             return (
               <div className="mt-8">
                 {data.length < totalForPaging && (
-                  <button onClick={() => setOffset((prev) => prev + 100)} className="w-full px-4 py-2 border border-white/10 hover:bg-white/5 text-sm transition-colors duration-200">Load more</button>
+                  <button onClick={() => setOffset((prev) => prev + 100)} className="w-full px-4 py-2 border border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 text-sm transition-colors duration-200">Load more</button>
                 )}
               </div>
             )

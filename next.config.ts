@@ -15,7 +15,12 @@ const nextConfig = {
     ],
   },
   // Configure webpack to handle SVG imports as React components
-  webpack(config: any) {
+  webpack(config: any, { dev }: { dev: boolean }) {
+    // Disable filesystem cache in development to avoid noisy ENOENT pack.gz warnings
+    if (dev) {
+      config.cache = false
+    }
+
     config.module.rules.push({
       test: /\.svg$/,
       use: ['@svgr/webpack'],

@@ -11,7 +11,7 @@ type AutoChromeProps = {
 
 export default function AutoChrome({ children, title }: AutoChromeProps) {
   const pathname = usePathname()
-  const hideChrome = pathname?.startsWith('/auth/') || pathname === '/countdown'
+  const hideChrome = pathname?.startsWith('/auth/') || pathname === '/noaccess'
   const path = pathname || '/'
   const isDashboard = path === '/' || path === '/dashboard'
 
@@ -35,8 +35,12 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
     return name.charAt(0).toUpperCase() + name.slice(1)
   })()
 
+  const containerClass = hideChrome
+    ? 'h-[100dvh] min-h-0 overflow-hidden bg-black text-white flex flex-col'
+    : `min-h-screen bg-black text-white ${isDashboard ? '' : 'pb-20 md:pb-24'} flex flex-col`
+
   return (
-    <div className={`min-h-screen bg-black text-white ${isDashboard ? '' : 'pb-20 md:pb-24'} flex flex-col`}>
+    <div className={containerClass}>
       {!hideChrome && <TopBar title={computedTitle} />}
       <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
       {!hideChrome && (

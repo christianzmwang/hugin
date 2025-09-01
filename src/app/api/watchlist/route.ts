@@ -9,17 +9,21 @@ export const maxDuration = 15
 
 async function ensureTable() {
   if (!dbConfigured) return
-  await query(
-    `CREATE TABLE IF NOT EXISTS watchlist (
-      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-      user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      org_number TEXT NOT NULL,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      UNIQUE(user_id, org_number)
-    );`
-  )
-  await query(`CREATE INDEX IF NOT EXISTS watchlist_user_idx ON watchlist(user_id);`)
-  await query(`CREATE INDEX IF NOT EXISTS watchlist_org_idx ON watchlist(org_number);`)
+  try {
+    await query(
+      `CREATE TABLE IF NOT EXISTS watchlist (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        org_number TEXT NOT NULL,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        UNIQUE(user_id, org_number)
+      );`
+    )
+    await query(`CREATE INDEX IF NOT EXISTS watchlist_user_idx ON watchlist(user_id);`)
+    await query(`CREATE INDEX IF NOT EXISTS watchlist_org_idx ON watchlist(org_number);`)
+  } catch (e) {
+    // swallow to avoid breaking requests; callers gate on dbConfigured
+  }
 }
 
 

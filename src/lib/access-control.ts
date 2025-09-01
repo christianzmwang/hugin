@@ -1,7 +1,6 @@
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from './auth'
 import type { Session } from 'next-auth'
-import { isAllowedUser } from './constants'
 
 /**
  * Get the current authenticated session and check if user is allowed
@@ -21,8 +20,9 @@ export async function getAuthorizedSession(): Promise<Session | null> {
       return null
     }
     
-    // In production, enforce strict access control
-    if (process.env.NODE_ENV === 'production' && !isAllowedUser(session.user.email)) {
+    // Enforce access by DB flag (mainAccess) only
+    const hasDbAccess = Boolean((session.user as { mainAccess?: boolean }).mainAccess)
+    if (!hasDbAccess) {
       return null
     }
     

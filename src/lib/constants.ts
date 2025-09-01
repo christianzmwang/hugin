@@ -1,4 +1,5 @@
-// Client-safe constants that can be used in both client and server code
+// Client-safe constants. Note: In production, main access is controlled by users.main_access.
+// ALLOWED_USERS serves as a legacy/dev fallback only.
 export const ALLOWED_USERS = [
   'christian@allvitr.com',
   'lars@allvitr.com', 

@@ -50,21 +50,22 @@ export async function query<T = unknown>(
   let client: import('pg').PoolClient | null = null
   try {
     if (!pool) {
-      console.warn(
-        '[db] No database connection configured. Returning empty rows. Set POSTGRES_URL or POSTGRES_URL_NON_POOLING in the environment.',
+      const err = new Error(
+        '[db] No database connection configured. Ensure DATABASE_URL or DATABASE_POOLING_URL is set.'
       )
-      return { rows: [] as T[] }
+      ;(err as any).code = 'DB_NOT_CONFIGURED'
+      throw err
     }
     client = await pool.connect()
     const result = await client.query(text, params)
     return { rows: result.rows as T[] }
   } catch (error) {
-    // If the database is not available, avoid crashing the request
-    console.warn(
-      '[db] Query failed; returning empty rows. DB is disabled or unreachable.',
-      error,
-    )
-    return { rows: [] as T[] }
+    // Surface DB errors to callers so the UI can report connection issues
+    const e = error instanceof Error ? error : new Error('Unknown DB error')
+    if (!(e as any).code) {
+      ;(e as any).code = 'DB_QUERY_FAILED'
+    }
+    throw e
   } finally {
     if (client) client.release()
   }
