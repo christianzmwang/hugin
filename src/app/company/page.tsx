@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, Suspense } from 'react'
+import { useEffect, useState, Suspense, useRef, useCallback } from 'react'
 
 type Business = {
   orgNumber: string
@@ -197,6 +197,211 @@ function CompanyPageContent() {
     companiesWithEvents: number
   } | null>(null)
   const [recentlyViewed, setRecentlyViewed] = useState<Array<{ name: string; orgNumber: string }>>([])
+  const recentlyRef = useRef<HTMLDivElement | null>(null)
+  const [canScrollLeft, setCanScrollLeft] = useState(false)
+  const [canScrollRight, setCanScrollRight] = useState(false)
+  const [isDragging, setIsDragging] = useState(false)
+  const dragStateRef = useRef<{ startX: number; scrollLeft: number }>({ startX: 0, scrollLeft: 0 })
+  const dragMovedRef = useRef(false)
+  // Keep scroll buttons state in sync
+  const updateScrollButtons = useCallback(() => {
+    const el = recentlyRef.current
+    if (!el) return
+    setCanScrollLeft(el.scrollLeft > 0)
+    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  }, [])
+  // Momentum/inertia scrolling support
+  const momentumRef = useRef<{ raf: number | null; v: number; lastT: number | null } | null>(null)
+  const moveSamplesRef = useRef<Array<{ t: number; pos: number }>>([])
+
+  const cancelMomentum = useCallback(() => {
+    const m = momentumRef.current
+    if (m?.raf) cancelAnimationFrame(m.raf)
+    momentumRef.current = null
+  }, [])
+
+  const startMomentum = useCallback((initialV: number) => {
+    const el = recentlyRef.current
+    if (!el) return
+    if (!isFinite(initialV) || Math.abs(initialV) < 0.2) return // ignore tiny flings (px/ms)
+
+    cancelMomentum()
+    // Exponential friction: v1 = v0 * exp(-k*dt), dx = (v0 - v1)/k
+    const k = 0.0055 // friction coefficient per ms (lower -> longer glide)
+    const minV = 0.01 // stop threshold (px/ms)
+    const maxFrameMs = 40 // clamp to avoid large jumps on inactive tabs
+    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth)
+    let v = initialV
+    let lastT: number | null = null
+
+    const step = (t: number) => {
+      if (lastT == null) {
+        lastT = t
+        momentumRef.current = { raf: requestAnimationFrame(step), v, lastT }
+        return
+      }
+
+      let dt = t - lastT
+      if (dt <= 0 || !isFinite(dt)) dt = 16
+      if (dt > maxFrameMs) dt = maxFrameMs
+      lastT = t
+
+      // Compute frictional decay over dt
+      const friction = Math.exp(-k * dt)
+      const v1 = v * friction
+      const dx = (v - v1) / k
+      const next = el.scrollLeft + dx
+      if (next <= 0) {
+        el.scrollLeft = 0
+        cancelMomentum()
+        updateScrollButtons()
+        return
+      } else if (next >= maxScroll) {
+        el.scrollLeft = maxScroll
+        cancelMomentum()
+        updateScrollButtons()
+        return
+      } else {
+        el.scrollLeft = next
+      }
+
+      // Update velocity for next frame
+      v = v1
+
+      updateScrollButtons()
+
+      if (Math.abs(v) <= minV) {
+        cancelMomentum()
+        return
+      }
+
+      momentumRef.current = { raf: requestAnimationFrame(step), v, lastT }
+    }
+
+    momentumRef.current = { raf: requestAnimationFrame(step), v, lastT }
+  }, [cancelMomentum, updateScrollButtons])
+
+  
+
+  useEffect(() => {
+    // Recompute when list changes and on resize/scroll
+    const el = recentlyRef.current
+    if (!el) return
+    updateScrollButtons()
+    const onScroll = () => updateScrollButtons()
+    el.addEventListener('scroll', onScroll, { passive: true })
+    // Cancel momentum on wheel input
+    const onWheel = () => cancelMomentum()
+    el.addEventListener('wheel', onWheel, { passive: true })
+    const onResize = () => updateScrollButtons()
+    window.addEventListener('resize', onResize)
+    return () => {
+      el.removeEventListener('scroll', onScroll)
+      el.removeEventListener('wheel', onWheel)
+      window.removeEventListener('resize', onResize)
+    }
+  }, [recentlyViewed.length, updateScrollButtons, cancelMomentum])
+
+  const handleDragStart = (clientX: number) => {
+    const el = recentlyRef.current
+    if (!el) return
+    cancelMomentum() // any new interaction cancels momentum
+    setIsDragging(true)
+    dragStateRef.current = { startX: clientX, scrollLeft: el.scrollLeft }
+    dragMovedRef.current = false
+    // initialize velocity samples
+    moveSamplesRef.current = [{ t: performance.now(), pos: el.scrollLeft }]
+  }
+
+  const handleDragMove = (clientX: number) => {
+    if (!isDragging) return
+    const el = recentlyRef.current
+    if (!el) return
+    const dx = clientX - dragStateRef.current.startX
+    if (Math.abs(dx) > 5) dragMovedRef.current = true
+    el.scrollLeft = dragStateRef.current.scrollLeft - dx
+    updateScrollButtons()
+    // record sample for velocity
+    const now = performance.now()
+    moveSamplesRef.current.push({ t: now, pos: el.scrollLeft })
+    const cutoff = now - 200
+    while (moveSamplesRef.current.length > 2 && moveSamplesRef.current[0].t < cutoff) {
+      moveSamplesRef.current.shift()
+    }
+  }
+
+  const handleDragEnd = () => {
+    if (!isDragging) return
+    setIsDragging(false)
+    // compute fling velocity from recent samples (weighted over last 120-200ms)
+    const samples = moveSamplesRef.current
+    if (samples.length >= 2) {
+      const last = samples[samples.length - 1]
+      const minWindow = 120
+      let i = samples.length - 2
+      while (i > 0 && last.t - samples[i].t < minWindow) i--
+      const start = Math.max(0, i)
+      let sumW = 0
+      let sumV = 0
+      for (let j = start; j < samples.length - 1; j++) {
+        const a = samples[j]
+        const b = samples[j + 1]
+        const dt = Math.max(1, b.t - a.t)
+        const vSeg = (b.pos - a.pos) / dt
+        // weight recent segments higher
+        const w = 1 + (a.t - samples[start].t) / Math.max(1, last.t - samples[start].t)
+        sumW += w
+        sumV += vSeg * w
+      }
+      const v = sumW > 0 ? sumV / sumW : 0
+      if (dragMovedRef.current && Math.abs(v) > 0.2) {
+        startMomentum(v)
+      }
+    }
+    // small delay before enabling click again
+    setTimeout(() => { dragMovedRef.current = false }, 120)
+  }
+
+  useEffect(() => {
+    // While dragging, track movement and end events at window level
+    const onMouseMove = (e: MouseEvent) => handleDragMove(e.clientX)
+    const onMouseUp = () => handleDragEnd()
+    const onTouchMove = (e: TouchEvent) => {
+      const x = e.touches[0]?.clientX ?? 0
+      handleDragMove(x)
+    }
+    const onTouchEnd = () => handleDragEnd()
+
+    if (isDragging) {
+      window.addEventListener('mousemove', onMouseMove)
+      window.addEventListener('mouseup', onMouseUp)
+      window.addEventListener('touchmove', onTouchMove, { passive: true })
+      window.addEventListener('touchend', onTouchEnd)
+
+      // Prevent text selection and set grabbing cursor globally
+      const prevUserSelect = document.body.style.userSelect
+      const prevCursor = document.body.style.cursor
+      document.body.style.userSelect = 'none'
+      document.body.style.cursor = 'grabbing'
+
+      return () => {
+        window.removeEventListener('mousemove', onMouseMove)
+        window.removeEventListener('mouseup', onMouseUp)
+        window.removeEventListener('touchmove', onTouchMove)
+        window.removeEventListener('touchend', onTouchEnd)
+        document.body.style.userSelect = prevUserSelect
+        document.body.style.cursor = prevCursor
+      }
+    }
+    return () => {}
+  }, [isDragging])
+
+  const scrollByAmount = (delta: number) => {
+    const el = recentlyRef.current
+    if (!el) return
+    cancelMomentum()
+    el.scrollBy({ left: delta, behavior: 'smooth' })
+  }
 
   // Load recently viewed companies from localStorage
   useEffect(() => {
@@ -299,32 +504,45 @@ function CompanyPageContent() {
             }
           }
         } else {
-          // Fetch top company with events (original behavior)
-          const params = new URLSearchParams({
-            events: 'with',
-            sortBy: 'scoreDesc',
-            limit: '1'
-          })
-          
-          const response = await fetch(`/api/businesses?${params.toString()}`)
-          if (!response.ok) throw new Error('Failed to fetch companies')
-          
-          const data = await response.json()
-          const items = Array.isArray(data) ? data : data.items || []
-          
-          if (cancelled) return
-          
-          if (items.length > 0) {
-            const company = items[0] as Business
-            setTopCompany(company)
-            
-            // Fetch events for this company
-            if (company.orgNumber) {
+          // Try to load most recently viewed company from localStorage first
+          let lastViewedOrg: string | null = null
+          try {
+            const stored = localStorage.getItem('recentlyViewedCompanies')
+            if (stored) {
+              const parsed = JSON.parse(stored)
+              if (Array.isArray(parsed) && parsed[0]?.orgNumber) {
+                lastViewedOrg = String(parsed[0].orgNumber)
+              }
+            }
+          } catch {
+            // ignore localStorage errors and fall back
+          }
+
+          if (lastViewedOrg) {
+            // Fetch the most recently viewed company by orgNumber
+            const params = new URLSearchParams({
+              orgNumber: lastViewedOrg,
+              limit: '1'
+            })
+
+            const response = await fetch(`/api/businesses?${params.toString()}`)
+            if (!response.ok) throw new Error('Failed to fetch company')
+
+            const data = await response.json()
+            const items = Array.isArray(data) ? data : data.items || []
+
+            if (cancelled) return
+
+            if (items.length > 0) {
+              const company = items[0] as Business
+              setTopCompany(company)
+
+              // Fetch events for this company
               const eventsParams = new URLSearchParams({
                 orgNumber: company.orgNumber,
                 limit: '50'
               })
-              
+
               const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
               if (eventsResponse.ok) {
                 const eventsData = await eventsResponse.json()
@@ -333,10 +551,87 @@ function CompanyPageContent() {
                   setEvents(eventItems)
                 }
               }
+            } else {
+              // Fallback to original behavior if stored orgNumber not found
+              const params = new URLSearchParams({
+                events: 'with',
+                sortBy: 'scoreDesc',
+                limit: '1'
+              })
+
+              const response2 = await fetch(`/api/businesses?${params.toString()}`)
+              if (!response2.ok) throw new Error('Failed to fetch companies')
+
+              const data2 = await response2.json()
+              const items2 = Array.isArray(data2) ? data2 : data2.items || []
+
+              if (cancelled) return
+
+              if (items2.length > 0) {
+                const company2 = items2[0] as Business
+                setTopCompany(company2)
+
+                if (company2.orgNumber) {
+                  const eventsParams2 = new URLSearchParams({
+                    orgNumber: company2.orgNumber,
+                    limit: '50'
+                  })
+
+                  const eventsResponse2 = await fetch(`/api/events?${eventsParams2.toString()}`)
+                  if (eventsResponse2.ok) {
+                    const eventsData2 = await eventsResponse2.json()
+                    const eventItems2 = Array.isArray(eventsData2) ? eventsData2 : eventsData2.items || []
+                    if (!cancelled) {
+                      setEvents(eventItems2)
+                    }
+                  }
+                }
+              } else {
+                if (!cancelled) {
+                  setError('No companies with news events found')
+                }
+              }
             }
           } else {
-            if (!cancelled) {
-              setError('No companies with news events found')
+            // Fallback to original behavior: fetch top company with events
+            const params = new URLSearchParams({
+              events: 'with',
+              sortBy: 'scoreDesc',
+              limit: '1'
+            })
+
+            const response = await fetch(`/api/businesses?${params.toString()}`)
+            if (!response.ok) throw new Error('Failed to fetch companies')
+
+            const data = await response.json()
+            const items = Array.isArray(data) ? data : data.items || []
+
+            if (cancelled) return
+
+            if (items.length > 0) {
+              const company = items[0] as Business
+              setTopCompany(company)
+
+              // Fetch events for this company
+              if (company.orgNumber) {
+                const eventsParams = new URLSearchParams({
+                  orgNumber: company.orgNumber,
+                  limit: '50'
+                })
+
+                const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
+                if (eventsResponse.ok) {
+                  const eventsData = await eventsResponse.json()
+                  const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+                  if (!cancelled) {
+                    setEvents(eventItems)
+                  }
+                }
+              }
+            } else {
+              if (!cancelled) {
+                setError('No companies with news events found')
+              }
             }
           }
         }
@@ -546,11 +841,54 @@ function CompanyPageContent() {
           {/* Recently Viewed Companies */}
           {recentlyViewed.length > 0 && (
             <div className="flex-1 relative flex items-center min-w-0">
-              <div className="flex gap-2 overflow-x-auto scrollbar-hide pr-4 pl-4 w-full">
+              {/* Left/Right scroll arrows - always visible if scrollable */}
+      {(canScrollLeft || canScrollRight) && (
+                <>
+                  <button
+                    type="button"
+                    aria-label="Scroll left"
+                    onClick={() => !canScrollLeft ? undefined : scrollByAmount(-300)}
+        className={`absolute left-1 top-1/2 -translate-y-1/2 z-20 p-2 text-white transition-opacity ${canScrollLeft ? 'text-opacity-60 hover:text-opacity-90' : 'text-opacity-30 cursor-default pointer-events-none'}`}
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M15 6L9 12L15 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Scroll right"
+                    onClick={() => !canScrollRight ? undefined : scrollByAmount(300)}
+                    className={`absolute right-2 top-1/2 -translate-y-1/2 z-20 p-2 text-white transition-opacity ${canScrollRight ? 'text-opacity-60 hover:text-opacity-90' : 'text-opacity-30 cursor-default pointer-events-none'}`}
+                  >
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M9 6L15 12L9 18" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </button>
+                </>
+              )}
+
+              <div
+                ref={recentlyRef}
+                className={`flex gap-2 overflow-x-auto scrollbar-hide pr-8 pl-8 w-full ${isDragging ? 'select-none' : ''}`}
+                onMouseDown={(e) => handleDragStart(e.clientX)}
+                onMouseMove={(e) => handleDragMove(e.clientX)}
+                // keep dragging even when leaving the element; window listeners will manage it
+                onMouseLeave={() => { /* no-op to maintain drag */ }}
+                onTouchStart={(e) => handleDragStart(e.touches[0]?.clientX ?? 0)}
+                onTouchMove={(e) => handleDragMove(e.touches[0]?.clientX ?? 0)}
+                onTouchEnd={() => handleDragEnd()}
+              >
                 {recentlyViewed.map((company, idx) => (
                   <button
                     key={`${company.orgNumber}-${idx}`}
-                    onClick={() => handleCompanySelect(company.orgNumber)}
+                    onClick={(e: React.MouseEvent<HTMLButtonElement>) => {
+                      if (dragMovedRef.current) {
+                        e.preventDefault()
+                        e.stopPropagation()
+                        return
+                      }
+                      handleCompanySelect(company.orgNumber)
+                    }}
                     className="px-3 py-1 text-xs border border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60 transition-colors rounded-none whitespace-nowrap flex-shrink-0"
                     title={`${company.name} (${company.orgNumber})`}
                   >
@@ -559,9 +897,9 @@ function CompanyPageContent() {
                 ))}
               </div>
               {/* Fade effect on the left */}
-              <div className="absolute left-0 top-0 bottom-0 w-8 bg-gradient-to-r from-black to-transparent pointer-events-none"></div>
+              <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-black to-transparent pointer-events-none z-10"></div>
               {/* Fade effect on the right */}
-              <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black to-transparent pointer-events-none"></div>
+              <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black to-transparent pointer-events-none z-10"></div>
             </div>
           )}
         </div>
@@ -823,7 +1161,7 @@ function CompanyPageContent() {
                           )}
                           {event.score !== null && event.score !== undefined && (
                             <div className="text-xs text-gray-400 mt-1">
-                              Score: {numberFormatter.format(event.score)}
+                              Score: {numberFormatter.format(event.score as number)}
                             </div>
                           )}
                         </div>
