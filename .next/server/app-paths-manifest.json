@@ -1,9 +1,9 @@
 {
-  "/favicon.ico/route": "app/favicon.ico/route.js",
-  "/api/businesses/route": "app/api/businesses/route.js",
   "/api/events/route": "app/api/events/route.js",
-  "/company/page": "app/company/page.js",
-  "/search/page": "app/search/page.js",
+  "/api/watchlist/route": "app/api/watchlist/route.js",
+  "/api/businesses/route": "app/api/businesses/route.js",
   "/page": "app/page.js",
-  "/watchlist/page": "app/watchlist/page.js"
+  "/watchlist/page": "app/watchlist/page.js",
+  "/company/page": "app/company/page.js",
+  "/search/page": "app/search/page.js"
 }

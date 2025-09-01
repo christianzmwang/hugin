@@ -14,6 +14,7 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
   const hideChrome = pathname?.startsWith('/auth/') || pathname === '/noaccess'
   const path = pathname || '/'
   const isDashboard = path === '/' || path === '/dashboard'
+  const isCompany = path === '/company' || path.startsWith('/company/')
 
   const computedTitle = (() => {
     if (title) return title
@@ -37,7 +38,7 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
 
   const containerClass = hideChrome
     ? 'h-[100dvh] min-h-0 overflow-hidden bg-black text-white flex flex-col'
-    : `min-h-screen bg-black text-white ${isDashboard ? '' : 'pb-20 md:pb-24'} flex flex-col`
+    : `min-h-screen bg-black text-white ${isDashboard ? '' : (isCompany ? 'pb-8 md:pb-10' : 'pb-20 md:pb-24')} flex flex-col`
 
   return (
     <div className={containerClass}>
