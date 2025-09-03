@@ -8,6 +8,7 @@ type Business = {
   orgNumber: string
   name: string
   website: string | null
+  summary?: string | null
   employees: number | null
   addressStreet: string | null
   addressPostalCode: string | null
@@ -1686,7 +1687,10 @@ function CompanyPageContent() {
               <div className="flex justify-between items-start mb-6">
                 <div>
                   <h2 className="text-2xl font-semibold mb-2">{topCompany.name}</h2>
-                  </div>
+                  {topCompany.summary && (
+                    <p className="text-sm text-gray-300 max-w-3xl whitespace-pre-wrap">{topCompany.summary}</p>
+                  )}
+                </div>
                 {topCompany.website && topCompany.website.trim() && (
                   <a 
                     href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} 
