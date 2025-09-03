@@ -69,7 +69,14 @@ export async function POST(req: Request) {
   // Output schema responsibility is external (DeepSeek compose). Use if provided; otherwise omit.
   const outputSchema = providedOutputSchema || undefined
 
-    const payload: any = {
+    type TaskRunPayload = {
+      input: string
+      processor: CreateBody['processor']
+      metadata?: { kind: string; orgNumber?: string | null }
+      task_spec?: { output_schema: string }
+    }
+
+    const payload: TaskRunPayload = {
       input,
       processor,
       metadata: { kind: 'company-deep-research', orgNumber },
@@ -118,22 +125,22 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'Failed to create task run', code: 'upstream_error', details: text }, { status: 502 })
     }
 
-    const created = await createResp.json()
-    const runId: string | undefined = created?.run_id
+  const created: unknown = await createResp.json()
+  const runId: string | undefined = (created as { run_id?: string } | undefined)?.run_id
     if (!runId) {
       return NextResponse.json({ error: 'Missing run_id from Parallel' }, { status: 502 })
     }
 
     // Optionally do a short, bounded poll for quick completions
     const pollUntil = Date.now() + 10_000 // poll up to 10s
-    let result: any | null = null
+  let result: unknown | null = null
     while (Date.now() < pollUntil) {
       const res = await fetch(`${PARALLEL_BASE}/v1/tasks/runs/${encodeURIComponent(runId)}/result`, {
         headers: { 'x-api-key': process.env.PARALLEL_API_KEY },
         cache: 'no-store',
       })
       if (res.ok) {
-        result = await res.json()
+  result = (await res.json()) as unknown
         break
       }
       // small backoff

@@ -41,20 +41,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/businesses/route.js"
     ],
-    "/api/compose/route": [
+    "/_not-found/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/compose/route.js"
-    ],
-    "/api/parallel/research/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/parallel/research/route.js"
-    ],
-    "/api/translate/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/translate/route.js"
+      "static/chunks/app/_not-found/page.js"
     ]
   }
 }

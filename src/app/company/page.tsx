@@ -253,18 +253,18 @@ function renderResearchWithLinks(text: string) {
 }
 
 // Build a deduplicated list of citations from Parallel "basis" structure
-function extractCitationsFromBasis(basis: any): Array<{ title?: string; url?: string }> {
+function extractCitationsFromBasis(basis: unknown): Array<{ title?: string; url?: string }> {
   const out: Array<{ title?: string; url?: string }> = []
   const seen = new Set<string>()
   if (!basis || !Array.isArray(basis)) return out
-  for (const b of basis) {
-    const cites = b?.citations
+  for (const b of basis as Array<unknown>) {
+    const cites = (b as { citations?: unknown })?.citations as unknown
     if (!Array.isArray(cites)) continue
-    for (const c of cites) {
-      const url: string | undefined = c?.url
+    for (const c of cites as Array<unknown>) {
+      const url: string | undefined = (c as { url?: string })?.url
       if (url && !seen.has(url)) {
         seen.add(url)
-        out.push({ title: c?.title, url })
+        out.push({ title: (c as { title?: string })?.title, url })
       }
     }
   }
@@ -309,22 +309,25 @@ type StructuredResearch = {
 
 function coerceStructuredResearch(input: unknown): StructuredResearch | null {
   try {
-    let obj: any = input
+    let obj: unknown = input
     if (typeof input === 'string') {
       const trimmed = input.trim()
       if (!trimmed.startsWith('{')) return null
-      obj = JSON.parse(trimmed)
+      obj = JSON.parse(trimmed) as unknown
     }
     if (!obj || typeof obj !== 'object') return null
     // Normalize common keys case-insensitively
-    const lower: Record<string, any> = {}
-    for (const [k, v] of Object.entries(obj)) lower[String(k).toLowerCase()] = v
+    const lower: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(obj)) lower[String(k).toLowerCase()] = v as unknown
     const directAnswer = typeof lower['direct answer'] === 'string' ? lower['direct answer'] : undefined
-    const keyPoints = Array.isArray(lower['key points']) ? lower['key points'].filter((x: any) => typeof x === 'string') : undefined
+    const keyPoints = Array.isArray(lower['key points']) ? (lower['key points'] as unknown[]).filter((x: unknown) => typeof x === 'string') as string[] : undefined
     const sources = Array.isArray(lower['sources'])
-      ? lower['sources']
-          .map((s: any) => ({ title: s?.title, url: s?.url, accessed_at: s?.accessed_at }))
-          .filter((s: any) => s && (s.title || s.url))
+      ? (lower['sources'] as unknown[])
+          .map((s: unknown) => {
+            const ss = s as { title?: string; url?: string; accessed_at?: string }
+            return { title: ss?.title, url: ss?.url, accessed_at: ss?.accessed_at }
+          })
+          .filter((s: { title?: string; url?: string }) => Boolean(s && (s.title || s.url)))
       : undefined
     if (!directAnswer && !keyPoints && !sources) return null
     return { directAnswer, keyPoints, sources }
@@ -962,8 +965,11 @@ function CompanyPageContent() {
         if (res.ok) {
           const data = await res.json()
           if (token !== pollTokenRef.current) return
-          if (data.status === 'completed' && data.result) {
-            const contentAny: any = data.result?.output?.content ?? data.result?.output?.text ?? data.result?.output
+          const status = (data as { status?: string })?.status
+          const result = (data as { result?: unknown })?.result as unknown
+          if (status === 'completed' && result) {
+            const output = (result as { output?: unknown })?.output as unknown
+            const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
             if (contentAny !== undefined && contentAny !== null) {
               const structured = coerceStructuredResearch(contentAny)
               if (structured) {
@@ -990,7 +996,7 @@ function CompanyPageContent() {
                 }
               }
             }
-            const basis = data.result?.output?.basis
+            const basis = (output as { basis?: unknown })?.basis
             setResearchBasis(extractCitationsFromBasis(basis))
             setResearchStatus('completed')
             return
@@ -1082,14 +1088,16 @@ function CompanyPageContent() {
         const data = await runResp.json().catch(() => ({}))
         throw new Error(data?.error || 'Failed to start research')
       }
-      const runData = await runResp.json()
-      const runId: string | undefined = runData.runId
-      if (runId && (!runData.result || runResp.status === 202)) {
+  const runData: unknown = await runResp.json()
+  const runId: string | undefined = (runData as { runId?: string })?.runId
+  const result = (runData as { result?: unknown })?.result as unknown
+  if (runId && (!result || runResp.status === 202)) {
         setResearchRunId(runId)
         setResearchStatus('running')
         return
       }
-      const contentAny: any = runData.result?.output?.content ?? runData.result?.output?.text ?? runData.result?.output
+  const output = (result as { output?: unknown })?.output as unknown
+  const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
       if (contentAny === undefined || contentAny === null) throw new Error('Empty result')
       const structured = coerceStructuredResearch(contentAny)
       if (structured) {
@@ -1162,11 +1170,13 @@ function CompanyPageContent() {
       })
       if (!resp.ok) {
         const data = await resp.json().catch(() => ({}))
-      const contentAny: any = data.result?.output?.content ?? data.result?.output?.text ?? data.result?.output
       }
-      const data = await resp.json()
-      const inputStr: string = data.input
-      const outputSchemaStr: string = data.outputSchema
+  const data: unknown = await resp.json()
+  const inputStr: string = (data as { input: string }).input
+  const outputSchemaStr: string = (data as { outputSchema: string }).outputSchema
+      const contentAny: unknown = (data as { result?: { output?: { content?: unknown; text?: unknown } } })?.result?.output?.content ??
+        (data as { result?: { output?: { content?: unknown; text?: unknown } } })?.result?.output?.text ??
+        (data as { result?: { output?: unknown } })?.result?.output
       // Populate our editors: we split input back into blocks heuristically
       setOutputSchema(outputSchemaStr)
         // End Parallel timing and log
@@ -1481,13 +1491,18 @@ function CompanyPageContent() {
                 {(['base','pro','ultra'] as const).map((key, idx) => {
                   const selected = processor === key
                   const level = idx + 1 // 1,2,3 dots
+                  const costStr = processorMeta[key].cost
+                  const credits = (() => {
+                    const n = parseFloat(String(costStr).replace(/[^0-9.]/g, ''))
+                    return Number.isFinite(n) ? Math.round(n * 1000) : '?'
+                  })()
                   return (
                     <button
                       key={key}
                       type="button"
                       aria-pressed={selected}
                       onClick={() => setProcessor(key)}
-                      title={`Estimat: ${processorMeta[key].est} • Ca. kost: ${processorMeta[key].cost} / run`}
+                      title={`Estimert tid: ${processorMeta[key].est} • ${processorMeta[key].cost} × 1000 = ${credits} credits per question`}
           className={`px-3 h-full flex items-center ${
                         selected
                           ? 'bg-red-600/20 text-white border-red-600/60'
