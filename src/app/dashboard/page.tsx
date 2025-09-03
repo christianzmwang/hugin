@@ -84,7 +84,14 @@ export default function DashboardPage() {
           })
           if (businesses.length >= 10) break
         }
-        if (!cancelled) setRecentBusinesses(businesses)
+        // Filter out any items whose date is in the future relative to "now"
+        const now = Date.now()
+        const filtered = businesses.filter(b => {
+          if (!b.latestEventDate) return false
+          const t = Date.parse(b.latestEventDate)
+          return Number.isFinite(t) && t <= now
+        })
+        if (!cancelled) setRecentBusinesses(filtered)
       } catch (e: unknown) {
         if (!cancelled) {
           const message = e instanceof Error ? e.message : 'Failed to load news'
@@ -271,7 +278,20 @@ export default function DashboardPage() {
               {!newsLoading && !newsError && recentBusinesses.length > 0 && (
                 <ul className="divide-y divide-white/10">
                   {recentBusinesses.map((b) => (
-                    <li key={b.orgNumber} className="py-2 flex items-start justify-between gap-4">
+                    <li
+                      key={b.orgNumber}
+                      className="py-2 px-2 -mx-2 flex items-start justify-between gap-4 hover:bg-white/10 cursor-pointer"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(b.orgNumber)}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          router.push(`/company?orgNumber=${encodeURIComponent(b.orgNumber)}`)
+                        }
+                      }}
+                      title={`Open ${b.businessName}`}
+                    >
                       <div className="min-w-0">
                         <div className="text-sm font-medium text-white truncate">{b.businessName}</div>
                         {b.latestEventTitle && (
