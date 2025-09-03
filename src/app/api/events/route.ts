@@ -15,6 +15,7 @@ type EventItem = {
   url: string | null
   source: string | null
   date: string | null
+  created_at?: string | null
   // Raw score for this event from the database (can be null)
   score: number | null
   // Added for dashboard News section
@@ -50,6 +51,7 @@ function mapToClientItem(row: PublicEventWithName): EventItem {
     url: row.source_url,
     source: row.event_type,
   date: row.date,
+  created_at: row.created_at,
   score: row.score,
   orgNumber: row.org_number || null,
   businessName: row.business_name || null,
@@ -87,7 +89,8 @@ export async function GET(req: Request) {
       let baseQuery = `SELECT e.*, m.name AS business_name
 				 FROM public.events_public e
 				 LEFT JOIN public.business_filter_matrix m ON m.org_number = e.org_number
-				 WHERE e.org_number = $1`
+         WHERE e.org_number = $1
+           AND (e.date IS NULL OR e.date <= NOW()::date)`
               const queryParams: (string | number | string[])[] = [orgNumber]
       
       if (eventTypes.length > 0) {
@@ -110,10 +113,11 @@ export async function GET(req: Request) {
     // Without orgNumber: latest events overall from the view
     const view = await query<PublicEventWithName>(
       `SELECT e.*, m.name AS business_name
-			 FROM public.events_public e
-			 LEFT JOIN public.business_filter_matrix m ON m.org_number = e.org_number
-			 ORDER BY e.date DESC NULLS LAST, e.created_at DESC
-			 LIMIT $1`,
+       FROM public.events_public e
+       LEFT JOIN public.business_filter_matrix m ON m.org_number = e.org_number
+       WHERE (e.date IS NULL OR e.date <= NOW()::date)
+       ORDER BY e.date DESC NULLS LAST, e.created_at DESC
+       LIMIT $1`,
       [limit],
     )
     let rows = view.rows

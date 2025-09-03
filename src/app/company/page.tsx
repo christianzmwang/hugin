@@ -765,7 +765,13 @@ function CompanyPageContent() {
                          const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
              if (eventsResponse.ok) {
                const eventsData = await eventsResponse.json()
-               const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+               const rawItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+               const now = Date.now()
+               const eventItems = (rawItems as EventItem[]).filter(e => {
+                 if (!e?.date) return true
+                 const t = Date.parse(String(e.date))
+                 return Number.isFinite(t) && t <= now
+               })
                if (!cancelled) {
                  setEvents(eventItems)
                }
@@ -818,7 +824,13 @@ function CompanyPageContent() {
               const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
               if (eventsResponse.ok) {
                 const eventsData = await eventsResponse.json()
-                const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+                const rawItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+                const now = Date.now()
+                const eventItems = (rawItems as EventItem[]).filter(e => {
+                  if (!e?.date) return true
+                  const t = Date.parse(String(e.date))
+                  return Number.isFinite(t) && t <= now
+                })
                 if (!cancelled) {
                   setEvents(eventItems)
                 }
@@ -852,7 +864,13 @@ function CompanyPageContent() {
                   const eventsResponse2 = await fetch(`/api/events?${eventsParams2.toString()}`)
                   if (eventsResponse2.ok) {
                     const eventsData2 = await eventsResponse2.json()
-                    const eventItems2 = Array.isArray(eventsData2) ? eventsData2 : eventsData2.items || []
+                    const rawItems2 = Array.isArray(eventsData2) ? eventsData2 : eventsData2.items || []
+                    const now2 = Date.now()
+                    const eventItems2 = (rawItems2 as EventItem[]).filter(e => {
+                      if (!e?.date) return true
+                      const t = Date.parse(String(e.date))
+                      return Number.isFinite(t) && t <= now2
+                    })
                     if (!cancelled) {
                       setEvents(eventItems2)
                     }
@@ -894,7 +912,13 @@ function CompanyPageContent() {
                 const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
                 if (eventsResponse.ok) {
                   const eventsData = await eventsResponse.json()
-                  const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+                  const rawItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+                  const now = Date.now()
+                  const eventItems = (rawItems as EventItem[]).filter(e => {
+                    if (!e?.date) return true
+                    const t = Date.parse(String(e.date))
+                    return Number.isFinite(t) && t <= now
+                  })
                   if (!cancelled) {
                     setEvents(eventItems)
                   }
@@ -1398,7 +1422,13 @@ function CompanyPageContent() {
         const eventsResponse = await fetch(`/api/events?${eventsParams.toString()}`)
         if (eventsResponse.ok) {
           const eventsData = await eventsResponse.json()
-          const eventItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+          const rawItems = Array.isArray(eventsData) ? eventsData : eventsData.items || []
+          const now = Date.now()
+          const eventItems = (rawItems as EventItem[]).filter(e => {
+            if (!e?.date) return true
+            const t = Date.parse(String(e.date))
+            return Number.isFinite(t) && t <= now
+          })
           setEvents(eventItems)
         }
       }
@@ -1842,7 +1872,7 @@ function CompanyPageContent() {
             </div>
 
             {/* Events Section */}
-            <div className="border border-white/10 p-6 mb-8">
+            <div className="border border-white/10 p-6 mb-8 overflow-x-hidden">
               <h3 className="text-xl font-semibold mb-4">Siste nyheter og hendelser</h3>
               {events.length === 0 ? (
                 <div className="text-gray-400">Ingen hendelser tilgjengelig</div>
@@ -1851,12 +1881,12 @@ function CompanyPageContent() {
                   {events.map((event, idx) => (
                     <div key={(event.id ?? idx) as React.Key} className="border border-white/10 p-4">
                       <div className="flex justify-between items-start gap-4">
-                        <div className="flex-1">
-                          <h4 className="font-medium text-white mb-2">
+                        <div className="flex-1 min-w-0">
+                          <h4 className="font-medium text-white mb-2 break-words">
                             {event.title || 'Untitled event'}
                           </h4>
                           {event.description && (
-                            <p className="text-gray-300 text-sm mb-3 leading-relaxed">
+                            <p className="text-gray-300 text-sm mb-3 leading-relaxed break-words break-all overflow-x-hidden">
                               {event.description}
                             </p>
                           )}
@@ -1865,13 +1895,13 @@ function CompanyPageContent() {
                               href={event.url} 
                               target="_blank" 
                               rel="noreferrer"
-                              className="text-sky-400 hover:text-sky-300 underline text-sm"
+                              className="text-sky-400 hover:text-sky-300 underline text-sm break-all inline-block max-w-full overflow-x-hidden"
                             >
                               Les mer
                             </a>
                           )}
                         </div>
-                        <div className="text-right flex-shrink-0">
+                        <div className="text-right flex-shrink-0 max-w-[40%] break-words">
                           <div className="text-xs text-gray-400 mb-2">
                             {formatEventDate(event.date)}
                           </div>

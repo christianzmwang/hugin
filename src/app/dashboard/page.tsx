@@ -17,7 +17,8 @@ export default function DashboardPage() {
       businessName: string
       latestEventTitle: string | null
       latestEventDate: string | null
-      url: string | null
+  url: string | null
+  created_at?: string | null
     }[]
   >([])
   const { items: watchlistItems, isLoading: watchlistLoading, error: watchlistError, remove: removeWatchlistItem } = useWatchlist({ limit: 20 })
@@ -48,7 +49,7 @@ export default function DashboardPage() {
         const res = await fetch(`/api/events?limit=60`, { cache: 'no-store' })
         if (!res.ok) throw new Error('Failed to load events')
         const json: unknown = await res.json()
-        const rows: unknown[] = Array.isArray(json)
+  const rows: unknown[] = Array.isArray(json)
           ? json
           : (typeof json === 'object' && json !== null && Array.isArray((json as Record<string, unknown>)['items'])
             ? ((json as Record<string, unknown>)['items'] as unknown[])
@@ -87,8 +88,9 @@ export default function DashboardPage() {
         // Filter out any items whose date is in the future relative to "now"
         const now = Date.now()
         const filtered = businesses.filter(b => {
-          if (!b.latestEventDate) return false
-          const t = Date.parse(b.latestEventDate)
+          const raw = b.latestEventDate
+          if (!raw) return false
+          const t = Date.parse(String(raw))
           return Number.isFinite(t) && t <= now
         })
         if (!cancelled) setRecentBusinesses(filtered)
@@ -264,7 +266,7 @@ export default function DashboardPage() {
 
         <div className="min-h-0 flex flex-col">
           <h2 className="text-lg font-semibold mb-2">News</h2>
-          <div className="mt-2 max-h-[34vh] overflow-y-auto pr-1">
+          <div className="mt-2 max-h-[34vh] overflow-y-auto overflow-x-hidden pr-1">
 
               {newsLoading && (
                 <div className="text-sm text-gray-400">Loading latest company events…</div>
@@ -280,7 +282,7 @@ export default function DashboardPage() {
                   {recentBusinesses.map((b) => (
                     <li
                       key={b.orgNumber}
-                      className="py-2 px-2 -mx-2 flex items-start justify-between gap-4 hover:bg-white/10 cursor-pointer"
+                      className="py-2 px-2 -mx-2 flex items-start justify-between gap-4 hover:bg-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/30"
                       role="button"
                       tabIndex={0}
                       onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(b.orgNumber)}`)}
@@ -310,7 +312,7 @@ export default function DashboardPage() {
 
         <div className="min-h-0 flex flex-col">
           <h2 className="text-lg font-semibold mb-2">Watchlist</h2>
-          <div className="mt-2 max-h-[34vh] overflow-y-auto pr-1">
+          <div className="mt-2 max-h-[34vh] overflow-y-auto overflow-x-hidden pr-1">
             {watchlistLoading && (
               <div className="text-sm text-gray-400">Loading watchlist…</div>
             )}
@@ -323,14 +325,34 @@ export default function DashboardPage() {
             {!watchlistLoading && !watchlistError && watchlistItems && watchlistItems.length > 0 && (
               <ul className="divide-y divide-white/10">
                 {watchlistItems.map((it) => (
-                  <li key={it.orgNumber} className="py-2 flex items-center justify-between gap-3">
+                  <li
+                    key={it.orgNumber}
+                    className="py-2 px-2 -mx-2 flex items-start justify-between gap-4 hover:bg-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/30"
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(it.orgNumber)}`)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' || e.key === ' ') {
+                        e.preventDefault()
+                        router.push(`/company?orgNumber=${encodeURIComponent(it.orgNumber)}`)
+                      }
+                    }}
+                    title={`Open ${it.name || 'Unnamed company'}`}
+                  >
                     <div className="min-w-0">
                       <div className="text-sm font-medium text-white truncate">{it.name || 'Unnamed company'}</div>
                       <div className="text-xs text-gray-400 truncate">{it.orgNumber}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <a className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10" href={`/company?orgNumber=${encodeURIComponent(it.orgNumber)}`}>Open</a>
-                      <button className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10" onClick={() => removeWatchlistItem(it.orgNumber)}>Remove</button>
+                      <button
+                        className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          removeWatchlistItem(it.orgNumber)
+                        }}
+                      >
+                        Remove
+                      </button>
                     </div>
                   </li>
                 ))}
