@@ -17,8 +17,6 @@ type ComposeBody = {
 const MODEL_ORDER = [
   'tngtech/deepseek-r1t2-chimera:free',
   'tngtech/deepseek-r1t-chimera:free',
-  'deepseek/deepseek-chat-v3.1:free',
-  'deepseek/deepseek-chat-v3-0324:free',
   'openai/gpt-5-mini',
   'google/gemini-2.5-flash',
 ]
