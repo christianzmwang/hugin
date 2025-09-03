@@ -180,12 +180,272 @@ function formatEventDate(dateValue: unknown): string {
   }
 }
 
+// Render research text, converting bracketed citations like [1] and a final Sources list to links
+function renderResearchWithLinks(text: string) {
+  // Split into main content and sources section by common headers
+  const parts = text.split(/\n+\s*(Sources|Kilder)\s*:?/i)
+  let body = text
+  let sourcesBlock = ''
+  if (parts.length >= 3) {
+    body = parts[0]
+    sourcesBlock = parts.slice(2).join('\n') // capture after header
+  }
+
+  // Parse sources into a map: index -> url
+  const sourceMap = new Map<number, { title?: string; url?: string }>()
+  if (sourcesBlock) {
+    const lines = sourcesBlock.split(/\n+/)
+    for (const line of lines) {
+      // Patterns like: [1] Title - https://example.com
+      const m = line.match(/^\s*\[(\d+)\]\s*(.*?)\s*-\s*(https?:\/\/\S+)/i)
+      if (m) {
+        const idx = Number(m[1])
+        sourceMap.set(idx, { title: m[2]?.trim(), url: m[3] })
+        continue
+      }
+      // Or: 1. https://example.com
+      const m2 = line.match(/^\s*(\d+)[\).]\s*(https?:\/\/\S+)/)
+      if (m2) {
+        const idx = Number(m2[1])
+        sourceMap.set(idx, { url: m2[2] })
+      }
+    }
+  }
+
+  // Replace inline [n] with links if present in sourceMap
+  const linkedBody = body.split(/(\[\d+\])/).map((chunk, i) => {
+    const m = chunk.match(/^\[(\d+)\]$/)
+    if (m) {
+      const idx = Number(m[1])
+      const src = sourceMap.get(idx)
+      if (src?.url) {
+        return (
+          <a key={`cite-${i}`} href={src.url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">[{idx}]</a>
+        )
+      }
+    }
+    return <span key={`t-${i}`}>{chunk}</span>
+  })
+
+  return (
+    <div>
+      <div className="whitespace-pre-wrap">{linkedBody}</div>
+      {sourceMap.size > 0 && (
+        <div className="mt-4">
+          <div className="text-sm text-gray-300 font-semibold mb-2">Kilder</div>
+          <ul className="list-decimal list-inside space-y-1">
+            {Array.from(sourceMap.entries()).map(([idx, meta]) => (
+              <li key={idx}>
+                {meta.url ? (
+                  <a href={meta.url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">
+                    {meta.title ? `${meta.title} — ${meta.url}` : meta.url}
+                  </a>
+                ) : (
+                  <span>{meta.title || `[${idx}]`}</span>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// Build a deduplicated list of citations from Parallel "basis" structure
+function extractCitationsFromBasis(basis: any): Array<{ title?: string; url?: string }> {
+  const out: Array<{ title?: string; url?: string }> = []
+  const seen = new Set<string>()
+  if (!basis || !Array.isArray(basis)) return out
+  for (const b of basis) {
+    const cites = b?.citations
+    if (!Array.isArray(cites)) continue
+    for (const c of cites) {
+      const url: string | undefined = c?.url
+      if (url && !seen.has(url)) {
+        seen.add(url)
+        out.push({ title: c?.title, url })
+      }
+    }
+  }
+  return out
+}
+
+function renderResearchWithLinksAndBasis(text: string, basisCitations: Array<{ title?: string; url?: string }>) {
+  const hasInlineBrackets = /\[\d+\]/.test(text)
+  const hasSourcesHeader = /\n\s*(Sources|Kilder)\s*:?/i.test(text)
+  const content = renderResearchWithLinks(text)
+  if (hasInlineBrackets || hasSourcesHeader || !basisCitations?.length) return content
+  // Append sources from basis if the text itself lacks citations and no sources section exists
+  return (
+    <div>
+      {content}
+      <div className="mt-4">
+        <div className="text-sm text-gray-300 font-semibold mb-2">Kilder</div>
+        <ul className="list-decimal list-inside space-y-1">
+          {basisCitations.map((c, idx) => (
+            <li key={c.url || `${idx}`}>
+              {c.url ? (
+                <a href={c.url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">
+                  {c.title ? `${c.title} — ${c.url}` : c.url}
+                </a>
+              ) : (
+                <span>{c.title || ''}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
+
+// Structured research object support for Compose/Parallel outputs
+type StructuredResearch = {
+  directAnswer?: string
+  keyPoints?: string[]
+  sources?: Array<{ title?: string; url?: string; accessed_at?: string }>
+}
+
+function coerceStructuredResearch(input: unknown): StructuredResearch | null {
+  try {
+    let obj: any = input
+    if (typeof input === 'string') {
+      const trimmed = input.trim()
+      if (!trimmed.startsWith('{')) return null
+      obj = JSON.parse(trimmed)
+    }
+    if (!obj || typeof obj !== 'object') return null
+    // Normalize common keys case-insensitively
+    const lower: Record<string, any> = {}
+    for (const [k, v] of Object.entries(obj)) lower[String(k).toLowerCase()] = v
+    const directAnswer = typeof lower['direct answer'] === 'string' ? lower['direct answer'] : undefined
+    const keyPoints = Array.isArray(lower['key points']) ? lower['key points'].filter((x: any) => typeof x === 'string') : undefined
+    const sources = Array.isArray(lower['sources'])
+      ? lower['sources']
+          .map((s: any) => ({ title: s?.title, url: s?.url, accessed_at: s?.accessed_at }))
+          .filter((s: any) => s && (s.title || s.url))
+      : undefined
+    if (!directAnswer && !keyPoints && !sources) return null
+    return { directAnswer, keyPoints, sources }
+  } catch {
+    return null
+  }
+}
+
+function renderStructuredResearch(data: StructuredResearch) {
+  const { directAnswer, keyPoints, sources } = data
+  const sourceMap = new Map<number, { title?: string; url?: string }>()
+  if (Array.isArray(sources)) {
+    sources.forEach((s, idx) => sourceMap.set(idx + 1, { title: s?.title, url: s?.url }))
+  }
+  const linkify = (text: string) =>
+    text.split(/(\[\d+\])/).map((chunk, i) => {
+      const m = chunk.match(/^\[(\d+)\]$/)
+      if (m) {
+        const idx = Number(m[1])
+        const src = sourceMap.get(idx)
+        if (src?.url) {
+          return (
+            <a key={`cite-s-${i}`} href={src.url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">[{idx}]</a>
+          )
+        }
+      }
+      return <span key={`s-${i}`}>{chunk}</span>
+    })
+
+  return (
+    <div>
+      {directAnswer && (
+        <div className="mb-4 whitespace-pre-wrap">{linkify(directAnswer)}</div>
+      )}
+      {Array.isArray(keyPoints) && keyPoints.length > 0 && (
+        <ul className="list-disc list-inside space-y-1">
+          {keyPoints.map((kp, i) => (
+            <li key={`kp-${i}`} className="whitespace-pre-wrap">{linkify(kp)}</li>
+          ))}
+        </ul>
+      )}
+      {Array.isArray(sources) && sources.length > 0 && (
+        <div className="mt-4">
+          <div className="text-sm text-gray-300 font-semibold mb-2">Kilder</div>
+          <ul className="list-decimal list-inside space-y-1">
+            {sources.map((s, idx) => (
+              <li key={s.url || `${idx}`}>
+                {s.url ? (
+                  <a href={s.url} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">
+                    {s.title ? `${s.title} — ${s.url}` : s.url}
+                  </a>
+                ) : (
+                  <span>{s.title || ''}</span>
+                )}
+                {s.accessed_at ? <span className="text-xs text-gray-400 ml-2">({s.accessed_at})</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function CompanyPageContent() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
   const [topCompany, setTopCompany] = useState<Business | null>(null)
   const [events, setEvents] = useState<EventItem[]>([])
+  // Parallel research state
+  const [researchRunId, setResearchRunId] = useState<string | null>(null)
+  const [researchStatus, setResearchStatus] = useState<'idle' | 'queued' | 'running' | 'completed' | 'error'>('idle')
+  const [researchText, setResearchText] = useState<string>('')
+  const [researchStructured, setResearchStructured] = useState<StructuredResearch | null>(null)
+  const [translatedResearchText, setTranslatedResearchText] = useState<string>('')
+  const [researchBasis, setResearchBasis] = useState<Array<{ title?: string; url?: string }>>([])
+  const [researchError, setResearchError] = useState<string | null>(null)
+  const pollTokenRef = useRef(0)
+  const [processor, setProcessor] = useState<'lite' | 'base' | 'core' | 'pro' | 'ultra'>('pro')
+  const [customInput, setCustomInput] = useState<string>('')
+  // Optional editable block describing the current company (replaces auto Company/Org/Website)
+  const [companyInput, setCompanyInput] = useState<string>('')
+  // Prompt describing the research request
+  const [prompt, setPrompt] = useState<string>('')
+  const [outputSchema, setOutputSchema] = useState<string>(
+    'Write a concise, decision-useful research brief on the company above.\n' +
+    'Include: overview, products/services, customers and markets, competitive moat, risks, recent developments (last 12 months), notable partnerships, competition, and 3-6 actionable insights.\n' +
+    'Keep it 8-14 bullet points, neutral tone. Use Norwegian if the company is Norwegian. Always include citations inline [n] and return a final Sources list.'
+  )
+  const outputPresets: Array<{ key: string; label: string; value: string }> = [
+    {
+      key: 'brief_citations',
+      label: 'Research brief (with [n] citations + Sources)',
+      value:
+        'Write a concise, decision-useful research brief on the company above.\n' +
+        'Include: overview, products/services, customers and markets, competitive moat, risks, recent developments (last 12 months), notable partnerships, competition, and 3-6 actionable insights.\n' +
+        'Keep it 8-14 bullet points, neutral tone. Use Norwegian if the company is Norwegian. Always include citations inline [n] and return a final Sources list.',
+    },
+    {
+      key: 'well_structured_text',
+      label: 'Well-structured text with citations',
+      value: 'Answer the question in well-structured text with citations.',
+    },
+  ]
+  const [outputPreset, setOutputPreset] = useState<string>('brief_citations')
+  // Timing metrics
+  const [researchStartedAt, setResearchStartedAt] = useState<number | null>(null)
+  const [composeStartedAt, setComposeStartedAt] = useState<number | null>(null)
+  const [composeMs, setComposeMs] = useState<number | null>(null)
+  const [parallelStartedAt, setParallelStartedAt] = useState<number | null>(null)
+  const [parallelMs, setParallelMs] = useState<number | null>(null)
+  
+
+  const processorMeta: Record<string, { label: string; est: string; cost: string }> = {
+    lite: { label: 'Lite', est: '5s–60s', cost: '$0.005' },
+    base: { label: 'Base', est: '15s–100s', cost: '$0.01' },
+    core: { label: 'Core', est: '60s–5m', cost: '$0.05' },
+    pro: { label: 'Pro', est: '3–9m', cost: '$0.10' },
+    ultra: { label: 'Ultra', est: '5–25m', cost: '$0.30' },
+  }
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
@@ -203,6 +463,15 @@ function CompanyPageContent() {
   const [isDragging, setIsDragging] = useState(false)
   const dragStateRef = useRef<{ startX: number; scrollLeft: number }>({ startX: 0, scrollLeft: 0 })
   const dragMovedRef = useRef(false)
+  // Auto-growing prompt textarea
+  const promptRef = useRef<HTMLTextAreaElement | null>(null)
+  const autoResizePrompt = useCallback(() => {
+    const el = promptRef.current
+    if (!el) return
+    el.style.height = '0px'
+    const maxPx = 160 // cap growth
+    el.style.height = Math.min(el.scrollHeight, maxPx) + 'px'
+  }, [])
   // Keep scroll buttons state in sync
   const updateScrollButtons = useCallback(() => {
     const el = recentlyRef.current
@@ -653,6 +922,281 @@ function CompanyPageContent() {
     }
   }, [status, searchParams])
 
+  // Keep companyInput prefilled with current company by default (editable)
+  useEffect(() => {
+    if (!topCompany) return
+    // Only prefill when empty to avoid overwriting user edits
+    setCompanyInput(prev => {
+      if (prev && prev.trim()) return prev
+      const lines = [
+        `Company: ${topCompany.name}`,
+        topCompany.orgNumber ? `Org number: ${topCompany.orgNumber}` : undefined,
+        topCompany.website ? `Website: ${topCompany.website}` : undefined,
+      ].filter(Boolean)
+      return lines.join('\n')
+    })
+  }, [topCompany])
+
+  // Load business context from Configuration (localStorage) once on mount
+  useEffect(() => {
+    try {
+      const bc = localStorage.getItem('businessContext')
+      if (bc && typeof bc === 'string') {
+        setCustomInput(bc)
+      }
+    } catch {
+      // ignore
+    }
+  }, [])
+
+  // Poll for research result when queued/running
+  useEffect(() => {
+    let timer: number | null = null
+    const token = pollTokenRef.current
+    const poll = async () => {
+      // If a new run started, abort this poll loop
+      if (token !== pollTokenRef.current) return
+      if (!researchRunId) return
+      try {
+        const res = await fetch(`/api/parallel/research?runId=${encodeURIComponent(researchRunId)}`, { cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json()
+          if (token !== pollTokenRef.current) return
+          if (data.status === 'completed' && data.result) {
+            const contentAny: any = data.result?.output?.content ?? data.result?.output?.text ?? data.result?.output
+            if (contentAny !== undefined && contentAny !== null) {
+              const structured = coerceStructuredResearch(contentAny)
+              if (structured) {
+                setResearchStructured(structured)
+                setResearchText('')
+                setTranslatedResearchText('')
+              } else {
+                const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
+                setResearchText(englishText)
+                try {
+                  const tr = await fetch('/api/translate', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: prompt }),
+                  })
+                  if (tr.ok) {
+                    const trData = await tr.json()
+                    setTranslatedResearchText(String(trData.text || ''))
+                  } else {
+                    setTranslatedResearchText('')
+                  }
+                } catch {
+                  setTranslatedResearchText('')
+                }
+              }
+            }
+            const basis = data.result?.output?.basis
+            setResearchBasis(extractCitationsFromBasis(basis))
+            setResearchStatus('completed')
+            return
+          }
+          // still queued
+          setResearchStatus('running')
+        } else if (res.status === 202) {
+          setResearchStatus('running')
+        } else {
+          setResearchStatus('error')
+          setResearchError('Failed to get research status')
+        }
+      } catch (e) {
+        setResearchStatus('error')
+        setResearchError('Research polling failed')
+      }
+      timer = window.setTimeout(poll, 2500)
+    }
+    if (researchRunId && (researchStatus === 'queued' || researchStatus === 'running')) {
+      poll()
+    }
+    return () => {
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [researchRunId, researchStatus])
+
+  const triggerResearch = async () => {
+    if (!topCompany) return
+    pollTokenRef.current += 1
+    setResearchError(null)
+    setResearchRunId(null)
+    setResearchBasis([])
+    setResearchText('')
+  setResearchStructured(null)
+  // reset timing and start total timer
+  setResearchStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
+  setComposeStartedAt(null)
+  setComposeMs(null)
+  setParallelStartedAt(null)
+  setParallelMs(null)
+    setResearchStatus('queued')
+    await composeRunTranslate()
+  }
+
+  const composeRunTranslate = async () => {
+    if (!topCompany) return
+    try {
+      // Start AI (compose) timing
+      setComposeStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
+      const composeResp = await fetch('/api/compose', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt,
+          businessContext: customInput || undefined,
+          companyBlock: companyInput || undefined,
+          processor,
+        }),
+      })
+      if (!composeResp.ok) {
+        const data = await composeResp.json().catch(() => ({}))
+        throw new Error(data?.error || 'Compose failed')
+      }
+      const composeData = await composeResp.json()
+      // End AI timing
+      setComposeMs((prev) => {
+        const start = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+        const s = composeStartedAt ?? start
+        return Math.max(0, start - s)
+      })
+      const inputStr: string = composeData.input
+      const outputSchemaStr: string = composeData.outputSchema
+
+      const runResp = await fetch('/api/parallel/research', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          companyName: topCompany.name,
+          website: topCompany.website,
+          orgNumber: topCompany.orgNumber,
+          processor,
+          input: inputStr,
+          outputSchema: outputSchemaStr,
+        }),
+      })
+      // Start Parallel timing (from POST request start)
+      setParallelStartedAt((typeof performance !== 'undefined' ? performance.now() : Date.now()))
+      if (!runResp.ok && runResp.status !== 202) {
+        const data = await runResp.json().catch(() => ({}))
+        throw new Error(data?.error || 'Failed to start research')
+      }
+      const runData = await runResp.json()
+      const runId: string | undefined = runData.runId
+      if (runId && (!runData.result || runResp.status === 202)) {
+        setResearchRunId(runId)
+        setResearchStatus('running')
+        return
+      }
+      const contentAny: any = runData.result?.output?.content ?? runData.result?.output?.text ?? runData.result?.output
+      if (contentAny === undefined || contentAny === null) throw new Error('Empty result')
+      const structured = coerceStructuredResearch(contentAny)
+      if (structured) {
+        setResearchStructured(structured)
+        setResearchText('')
+        setTranslatedResearchText('')
+        // End Parallel timing and log summary
+        const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+        const pStart = parallelStartedAt ?? end
+        const pMs = Math.max(0, end - pStart)
+        setParallelMs(pMs)
+        setResearchStatus('completed')
+        const totalStart = researchStartedAt ?? end
+        const totalMs = Math.max(0, end - totalStart)
+        const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
+        try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
+      } else {
+        const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
+        const tr = await fetch('/api/translate', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: prompt }),
+        })
+        if (!tr.ok) {
+          setResearchText(englishText)
+          setTranslatedResearchText('')
+          // End Parallel timing and log summary
+          const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+          const pStart = parallelStartedAt ?? end
+          const pMs = Math.max(0, end - pStart)
+          setParallelMs(pMs)
+          setResearchStatus('completed')
+          const totalStart = researchStartedAt ?? end
+          const totalMs = Math.max(0, end - totalStart)
+          const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
+          try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
+          return
+        }
+        const trData = await tr.json()
+        setResearchText(englishText)
+        setTranslatedResearchText(String(trData.text || ''))
+        // End Parallel timing and log summary
+        const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+        const pStart = parallelStartedAt ?? end
+        const pMs = Math.max(0, end - pStart)
+        setParallelMs(pMs)
+        setResearchStatus('completed')
+        const totalStart = researchStartedAt ?? end
+        const totalMs = Math.max(0, end - totalStart)
+        const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
+        try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
+      }
+    } catch (e) {
+      setResearchStatus('error')
+      setResearchError(e instanceof Error ? e.message : 'Compose/Run/Translate failed')
+    }
+  }
+
+  const designPromptAndSchema = async () => {
+    try {
+      const resp = await fetch('/api/compose', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          prompt: (typeof window !== 'undefined' ? (document.querySelector('#research-prompt') as HTMLTextAreaElement | null)?.value : undefined) || prompt,
+          businessContext: customInput || undefined,
+          companyBlock: companyInput || undefined,
+          processor,
+        }),
+      })
+      if (!resp.ok) {
+        const data = await resp.json().catch(() => ({}))
+      const contentAny: any = data.result?.output?.content ?? data.result?.output?.text ?? data.result?.output
+      }
+      const data = await resp.json()
+      const inputStr: string = data.input
+      const outputSchemaStr: string = data.outputSchema
+      // Populate our editors: we split input back into blocks heuristically
+      setOutputSchema(outputSchemaStr)
+        // End Parallel timing and log
+        const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+        const pStart = parallelStartedAt ?? end
+        const pMs = Math.max(0, end - pStart)
+        setParallelMs(pMs)
+        const totalStart = researchStartedAt ?? end
+        const totalMs = Math.max(0, end - totalStart)
+        const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
+        try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
+      // Do not overwrite user edits to companyInput/customInput/prompt here automatically
+      // Allow the user to review and run
+    } catch (e) {
+      setResearchError(e instanceof Error ? e.message : 'Failed to design prompt/schema')
+    }
+  }
+
+  const handleClearResearch = () => {
+    // Invalidate polling and clear all research state
+    pollTokenRef.current += 1
+    setResearchRunId(null)
+    setResearchText('')
+    setTranslatedResearchText('')
+    setResearchBasis([])
+    setResearchError(null)
+  setResearchStructured(null)
+  setResearchStatus('idle')
+  }
+
   // Fetch business statistics
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -906,6 +1450,98 @@ function CompanyPageContent() {
       </div>
 
     <div className="p-6">
+        {/* Parallel Deep Research */}
+        {topCompany && (
+          <div className="border border-white/10 p-4 mb-6 bg-white/5">
+            {/* Inline controls: prompt, processor, and actions */}
+            <div className="flex items-center gap-3">
+              <textarea
+                id="research-prompt"
+                ref={promptRef}
+                value={prompt}
+                onChange={(e) => { setPrompt(e.target.value); autoResizePrompt() }}
+                onInput={autoResizePrompt}
+                rows={1}
+                placeholder={`Spør Hugin`}
+                className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-0 focus:border-red-600/70 overflow-hidden resize-none"
+              />
+              <button
+                onClick={triggerResearch}
+                disabled={researchStatus === 'running' || researchStatus === 'queued'}
+                className={`h-10 w-24 border text-sm transition-colors ${
+                  researchStatus === 'running' || researchStatus === 'queued'
+                    ? 'border-white/20 text-white/50'
+                    : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'
+                }`}
+              >
+                {researchStatus === 'running' || researchStatus === 'queued' ? 'Flyr…' : 'Spør'}
+              </button>
+        {/* Processor segmented pill: icon-only (dots), square corners */}
+        <div className="h-10 bg-black border border-white/20 overflow-hidden flex items-stretch text-sm select-none">
+                {(['base','pro','ultra'] as const).map((key, idx) => {
+                  const selected = processor === key
+                  const level = idx + 1 // 1,2,3 dots
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      aria-pressed={selected}
+                      onClick={() => setProcessor(key)}
+                      title={`Estimat: ${processorMeta[key].est} • Ca. kost: ${processorMeta[key].cost} / run`}
+          className={`px-3 h-full flex items-center ${
+                        selected
+                          ? 'bg-red-600/20 text-white border-red-600/60'
+                          : 'text-white/85 hover:bg-white/10'
+                      } ${idx > 0 ? 'border-l border-white/15' : ''}`}
+                    >
+          <span className="inline-flex items-center gap-[3px]">
+                        {Array.from({ length: 3 }).map((_, j) => (
+                          <span
+                            key={j}
+                            className={`w-1.5 h-1.5 rounded-full ${j < level ? 'bg-red-400' : 'bg-white/25'}`}
+                          />
+                        ))}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+              <button
+                onClick={handleClearResearch}
+                className={`h-10 w-24 border text-sm transition-colors ${
+                  researchStatus === 'running' || researchStatus === 'queued'
+                    ? 'border-red-600/60 text-white hover:bg-red-600/20'
+                    : researchText
+                      ? 'border-white/20 text-white/80 hover:bg-white/10'
+                      : 'border-white/10 text-white/40 hover:bg-white/5'
+                }`}
+                title={researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm svar'}
+              >
+                {researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm'}
+              </button>
+
+            </div>
+            {/* Output schema UI removed; handled by compose service */}
+            {researchError && (
+              <div className="text-sm text-red-400 mt-3">{researchError}</div>
+            )}
+      {(researchStatus === 'running' || researchStatus === 'queued') && (
+              <div className="flex items-center gap-3 text-sm text-gray-300 mt-3">
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-400"></div>
+        Hugin søker… Dette kan ta litt tid.
+              </div>
+            )}
+            { researchStructured ? (
+              <div className="mt-4 text-sm leading-6 text-gray-100">
+                {renderStructuredResearch(researchStructured)}
+              </div>
+            ) : (translatedResearchText || researchText) ? (
+              <div className="mt-4 text-sm leading-6 text-gray-100">
+                {renderResearchWithLinksAndBasis(translatedResearchText || researchText, researchBasis)}
+              </div>
+            ) : null }
+          </div>
+        )}
         {loading ? (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
@@ -1278,9 +1914,9 @@ function CompanyPageContent() {
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Analytics & Markedsføring</h4>
                     <div className="space-y-3 text-sm">
-                      <div>
+                                           <div>
                         <span className="font-medium text-gray-300">Google Analytics 4:</span>
-                        <div className="text-white">
+                                               <div className="text-white">
                           {topCompany.webAnalyticsGa4 === true ? 'Ja' : topCompany.webAnalyticsGa4 === false ? 'Nei' : '—'}
                         </div>
                       </div>
