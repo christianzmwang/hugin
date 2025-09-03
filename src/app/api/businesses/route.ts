@@ -332,10 +332,10 @@ export async function GET(req: Request) {
     orgNumberClause = `AND b."orgNumber" = $${orgNumberIdx}`
   }
 
-  // Fast path: when requesting a single orgNumber and not countOnly, skip heavy joins and return minimal fields quickly
+  // Fast path: when requesting a single orgNumber and not countOnly, fetch one company with latest financials
   if (orgNumberParam && !countOnly) {
     const fastSql = `
-      SELECT 
+      SELECT
         b."orgNumber",
         b.name,
         b.website,
@@ -343,12 +343,136 @@ export async function GET(req: Request) {
         b."addressStreet",
         b."addressPostalCode",
         b."addressCity",
+        ${
+          isCsvSource
+            ? 'NULL'
+            : `(SELECT c."fullName" 
+         FROM "CEO" c 
+         WHERE c."businessId" = b.id 
+         ORDER BY c."fromDate" DESC NULLS LAST 
+         LIMIT 1)`
+        } as "ceo",
         b."industryCode1",
         b."industryText1",
+        b."industryCode2",
+        b."industryText2",
+        b."industryCode3",
+        b."industryText3",
+        b."vatRegistered",
+        b."vatRegisteredDate",
+        b."sectorCode",
+        b."sectorText",
         b."orgFormCode",
         b."orgFormText",
-        b."updatedAt"
+        b."registeredInForetaksregisteret",
+        b."isBankrupt",
+        b."isUnderLiquidation",
+        b."isUnderCompulsory",
+        b."createdAt",
+        b."updatedAt",
+        fLatest."fiscalYear" as "fiscalYear",
+        fLatest.revenue as revenue,
+        fLatest.profit as profit,
+        fLatest."totalAssets" as "totalAssets",
+        fLatest.equity as equity,
+        fLatest."employeesAvg" as "employeesAvg",
+        fLatest."operatingIncome" as "operatingIncome",
+        fLatest."operatingResult" as "operatingResult",
+        fLatest."profitBeforeTax" as "profitBeforeTax",
+        fLatest.valuta as valuta,
+        fLatest."fraDato" as "fraDato",
+        fLatest."tilDato" as "tilDato",
+        fLatest."sumDriftsinntekter" as "sumDriftsinntekter",
+        fLatest.driftsresultat as driftsresultat,
+        fLatest.aarsresultat as aarsresultat,
+        fLatest."sumEiendeler" as "sumEiendeler",
+        fLatest."sumEgenkapital" as "sumEgenkapital",
+        fLatest."sumGjeld" as "sumGjeld",
+        /* Event hints */
+        EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber") as "hasEvents",
+        /* Website analysis data */
+        b."webFinalUrl",
+        b."webStatus",
+        b."webElapsedMs",
+        b."webIp",
+        b."webTlsValid",
+        b."webTlsNotBefore",
+        b."webTlsNotAfter",
+        b."webTlsDaysToExpiry",
+        b."webTlsIssuer",
+        b."webPrimaryCms",
+        b."webCmsWordpress",
+        b."webCmsDrupal",
+        b."webCmsJoomla",
+        b."webCmsTypo3",
+        b."webCmsShopify",
+        b."webCmsWix",
+        b."webCmsSquarespace",
+        b."webCmsWebflow",
+        b."webCmsGhost",
+        b."webCmsDuda",
+        b."webCmsCraft",
+        b."webEcomWoocommerce",
+        b."webEcomMagento",
+        b."webPayStripe",
+        b."webPayPaypal",
+        b."webPayKlarna",
+        b."webAnalyticsGa4",
+        b."webAnalyticsGtm",
+        b."webAnalyticsUa",
+        b."webAnalyticsFbPixel",
+        b."webAnalyticsLinkedin",
+        b."webAnalyticsHotjar",
+        b."webAnalyticsHubspot",
+        b."webJsReact",
+        b."webJsVue",
+        b."webJsAngular",
+        b."webJsNextjs",
+        b."webJsNuxt",
+        b."webJsSvelte",
+        b."webHasEmailText",
+        b."webHasPhoneText",
+        b."webHtmlKb",
+        b."webHtmlKbOver500",
+        b."webHeaderServer",
+        b."webHeaderXPoweredBy",
+        b."webSecurityHsts",
+        b."webSecurityCsp",
+        b."webCookiesPresent",
+        b."webCdnHint",
+        b."webServerHint",
+        b."webRiskFlags",
+        b."webErrors",
+        b."webCmsWordpressHtml",
+        b."webRiskPlaceholderKw",
+        b."webRiskParkedKw",
+        b."webRiskSuspendedKw"
       FROM "Business" b
+      LEFT JOIN LATERAL (
+        SELECT 
+          f."fiscalYear", 
+          f.revenue, 
+          f.profit, 
+          f."totalAssets", 
+          f.equity, 
+          f."employeesAvg",
+          f."operatingIncome",
+          f."operatingResult", 
+          f."profitBeforeTax",
+          f.valuta,
+          f."fraDato",
+          f."tilDato",
+          f."sumDriftsinntekter",
+          f.driftsresultat,
+          f.aarsresultat,
+          f."sumEiendeler",
+          f."sumEgenkapital",
+          f."sumGjeld"
+        FROM "FinancialReport" f
+        WHERE f."businessId" = b.id
+        ORDER BY f."fiscalYear" DESC NULLS LAST
+        LIMIT 1
+      ) fLatest ON TRUE
       WHERE b."orgNumber" = $${orgNumberIdx}
       LIMIT 1
     `

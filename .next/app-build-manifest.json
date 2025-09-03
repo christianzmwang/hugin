@@ -16,60 +16,40 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/api/watchlist/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/watchlist/route.js"
-    ],
     "/api/auth/[...nextauth]/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/auth/[...nextauth]/route.js"
+    ],
+    "/api/watchlist/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/watchlist/route.js"
     ],
     "/api/events/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/events/route.js"
     ],
-    "/company/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/company/page.js"
-    ],
-    "/api/businesses/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/businesses/route.js"
-    ],
-    "/api/compose/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/compose/route.js"
-    ],
-    "/api/parallel/research/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/parallel/research/route.js"
-    ],
-    "/api/translate/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/translate/route.js"
-    ],
     "/search/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/search/page.js"
+    ],
+    "/api/businesses/max-revenue/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/businesses/max-revenue/route.js"
     ],
     "/api/businesses/min-revenue/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/businesses/min-revenue/route.js"
     ],
-    "/api/businesses/max-revenue/route": [
+    "/api/businesses/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/businesses/max-revenue/route.js"
+      "static/chunks/app/api/businesses/route.js"
     ],
     "/api/businesses/max-profit/route": [
       "static/chunks/webpack.js",
@@ -91,25 +71,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/events/types/route.js"
     ],
-    "/configuration/page": [
+    "/company/page": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/configuration/page.js"
-    ],
-    "/api/user/business-context/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/user/business-context/route.js"
-    ],
-    "/watchlist/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/watchlist/page.js"
-    ],
-    "/_not-found/page": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/company/page.js"
     ]
   }
 }
