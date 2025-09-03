@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense, useRef, useCallback } from 'react'
+// ParallelChat removed from inline usage; chat implemented directly in this page now
 import { createPortal } from 'react-dom'
 
 type Business = {
@@ -254,6 +255,53 @@ function renderResearchWithLinks(text: string) {
   )
 }
 
+// Remove AI chain-of-thought style paragraphs from free-form text
+function stripChainOfThought(text: string): string {
+  if (!text) return text
+  // Keep the Sources/Kilder section intact; process body separately
+  const parts = text.split(/\n+\s*(Sources|Kilder)\s*:?/i)
+  let body = text
+  let tailHeader = ''
+  let tailRest = ''
+  if (parts.length >= 3) {
+    body = parts[0]
+    tailHeader = parts[1]
+    tailRest = parts.slice(2).join('\n')
+  }
+  // Heuristic: drop paragraphs that look like reflective reasoning/instructions
+  const paras = body.split(/\n{2,}/)
+  const keep: string[] = []
+  const cotRe = new RegExp(
+    [
+      '(?:^|\\b)(?:i|we)\\s+(?:will|should|need to|am going to|think|guess|believe|decide|assess)\\b',
+      "\\blet's\\b",
+      '\\bokay,?\\b',
+      '\\bnow,?\\b',
+      '\\b(prompt|sample|translate|translation|target language|source language|detect the language|the user is asking)\\b',
+      '\\bstep(?:s)?\\b',
+      '\\bchain(?:-| )of(?:-| )thought\\b',
+    ].join('|'),
+    'i'
+  )
+  for (const p of paras) {
+    const trimmed = p.trim()
+    if (!trimmed) continue
+    const hasCitation = /\[\d+\]/.test(trimmed)
+    const hasUrl = /https?:\/\//i.test(trimmed)
+    const looksLikeList = /^\s*[-•\d+\.]/m.test(trimmed)
+    if (hasCitation || hasUrl || looksLikeList) {
+      keep.push(trimmed)
+      continue
+    }
+    if (cotRe.test(trimmed)) {
+      continue
+    }
+    keep.push(trimmed)
+  }
+  const cleanedBody = keep.join('\n\n')
+  return tailHeader ? `${cleanedBody}\n\n${tailHeader}\n${tailRest}`.trim() : cleanedBody
+}
+
 // Build a deduplicated list of citations from Parallel "basis" structure
 function extractCitationsFromBasis(basis: unknown): Array<{ title?: string; url?: string }> {
   const out: Array<{ title?: string; url?: string }> = []
@@ -412,11 +460,31 @@ function CompanyPageContent() {
   const [researchError, setResearchError] = useState<string | null>(null)
   const pollTokenRef = useRef(0)
   const [processor, setProcessor] = useState<'lite' | 'base' | 'core' | 'pro' | 'ultra'>('base')
+  // UI mode: deep research (default) vs chat
+  const [mode, setMode] = useState<'research' | 'chat'>('research')
+  const [procDropdownOpen, setProcDropdownOpen] = useState(false)
+  const procDropdownRef = useRef<HTMLDivElement | null>(null)
+  const procAnchorRef = useRef<HTMLDivElement | null>(null)
+  const procButtonsContainerRef = useRef<HTMLDivElement | null>(null)
+  const [procGroupWidth, setProcGroupWidth] = useState<number | null>(null)
+  // Inline chat state (replaces ParallelChat component)
+  const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([])
+  const [chatInput, setChatInput] = useState('')
+  const [chatStreaming, setChatStreaming] = useState(false)
+  const [chatError, setChatError] = useState<string | null>(null)
+  const chatAbortRef = useRef<AbortController | null>(null)
+  const chatScrollRef = useRef<HTMLDivElement | null>(null)
+  const makeId = () => Math.random().toString(36).slice(2, 10)
   const [customInput, setCustomInput] = useState<string>('')
   // Optional editable block describing the current company (replaces auto Company/Org/Website)
   const [companyInput, setCompanyInput] = useState<string>('')
   // Prompt describing the research request
   const [prompt, setPrompt] = useState<string>('')
+  // Info line: ticks every 5s and tracks activity events
+  const [infoTick, setInfoTick] = useState(0)
+  const [isTranslating, setIsTranslating] = useState(false)
+  const [isComposing, setIsComposing] = useState(false)
+  const [lastPromptEditAt, setLastPromptEditAt] = useState<number | null>(null)
   const [outputSchema, setOutputSchema] = useState<string>(
     'Write a concise, decision-useful research brief on the company above.\n' +
     'Include: overview, products/services, customers and markets, competitive moat, risks, recent developments (last 12 months), notable partnerships, competition, and 3-6 actionable insights.\n' +
@@ -473,6 +541,7 @@ function CompanyPageContent() {
   const recentlyRef = useRef<HTMLDivElement | null>(null)
   const [canScrollLeft, setCanScrollLeft] = useState(false)
   const [canScrollRight, setCanScrollRight] = useState(false)
+  const [isHorizScrollable, setIsHorizScrollable] = useState(false)
   const [isDragging, setIsDragging] = useState(false)
   const dragStateRef = useRef<{ startX: number; scrollLeft: number }>({ startX: 0, scrollLeft: 0 })
   const dragMovedRef = useRef(false)
@@ -485,12 +554,130 @@ function CompanyPageContent() {
     const maxPx = 160 // cap growth
     el.style.height = Math.min(el.scrollHeight, maxPx) + 'px'
   }, [])
+  // Heartbeat for Info line to refresh relative times every 5s
+  useEffect(() => {
+    // Close processor/chat dropdown on outside click
+    if (!procDropdownOpen) return
+    const onDocClick = (e: MouseEvent) => {
+      const t = e.target as Node
+      if (procDropdownRef.current && procDropdownRef.current.contains(t)) return
+      if (procAnchorRef.current && procAnchorRef.current.contains(t)) return
+      setProcDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', onDocClick)
+    return () => document.removeEventListener('mousedown', onDocClick)
+  }, [procDropdownOpen])
+
+  // Measure processor group width (research mode) to mirror in chat mode
+  useEffect(() => {
+    if (mode !== 'research') return
+    const measure = () => {
+      const el = procButtonsContainerRef.current
+      if (el) {
+        const w = el.getBoundingClientRect().width
+        if (w && Math.abs((procGroupWidth || 0) - w) > 1) setProcGroupWidth(w)
+      }
+    }
+    const id = requestAnimationFrame(measure)
+    window.addEventListener('resize', measure)
+    return () => { cancelAnimationFrame(id); window.removeEventListener('resize', measure) }
+  }, [mode, processor, procDropdownOpen, procGroupWidth])
+
+  // Auto-scroll chat messages
+  useEffect(() => {
+    if (mode !== 'chat') return
+    const el = chatScrollRef.current
+    if (el) el.scrollTop = el.scrollHeight
+  }, [chatMessages, mode])
+
+  const sendChat = useCallback(async () => {
+    if (chatStreaming || !chatInput.trim()) return
+    setChatError(null)
+    const userMsg = { id: makeId(), role: 'user' as const, content: chatInput.trim() }
+    setChatMessages(prev => [...prev, userMsg])
+    setChatInput('')
+    const assistantId = makeId()
+    setChatMessages(prev => [...prev, { id: assistantId, role: 'assistant', content: '' }])
+    setChatStreaming(true)
+    const ctl = new AbortController()
+    chatAbortRef.current = ctl
+    try {
+  // Concise company-focused system prompt; assume user questions refer to this company
+  const systemPrompt = `Answer concisely. Assume all user questions are about the selected company unless explicitly stated otherwise. If information is not available, say you don't know. Company: ${topCompany?.name || 'Unknown'}${topCompany?.orgNumber ? ` (Org ${topCompany.orgNumber})` : ''}.`
+
+      const payload = {
+        model: 'speed',
+        stream: true,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          ...chatMessages.filter(m => m.content.trim()),
+          { role: 'user', content: userMsg.content },
+        ],
+      }
+      const res = await fetch('/api/parallel/chat', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: ctl.signal,
+      })
+      if (!res.ok || !res.body) throw new Error(`Feil (${res.status})`)
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let buffer = ''
+      const append = (chunk: string) => setChatMessages(prev => prev.map(m => m.id === assistantId ? { ...m, content: m.content + chunk } : m))
+      while (true) {
+        const { done, value } = await reader.read()
+        if (done) break
+        buffer += decoder.decode(value, { stream: true })
+        const parts = buffer.split(/\n\n/)
+        buffer = parts.pop() || ''
+        for (const p of parts) {
+          const line = p.trim()
+          if (!line.startsWith('data:')) continue
+          const data = line.slice(5).trim()
+          if (data === '[DONE]') { chatAbortRef.current = null; break }
+          try {
+            const json = JSON.parse(data)
+            const delta = json?.choices?.[0]?.delta?.content
+            if (typeof delta === 'string') append(delta)
+            else if (typeof json?.content === 'string') append(json.content)
+          } catch {
+            if (data) append(data)
+          }
+        }
+      }
+    } catch (e) {
+      if ((e as any)?.name === 'AbortError') setChatError('Avbrutt')
+      else setChatError((e as Error)?.message || 'Ukjent feil')
+    } finally {
+      setChatStreaming(false)
+      chatAbortRef.current = null
+    }
+  }, [chatInput, chatStreaming, chatMessages, topCompany?.name, topCompany?.orgNumber])
+
+  const stopChat = () => { chatAbortRef.current?.abort() }
+
+  useEffect(() => {
+    const id = window.setInterval(() => setInfoTick((t) => t + 1), 5000)
+    return () => window.clearInterval(id)
+  }, [])
+  
+  // Set status to completed only when output is actually available for display
+  useEffect(() => {
+    const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
+    if (hasOutput && researchStatus === 'running' && !isComposing && !isTranslating) {
+      setResearchStatus('completed')
+    }
+  }, [researchStructured, translatedResearchText, researchText, researchStatus, isComposing, isTranslating])
   // Keep scroll buttons state in sync
   const updateScrollButtons = useCallback(() => {
     const el = recentlyRef.current
     if (!el) return
-    setCanScrollLeft(el.scrollLeft > 0)
-    setCanScrollRight(el.scrollLeft + el.clientWidth < el.scrollWidth - 1)
+  const left = el.scrollLeft > 0
+  const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
+  setCanScrollLeft(left)
+  setCanScrollRight(right)
+  setIsHorizScrollable(el.scrollWidth > el.clientWidth + 1)
   }, [])
   // Momentum/inertia scrolling support
   const momentumRef = useRef<{ raf: number | null; v: number; lastT: number | null } | null>(null)
@@ -583,6 +770,15 @@ function CompanyPageContent() {
       window.removeEventListener('resize', onResize)
     }
   }, [recentlyViewed.length, updateScrollButtons, cancelMomentum])
+
+  // Ensure initial measurement right after layout/paint when recentlyViewed changes
+  useEffect(() => {
+    let raf = 0 as number | undefined as unknown as number
+    raf = requestAnimationFrame(() => {
+      updateScrollButtons()
+    })
+    return () => cancelAnimationFrame(raf)
+  }, [recentlyViewed.length, updateScrollButtons])
 
   const handleDragStart = (clientX: number) => {
     const el = recentlyRef.current
@@ -685,33 +881,59 @@ function CompanyPageContent() {
     el.scrollBy({ left: delta, behavior: 'smooth' })
   }
 
-  // Load recently viewed companies from localStorage
+  // Load recently viewed companies from server (account-linked), fallback to localStorage
   useEffect(() => {
-    try {
-      const stored = localStorage.getItem('recentlyViewedCompanies')
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        if (Array.isArray(parsed)) {
-          setRecentlyViewed(parsed.slice(0, 20)) // Keep only last 20
+    let cancelled = false
+    const load = async () => {
+      try {
+        const res = await fetch('/api/user/recently-viewed?limit=20', { cache: 'no-store' })
+        if (res.ok) {
+          const data = await res.json().catch(() => ({})) as { items?: Array<{ name?: string; orgNumber?: string }> }
+          const items = Array.isArray(data?.items)
+            ? (data.items as Array<{ name?: string; orgNumber?: string }> ).filter(it => it?.orgNumber)
+                .map(it => ({ name: String(it.name || ''), orgNumber: String(it.orgNumber) }))
+            : []
+          if (!cancelled && items.length) {
+            setRecentlyViewed(items)
+            try { localStorage.setItem('recentlyViewedCompanies', JSON.stringify(items)) } catch {}
+            return
+          }
         }
-      }
-    } catch (error) {
-      console.error('Failed to load recently viewed companies:', error)
+      } catch {}
+      // Fallback to localStorage when API not available
+      try {
+        const stored = localStorage.getItem('recentlyViewedCompanies')
+        if (stored) {
+          const parsed = JSON.parse(stored)
+          if (!cancelled && Array.isArray(parsed)) {
+            setRecentlyViewed(parsed.slice(0, 20))
+          }
+        }
+      } catch {}
     }
+    load()
+    return () => { cancelled = true }
   }, [])
 
   // Add company to recently viewed
   const addToRecentlyViewed = (company: { name: string; orgNumber: string }) => {
     setRecentlyViewed(prev => {
       const filtered = prev.filter(c => c.orgNumber !== company.orgNumber)
-      const updated = [company, ...filtered].slice(0, 20) // Keep only last 20
-      try {
-        localStorage.setItem('recentlyViewedCompanies', JSON.stringify(updated))
-      } catch (error) {
-        console.error('Failed to save recently viewed companies:', error)
-      }
+      const updated = [company, ...filtered].slice(0, 20)
+      // Save locally to keep snappy UX
+      try { localStorage.setItem('recentlyViewedCompanies', JSON.stringify(updated)) } catch {}
       return updated
     })
+    // Fire-and-forget save to server (account-linked)
+    ;(async () => {
+      try {
+        await fetch('/api/user/recently-viewed', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ orgNumber: company.orgNumber, name: company.name, max: 20 }),
+        })
+      } catch {}
+    })()
   }
 
   useEffect(() => {
@@ -959,20 +1181,41 @@ function CompanyPageContent() {
     }
   }, [status, searchParams])
 
-  // Keep companyInput prefilled with current company by default (editable)
+  // Keep companyInput synced to the currently viewed company to avoid mismatches in Compose/Parallel
   useEffect(() => {
     if (!topCompany) return
-    // Only prefill when empty to avoid overwriting user edits
+    const buildDefaultBlock = (c: Business) => [
+      `Company: ${c.name}`,
+      c.orgNumber ? `Org number: ${c.orgNumber}` : undefined,
+      c.website ? `Website: ${c.website}` : undefined,
+    ].filter(Boolean).join('\n')
+    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trim()
+    const defaultBlock = buildDefaultBlock(topCompany)
     setCompanyInput(prev => {
-      if (prev && prev.trim()) return prev
-      const lines = [
-        `Company: ${topCompany.name}`,
-        topCompany.orgNumber ? `Org number: ${topCompany.orgNumber}` : undefined,
-        topCompany.website ? `Website: ${topCompany.website}` : undefined,
-      ].filter(Boolean)
-      return lines.join('\n')
+      const prevNorm = normalize(prev || '')
+      const defNorm = normalize(defaultBlock)
+      // If empty, set to current company
+      if (!prevNorm) return defaultBlock
+      // If previous block clearly refers to a different company/org, reset
+      const prevOrg = prevNorm.match(/Org number:\s*(\d+)/i)?.[1] || null
+      const prevName = prevNorm.match(/^Company:\s*(.+)$/m)?.[1]?.trim() || null
+      const currOrg = topCompany.orgNumber || null
+      const currName = topCompany.name
+      if ((prevOrg && currOrg && prevOrg !== currOrg) || (prevName && prevName !== currName)) {
+        return defaultBlock
+      }
+      // Otherwise, enforce the header lines to match the current company, keep user's extra lines
+      const lines = prevNorm.split(/\n/)
+      const filtered = lines.filter(l => !/^\s*(Company:|Org number:|Website:)\b/i.test(l))
+      const header = [
+        `Company: ${currName}`,
+        currOrg ? `Org number: ${currOrg}` : null,
+        topCompany.website ? `Website: ${topCompany.website}` : null,
+      ].filter(Boolean) as string[]
+      const merged = [...header, ...(filtered.length ? [''] : []), ...filtered].join('\n').trim()
+      return merged || defaultBlock
     })
-  }, [topCompany])
+  }, [topCompany?.orgNumber, topCompany?.name, topCompany?.website])
 
   // Load business context: prefer session.user.businessContext, fallback to localStorage
   useEffect(() => {
@@ -1027,8 +1270,9 @@ function CompanyPageContent() {
                 setTranslatedResearchText('')
               } else {
                 const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
-                setResearchText(englishText)
+                setResearchText(stripChainOfThought(englishText))
                 try {
+                  setIsTranslating(true)
                   const tr = await fetch('/api/translate', {
                     method: 'POST',
                     headers: { 'content-type': 'application/json' },
@@ -1036,18 +1280,20 @@ function CompanyPageContent() {
                   })
                   if (tr.ok) {
                     const trData = await tr.json()
-                    setTranslatedResearchText(String(trData.text || ''))
+                    setTranslatedResearchText(stripChainOfThought(String(trData.text || '')))
                   } else {
                     setTranslatedResearchText('')
                   }
                 } catch {
                   setTranslatedResearchText('')
+                } finally {
+                  setIsTranslating(false)
                 }
               }
             }
             const basis = (output as { basis?: unknown })?.basis
             setResearchBasis(extractCitationsFromBasis(basis))
-            setResearchStatus('completed')
+            // Status will be set to 'completed' by useEffect when output is available
             return
           }
           // still queued
@@ -1102,6 +1348,7 @@ function CompanyPageContent() {
 
   // Translate structured research sections to match the prompt language
   const translateStructured = async (data: StructuredResearch, promptText: string): Promise<StructuredResearch> => {
+  setIsTranslating(true)
     const out: StructuredResearch = { ...data }
     const promptSample = (promptText || '').slice(0, 400)
     const tasks: Array<Promise<void>> = []
@@ -1148,8 +1395,12 @@ function CompanyPageContent() {
         })()
       )
     }
-    if (tasks.length) await Promise.all(tasks)
-    return out
+    try {
+      if (tasks.length) await Promise.all(tasks)
+      return out
+    } finally {
+      setIsTranslating(false)
+    }
   }
 
   const composeRunTranslate = async () => {
@@ -1157,14 +1408,40 @@ function CompanyPageContent() {
     try {
       // Start AI (compose) timing
       setComposeStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
+  setIsComposing(true)
     try { console.log('[company] compose:start', { processor, orgNumber: topCompany.orgNumber }) } catch {}
+      // Build an up-to-date company block; only use the editable textarea if user actually modified it
+      const buildCompanyBlock = (c: Business) => {
+        const lines = [
+          `Company: ${c.name}`,
+          c.orgNumber ? `Org number: ${c.orgNumber}` : undefined,
+          c.website ? `Website: ${c.website}` : undefined,
+        ].filter(Boolean) as string[]
+        return lines.join('\n')
+      }
+      const normalizeBlock = (s: string) => s.replace(/\r\n/g, '\n').trim()
+      const defaultBlock = buildCompanyBlock(topCompany)
+      // Enforce that the header (Company/Org number/Website) always matches the currently viewed company
+      const enforceCurrentHeader = (c: Business, s: string) => {
+        const lines = (s || '').split(/\r?\n/)
+        const rest = lines.filter(l => !/^\s*(Company:|Org number:|Website:)\b/i.test(l))
+        const header = [
+          `Company: ${c.name}`,
+          c.orgNumber ? `Org number: ${c.orgNumber}` : null,
+          c.website ? `Website: ${c.website}` : null,
+        ].filter(Boolean) as string[]
+        return [...header, ...(rest.length ? [''] : []), ...rest].join('\n').trim()
+      }
+      const effectiveCompanyBlock = (companyInput && companyInput.trim())
+        ? enforceCurrentHeader(topCompany, companyInput)
+        : defaultBlock
       const composeResp = await fetch('/api/compose', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           prompt,
           businessContext: customInput || undefined,
-          companyBlock: companyInput || undefined,
+          companyBlock: effectiveCompanyBlock || undefined,
           processor,
         }),
       })
@@ -1172,7 +1449,7 @@ function CompanyPageContent() {
         const data = await composeResp.json().catch(() => ({}))
         throw new Error(data?.error || 'Compose failed')
       }
-      const composeData = await composeResp.json()
+  const composeData = await composeResp.json()
     try { console.log('[company] compose:ok', { model: (composeData as { model?: string })?.model }) } catch {}
       // End AI timing
       setComposeMs((prev) => {
@@ -1180,6 +1457,7 @@ function CompanyPageContent() {
         const s = composeStartedAt ?? start
         return Math.max(0, start - s)
       })
+  setIsComposing(false)
       const inputStr: string = composeData.input
       const outputSchemaStr: string = composeData.outputSchema
 
@@ -1197,7 +1475,7 @@ function CompanyPageContent() {
       })
       // Start Parallel timing (from POST request start)
       setParallelStartedAt((typeof performance !== 'undefined' ? performance.now() : Date.now()))
-      if (!runResp.ok && runResp.status !== 202) {
+  if (!runResp.ok && runResp.status !== 202) {
         const data = await runResp.json().catch(() => ({}))
         throw new Error(data?.error || 'Failed to start research')
       }
@@ -1214,7 +1492,7 @@ function CompanyPageContent() {
   const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
       if (contentAny === undefined || contentAny === null) throw new Error('Empty result')
       const structured = coerceStructuredResearch(contentAny)
-      if (structured) {
+  if (structured) {
         try {
           const trd = await translateStructured(structured, prompt)
           setResearchStructured(trd)
@@ -1228,62 +1506,95 @@ function CompanyPageContent() {
         const pStart = parallelStartedAt ?? end
         const pMs = Math.max(0, end - pStart)
         setParallelMs(pMs)
-        setResearchStatus('completed')
+        // Status will be set to 'completed' by useEffect when output is available
         const totalStart = researchStartedAt ?? end
         const totalMs = Math.max(0, end - totalStart)
         const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
         try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
       } else {
         const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
+        setIsTranslating(true)
         const tr = await fetch('/api/translate', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: (prompt || '').slice(0, 400) }),
         })
         if (!tr.ok) {
-          setResearchText(englishText)
+          setResearchText(stripChainOfThought(englishText))
           setTranslatedResearchText('')
           // End Parallel timing and log summary
           const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
           const pStart = parallelStartedAt ?? end
           const pMs = Math.max(0, end - pStart)
           setParallelMs(pMs)
-          setResearchStatus('completed')
+          // Status will be set to 'completed' by useEffect when output is available
           const totalStart = researchStartedAt ?? end
           const totalMs = Math.max(0, end - totalStart)
           const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
           try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
+          setIsTranslating(false)
           return
         }
         const trData = await tr.json()
-        setResearchText(englishText)
-        setTranslatedResearchText(String(trData.text || ''))
+        setResearchText(stripChainOfThought(englishText))
+        setTranslatedResearchText(stripChainOfThought(String(trData.text || '')))
         // End Parallel timing and log summary
         const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
         const pStart = parallelStartedAt ?? end
         const pMs = Math.max(0, end - pStart)
         setParallelMs(pMs)
-        setResearchStatus('completed')
+        // Status will be set to 'completed' by useEffect when output is available
         const totalStart = researchStartedAt ?? end
         const totalMs = Math.max(0, end - totalStart)
         const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
         try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
+        setIsTranslating(false)
       }
     } catch (e) {
       setResearchStatus('error')
       setResearchError(e instanceof Error ? e.message : 'Compose/Run/Translate failed')
+      setIsComposing(false)
+      setIsTranslating(false)
     }
   }
 
   const designPromptAndSchema = async () => {
     try {
+  setIsComposing(true)
+      // Build an up-to-date company block; only use the editable textarea if user actually modified it
+      const buildCompanyBlock = (c: Business | null) => {
+        if (!c) return ''
+        const lines = [
+          `Company: ${c.name}`,
+          c.orgNumber ? `Org number: ${c.orgNumber}` : undefined,
+          c.website ? `Website: ${c.website}` : undefined,
+        ].filter(Boolean) as string[]
+        return lines.join('\n')
+      }
+      const normalizeBlock = (s: string) => s.replace(/\r\n/g, '\n').trim()
+      const defaultBlock = buildCompanyBlock(topCompany)
+      // Enforce current company header even if user provided extra details
+      const enforceCurrentHeader = (c: Business | null, s: string) => {
+        if (!c) return s
+        const lines = (s || '').split(/\r?\n/)
+        const rest = lines.filter(l => !/^\s*(Company:|Org number:|Website:)\b/i.test(l))
+        const header = [
+          `Company: ${c.name}`,
+          c.orgNumber ? `Org number: ${c.orgNumber}` : null,
+          c.website ? `Website: ${c.website}` : null,
+        ].filter(Boolean) as string[]
+        return [...header, ...(rest.length ? [''] : []), ...rest].join('\n').trim()
+      }
+      const effectiveCompanyBlock = (companyInput && companyInput.trim())
+        ? enforceCurrentHeader(topCompany, companyInput)
+        : defaultBlock
       const resp = await fetch('/api/compose', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           prompt: (typeof window !== 'undefined' ? (document.querySelector('#research-prompt') as HTMLTextAreaElement | null)?.value : undefined) || prompt,
           businessContext: customInput || undefined,
-          companyBlock: companyInput || undefined,
+          companyBlock: effectiveCompanyBlock || undefined,
           processor,
         }),
       })
@@ -1311,6 +1622,8 @@ function CompanyPageContent() {
       // Allow the user to review and run
     } catch (e) {
       setResearchError(e instanceof Error ? e.message : 'Failed to design prompt/schema')
+    } finally {
+      setIsComposing(false)
     }
   }
 
@@ -1326,6 +1639,8 @@ function CompanyPageContent() {
   setResearchStatus('idle')
   setLastRunStatus(null)
   setLastPollAt(null)
+  setIsTranslating(false)
+  setIsComposing(false)
   }
 
   // Fetch business statistics
@@ -1454,6 +1769,15 @@ function CompanyPageContent() {
     setSearchQuery('')
     setLoading(true)
     setError(null)
+  // Clear any existing research output when switching companies
+  pollTokenRef.current += 1
+  setResearchRunId(null)
+  setResearchStatus('idle')
+  setResearchError(null)
+  setResearchText('')
+  setTranslatedResearchText('')
+  setResearchStructured(null)
+  setResearchBasis([])
 
     try {
       // Fetch selected company
@@ -1563,8 +1887,8 @@ function CompanyPageContent() {
           {/* Recently Viewed Companies */}
           {recentlyViewed.length > 0 && (
             <div className="flex-1 relative flex items-center min-w-0">
-              {/* Left/Right scroll arrows - always visible if scrollable */}
-      {(canScrollLeft || canScrollRight) && (
+        {/* Left/Right scroll arrows - visible whenever horizontally scrollable */}
+      {isHorizScrollable && (
                 <>
                   <button
                     type="button"
@@ -1631,108 +1955,224 @@ function CompanyPageContent() {
         {/* Parallel Deep Research */}
         {topCompany && (
           <div className="border border-white/10 p-4 mb-6 bg-white/5">
-            {/* Inline controls: prompt, processor, and actions */}
-            <div className="flex items-center gap-3">
-              <textarea
-                id="research-prompt"
-                ref={promptRef}
-                value={prompt}
-                onChange={(e) => { setPrompt(e.target.value); autoResizePrompt() }}
-                onInput={autoResizePrompt}
-                rows={1}
-                placeholder={`Spør Hugin`}
-                className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-0 focus:border-red-600/70 overflow-hidden resize-none"
-              />
-              <button
-                onClick={triggerResearch}
-                disabled={researchStatus === 'running' || researchStatus === 'queued'}
-                className={`h-10 w-24 border text-sm transition-colors ${
-                  researchStatus === 'running' || researchStatus === 'queued'
-                    ? 'border-white/20 text-white/50'
-                    : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'
-                }`}
-              >
-                {researchStatus === 'running' || researchStatus === 'queued' ? 'Flyr…' : 'Spør'}
-              </button>
-        {/* Processor segmented pill: icon-only (dots), square corners */}
-        <div className="h-10 bg-black border border-white/20 overflow-hidden flex items-stretch text-sm select-none">
-                {(['base','pro','ultra'] as const).map((key, idx) => {
-                  const selected = processor === key
-                  const level = idx + 1 // 1,2,3 dots
-                  const costStr = processorMeta[key].cost
-                  // Derive points per question from cost and apply a 1.2x multiplier (display only)
-                  const basePoints = (() => {
-                    const n = parseFloat(String(costStr).replace(/[^0-9.]/g, ''))
-                    return Number.isFinite(n) ? Math.round(n * 1000) : NaN
-                  })()
-                  const points: number | '?' = Number.isFinite(basePoints) ? Math.round((basePoints as number) * 1.2) : '?'
-                  const pointsLabel = typeof points === 'number' ? numberFormatter.format(points) : String(points)
-                  return (
+            {/* Mode + processor controls */}
+            <div className="flex items-start gap-3">
+              {/* 1. Input area (research prompt or chat input) */}
+              {mode === 'research' ? (
+                <textarea
+                  id="research-prompt"
+                  ref={promptRef}
+                  value={prompt}
+                  onChange={(e) => { setPrompt(e.target.value); setLastPromptEditAt(Date.now()); autoResizePrompt() }}
+                  onInput={autoResizePrompt}
+                  rows={1}
+                  placeholder={`Spør hugin`}
+                  className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-0 focus:border-red-600/70 overflow-hidden resize-none"
+                />
+              ) : (
+                <textarea
+                  id="chat-input"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
+                  placeholder={`Spør hugin`}
+                  rows={1}
+                  className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-0 focus:border-red-600/70 overflow-hidden resize-none"
+                />
+              )}
+              {/* 2. Spør / Stopp button matching width (w-24) */}
+              {mode === 'research' ? (
+                <button
+                  onClick={triggerResearch}
+                  disabled={researchStatus === 'running' || researchStatus === 'queued'}
+                  className={`h-10 w-24 border text-sm transition-colors ${
+                    researchStatus === 'running' || researchStatus === 'queued'
+                      ? 'border-white/20 text-white/50'
+                      : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'
+                  }`}
+                >{researchStatus === 'running' || researchStatus === 'queued' ? 'Flyr…' : 'Spør'}</button>
+              ) : chatStreaming ? (
+                <button
+                  onClick={() => chatAbortRef.current?.abort()}
+                  className="h-10 w-24 border border-red-600/60 text-white text-sm hover:bg-red-600/20"
+                >Stopp</button>
+              ) : (
+                <button
+                  onClick={sendChat}
+                  disabled={!chatInput.trim()}
+                  className={`h-10 w-24 border text-sm ${chatInput.trim() ? 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60' : 'border-white/10 text-white/40'}`}
+                >Spør</button>
+              )}
+              {/* 3. Processor group (research) or Chat/Research toggle (chat) with matching width */}
+              <div ref={procAnchorRef} className="relative flex items-stretch h-10">
+                {mode === 'research' ? (
+                  <div ref={procButtonsContainerRef} className="h-10 bg-black border border-white/20 overflow-hidden flex items-stretch text-sm select-none">
+                    {(['base','pro','ultra'] as const).map((key, idx) => {
+                      const selected = processor === key
+                      const level = idx + 1
+                      const costStr = processorMeta[key].cost
+                      const basePoints = (() => { const n = parseFloat(String(costStr).replace(/[^0-9.]/g, '')); return Number.isFinite(n) ? Math.round(n * 1000) : NaN })()
+                      const points: number | '?' = Number.isFinite(basePoints) ? Math.round((basePoints as number) * 1.2) : '?'
+                      const pointsLabel = typeof points === 'number' ? numberFormatter.format(points) : String(points)
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          aria-pressed={selected}
+                          onClick={() => setProcessor(key)}
+                          title={`Estimert tid: ${processorMeta[key].est} • ${pointsLabel} poeng / spørsmål`}
+                          className={`px-2 h-full flex items-center justify-center ${selected ? 'bg-red-600/20 text-white border-red-600/60' : 'text-white/85 hover:bg-white/10'} ${idx > 0 ? 'border-l border-white/15' : ''}`}
+                        >
+                          <span className="inline-flex flex-col-reverse items-center gap-[3px]">
+                            {Array.from({ length: 3 }).map((_, j) => {
+                              const litCount = level
+                              const isLit = j < litCount
+                              return <span key={j} className={`w-1.5 h-1.5 rounded-full transition-colors duration-200 ${isLit ? 'bg-red-400' : 'bg-white/25'}`} />
+                            })}
+                          </span>
+                        </button>
+                      )
+                    })}
+                    {/* Mode dropdown toggle (arrow only) */}
                     <button
-                      key={key}
                       type="button"
-                      aria-pressed={selected}
-                      onClick={() => setProcessor(key)}
-                      title={`Estimert tid: ${processorMeta[key].est} • ${pointsLabel} poeng / spørsmål`}
-          className={`px-3 h-full flex items-center ${
-                        selected
-                          ? 'bg-red-600/20 text-white border-red-600/60'
-                          : 'text-white/85 hover:bg-white/10'
-                      } ${idx > 0 ? 'border-l border-white/15' : ''}`}
+                      onClick={() => setProcDropdownOpen(o => !o)}
+                      aria-haspopup="menu"
+                      aria-expanded={procDropdownOpen}
+                      aria-label="Bytt modus"
+                      className={`px-2 h-full flex items-center justify-center border-l border-white/15 text-white/70 hover:bg-white/10 ${procDropdownOpen ? 'bg-white/10' : ''}`}
                     >
-          <span className="inline-flex items-center gap-[3px]">
-                        {Array.from({ length: 3 }).map((_, j) => (
-                          <span
-                            key={j}
-                            className={`w-1.5 h-1.5 rounded-full ${j < level ? 'bg-red-400' : 'bg-white/25'}`}
-                          />
-                        ))}
-                      </span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none">
+                        <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
                     </button>
-                  )
-                })}
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setProcDropdownOpen(o => !o)}
+                    className="h-10 border border-white/20 text-sm text-white/85 hover:bg-white/10"
+                    style={{ width: procGroupWidth ? `${procGroupWidth}px` : undefined }}
+                    aria-haspopup="menu"
+                    aria-expanded={procDropdownOpen}
+                    title="Velg modus"
+                  >
+                    <span className="flex items-center justify-center gap-2">
+                      <span>Chat</span>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none">
+                        <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </span>
+                  </button>
+                )}
+                {procDropdownOpen && (
+                  <div ref={procDropdownRef} className="absolute right-0 top-full bg-black border border-white/20 shadow-xl z-50" style={{ width: mode==='research' ? ((procAnchorRef.current?.firstElementChild as HTMLElement | null)?.offsetWidth || 0) : (procGroupWidth || undefined) }}>
+                    <div className="flex flex-col py-1">
+                      <button onClick={() => { setMode('chat'); setProcDropdownOpen(false) }} className={`text-left px-4 py-2 text-sm hover:bg-white/10 ${mode==='chat' ? 'text-white' : 'text-white/80'}`}>Chat</button>
+                      <button onClick={() => { setMode('research'); setProcDropdownOpen(false) }} className={`text-left px-4 py-2 text-sm hover:bg-white/10 ${mode==='research' ? 'text-white' : 'text-white/80'}`}>Research</button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={handleClearResearch}
-                className={`h-10 w-24 border text-sm transition-colors ${
-                  researchStatus === 'running' || researchStatus === 'queued'
-                    ? 'border-red-600/60 text-white hover:bg-red-600/20'
-                    : researchText
-                      ? 'border-white/20 text-white/80 hover:bg-white/10'
-                      : 'border-white/10 text-white/40 hover:bg-white/5'
-                }`}
-                title={researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm svar'}
-              >
-                {researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm'}
-              </button>
-
+              {mode === 'research' ? (
+                <button
+                  onClick={handleClearResearch}
+                  className={`h-10 w-24 border text-sm transition-colors ${
+                    researchStatus === 'running' || researchStatus === 'queued'
+                      ? 'border-red-600/60 text-white hover:bg-red-600/20'
+                      : (researchText || researchStructured || translatedResearchText)
+                        ? 'border-white/20 text-white/80 hover:bg-white/10'
+                        : 'border-white/10 text-white/40 hover:bg-white/5'
+                  }`}
+                  title={researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm svar'}
+                >
+                  {researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => { if (chatStreaming) chatAbortRef.current?.abort(); setChatMessages([]); setChatError(null) }}
+                  className="h-10 w-24 border border-white/20 text-sm text-white/70 hover:bg-white/10"
+                >Tøm</button>
+              )}
             </div>
             {/* Output schema UI removed; handled by compose service */}
-            {researchError && (
+            {mode === 'research' && researchError && (
               <div className="text-sm text-red-400 mt-3">{researchError}</div>
             )}
             {/* Tiny debug status line */}
-            {(researchRunId || lastRunStatus) && (
+            {mode === 'research' && (researchRunId || lastRunStatus) && (
               <div className="mt-2 text-[11px] text-gray-400">
-                Debug: runId={researchRunId || '—'} • status={lastRunStatus || researchStatus}
-                {lastPollAt ? ` • polled ${Math.max(0, Math.round((Date.now() - lastPollAt) / 1000))}s ago` : ''}
+                {(() => {
+                  // Use infoTick to refresh UI every 5s even if nothing else changes
+                  void infoTick
+                  const bits: string[] = []
+                  // Derive a single status reflecting active events
+                  const base = String(lastRunStatus || researchStatus)
+                  const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
+                  const derived = (() => {
+                    // Show composing if we're preparing the prompt/schema (highest priority)
+                    if (isComposing) return 'composing'
+                    // If a run is in progress, show that
+                    if (researchStatus === 'queued' || researchStatus === 'running') return base
+                    // After completion but translation is happening, show translating
+                    if (isTranslating) return 'translating'
+                    // Only show completed once output is visible
+                    if (base === 'completed' && !hasOutput) return 'running'
+                    // Otherwise show the latest known status (completed, error, idle)
+                    return base
+                  })()
+                  bits.push(`Info: runId=${researchRunId || '—'} • status=${derived}`)
+                  if (lastPollAt && !hasOutput) {
+                    bits.push(`polled ${Math.max(0, Math.round((Date.now() - lastPollAt) / 1000))}s ago`)
+                  }
+                  return bits.join(' • ')
+                })()}
               </div>
             )}
-      {(researchStatus === 'running' || researchStatus === 'queued') && (
+      {mode === 'research' && (researchStatus === 'running' || researchStatus === 'queued') && (
               <div className="flex items-center gap-3 text-sm text-gray-300 mt-3">
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-400"></div>
         Hugin søker… Dette kan ta litt tid.
               </div>
             )}
-            { researchStructured ? (
+            {mode === 'research' && researchStructured ? (
               <div className="mt-4 text-sm leading-6 text-gray-100">
                 {renderStructuredResearch(researchStructured)}
               </div>
-            ) : (translatedResearchText || researchText) ? (
+            ) : mode === 'research' && (translatedResearchText || researchText) ? (
               <div className="mt-4 text-sm leading-6 text-gray-100">
                 {renderResearchWithLinksAndBasis(translatedResearchText || researchText, researchBasis)}
               </div>
             ) : null }
+            {mode === 'chat' && (() => {
+              const hasChatContent = chatMessages.some(m => m.content.trim().length > 0)
+              if (!hasChatContent && !chatStreaming && !chatError) return null
+              return (
+                <div className="mt-4 text-sm leading-6 text-gray-100">
+                  {/* Mirror research output container: scroll region with subtle border + bg */}
+                  <div className="relative">
+                    <div
+                      ref={chatScrollRef}
+                      className="max-h-[55vh] min-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+                      style={{ scrollbarWidth: 'thin' }}
+                    >
+                      {chatMessages.map(m => (
+                        <div key={m.id} className="mb-6 last:mb-0">
+                          {m.role === 'user' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Du</div>}
+                          {m.role === 'assistant' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Hugin</div>}
+                          <div className="whitespace-pre-wrap text-gray-200 leading-6">{m.content || (m.role === 'assistant' && chatStreaming ? <span className="opacity-60">Skriver…</span> : '')}</div>
+                        </div>
+                      ))}
+                      {chatStreaming && (
+                        <div className="mb-2 text-gray-400 text-xs">Streamer svar…</div>
+                      )}
+                    </div>
+
+                  </div>
+                  {chatError && <div className="text-xs text-red-400 mt-3">{chatError}</div>}
+                </div>
+              )
+            })()}
           </div>
         )}
         {loading ? (
