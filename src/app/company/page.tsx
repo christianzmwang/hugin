@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, Suspense, useRef, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 
 type Business = {
   orgNumber: string
@@ -402,6 +403,8 @@ function CompanyPageContent() {
   // Parallel research state
   const [researchRunId, setResearchRunId] = useState<string | null>(null)
   const [researchStatus, setResearchStatus] = useState<'idle' | 'queued' | 'running' | 'completed' | 'error'>('idle')
+  const [lastRunStatus, setLastRunStatus] = useState<string | null>(null)
+  const [lastPollAt, setLastPollAt] = useState<number | null>(null)
   const [researchText, setResearchText] = useState<string>('')
   const [researchStructured, setResearchStructured] = useState<StructuredResearch | null>(null)
   const [translatedResearchText, setTranslatedResearchText] = useState<string>('')
@@ -454,7 +457,13 @@ function CompanyPageContent() {
   const [error, setError] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [companySuggestions, setCompanySuggestions] = useState<Array<{ name: string; orgNumber: string }>>([])
-  const [showSuggestions, setShowSuggestions] = useState(false)
+  // Fast, anchored dropdown like Search page
+  const companySearchRef = useRef<HTMLInputElement | null>(null)
+  const companyDropdownRef = useRef<HTMLDivElement | null>(null)
+  const [companyDropdownRect, setCompanyDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
+  const [companyDropdownOpen, setCompanyDropdownOpen] = useState(false)
+  const [isMounted, setIsMounted] = useState(false)
+  useEffect(() => setIsMounted(true), [])
   const [, setBusinessStats] = useState<{
     totalCompanies: number
     totalEvents: number
@@ -992,12 +1001,16 @@ function CompanyPageContent() {
       if (token !== pollTokenRef.current) return
       if (!researchRunId) return
       try {
+        try { console.log('[company] poll:start', { runId: researchRunId }) } catch {}
         const res = await fetch(`/api/parallel/research?runId=${encodeURIComponent(researchRunId)}`, { cache: 'no-store' })
         if (res.ok) {
           const data = await res.json()
           if (token !== pollTokenRef.current) return
           const status = (data as { status?: string })?.status
           const result = (data as { result?: unknown })?.result as unknown
+          try { console.log('[company] poll:ok', { runId: researchRunId, status }) } catch {}
+          setLastRunStatus(status || 'queued')
+          setLastPollAt(Date.now())
           if (status === 'completed' && result) {
             const output = (result as { output?: unknown })?.output as unknown
             const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
@@ -1040,14 +1053,22 @@ function CompanyPageContent() {
           // still queued
           setResearchStatus('running')
         } else if (res.status === 202) {
+          try { console.log('[company] poll:queued', { runId: researchRunId }) } catch {}
           setResearchStatus('running')
+          setLastRunStatus('queued')
+          setLastPollAt(Date.now())
         } else {
           setResearchStatus('error')
           setResearchError('Failed to get research status')
+          setLastRunStatus('error')
+          setLastPollAt(Date.now())
         }
       } catch (e) {
+        try { console.warn('[company] poll:error', e) } catch {}
         setResearchStatus('error')
         setResearchError('Research polling failed')
+        setLastRunStatus('error')
+        setLastPollAt(Date.now())
       }
       timer = window.setTimeout(poll, 2500)
     }
@@ -1074,6 +1095,8 @@ function CompanyPageContent() {
   setParallelStartedAt(null)
   setParallelMs(null)
     setResearchStatus('queued')
+  setLastRunStatus('queued')
+  setLastPollAt(Date.now())
     await composeRunTranslate()
   }
 
@@ -1134,6 +1157,7 @@ function CompanyPageContent() {
     try {
       // Start AI (compose) timing
       setComposeStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
+    try { console.log('[company] compose:start', { processor, orgNumber: topCompany.orgNumber }) } catch {}
       const composeResp = await fetch('/api/compose', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -1149,6 +1173,7 @@ function CompanyPageContent() {
         throw new Error(data?.error || 'Compose failed')
       }
       const composeData = await composeResp.json()
+    try { console.log('[company] compose:ok', { model: (composeData as { model?: string })?.model }) } catch {}
       // End AI timing
       setComposeMs((prev) => {
         const start = (typeof performance !== 'undefined' ? performance.now() : Date.now())
@@ -1179,6 +1204,7 @@ function CompanyPageContent() {
   const runData: unknown = await runResp.json()
   const runId: string | undefined = (runData as { runId?: string })?.runId
   const result = (runData as { result?: unknown })?.result as unknown
+    try { console.log('[company] run:start', { status: runResp.status, runId, hasImmediateResult: Boolean(result) }) } catch {}
   if (runId && (!result || runResp.status === 202)) {
         setResearchRunId(runId)
         setResearchStatus('running')
@@ -1298,6 +1324,8 @@ function CompanyPageContent() {
     setResearchError(null)
   setResearchStructured(null)
   setResearchStatus('idle')
+  setLastRunStatus(null)
+  setLastPollAt(null)
   }
 
   // Fetch business statistics
@@ -1343,7 +1371,7 @@ function CompanyPageContent() {
   useEffect(() => {
     if (!searchQuery.trim() || searchQuery.length < 2) {
       setCompanySuggestions([])
-      setShowSuggestions(false)
+      setCompanyDropdownOpen(false)
       return
     }
 
@@ -1363,21 +1391,20 @@ function CompanyPageContent() {
         const data = await res.json()
         const items = Array.isArray(data?.items) ? data.items : []
         type InstantItem = { name?: unknown; org_number?: unknown; orgNumber?: unknown }
-        const suggestions = (items as InstantItem[]).map((it) => ({
-          name: typeof it.name === 'string' ? it.name : '',
-          orgNumber:
-            typeof it.org_number === 'string'
-              ? it.org_number
-              : typeof it.orgNumber === 'string'
-              ? it.orgNumber
-              : '',
-        }))
-        setCompanySuggestions(suggestions)
-        setShowSuggestions(true)
+        // Dedupe by orgNumber for stability
+        const uniq = new Map<string, { name: string; orgNumber: string }>()
+        for (const it of items as InstantItem[]) {
+          const name = typeof it.name === 'string' ? it.name : ''
+          const org = typeof it.org_number === 'string' ? it.org_number : typeof it.orgNumber === 'string' ? it.orgNumber : ''
+          if (!org) continue
+          if (!uniq.has(org)) uniq.set(org, { name, orgNumber: org })
+        }
+        setCompanySuggestions(Array.from(uniq.values()))
+        setCompanyDropdownOpen(true)
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return
         setCompanySuggestions([])
-        setShowSuggestions(false)
+        setCompanyDropdownOpen(false)
       }
     }
 
@@ -1388,8 +1415,42 @@ function CompanyPageContent() {
     }
   }, [searchQuery])
 
+  // Keep company dropdown positioned under input
+  useEffect(() => {
+    if (!companyDropdownOpen) return
+    const el = companySearchRef.current
+    if (!el) return
+    const rect = el.getBoundingClientRect()
+    setCompanyDropdownRect({ top: rect.bottom + 8, left: rect.left, width: rect.width })
+    const onScroll = () => {
+      const r = el.getBoundingClientRect()
+      setCompanyDropdownRect({ top: r.bottom + 8, left: r.left, width: r.width })
+    }
+    window.addEventListener('scroll', onScroll, true)
+    window.addEventListener('resize', onScroll, true)
+    return () => {
+      window.removeEventListener('scroll', onScroll, true)
+      window.removeEventListener('resize', onScroll, true)
+    }
+  }, [companyDropdownOpen])
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!companyDropdownOpen) return
+    function onClick(e: MouseEvent) {
+      const target = e.target as Node
+      const input = companySearchRef.current
+      const menu = companyDropdownRef.current
+      if (input && input.contains(target)) return
+      if (menu && menu.contains(target)) return
+      setCompanyDropdownOpen(false)
+    }
+    document.addEventListener('mousedown', onClick)
+    return () => document.removeEventListener('mousedown', onClick)
+  }, [companyDropdownOpen])
+
   const handleCompanySelect = async (orgNumber: string) => {
-    setShowSuggestions(false)
+    setCompanyDropdownOpen(false)
     setSearchQuery('')
     setLoading(true)
     setError(null)
@@ -1469,33 +1530,34 @@ function CompanyPageContent() {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Søk selskaper"
             className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
+            ref={companySearchRef}
             onFocus={() => {
-              if (companySuggestions.length > 0) {
-                setShowSuggestions(true)
-              }
-            }}
-            onBlur={() => {
-              // Delay to allow click on suggestions
-              setTimeout(() => setShowSuggestions(false), 200)
+              if (companySuggestions.length > 0) setCompanyDropdownOpen(true)
             }}
           />
           
-          {showSuggestions && companySuggestions.length > 0 && (
-            <div className="absolute top-full left-0 right-0 z-10 mt-2 border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10">
-              {companySuggestions.map((company, idx) => (
+          {/* Portal-based dropdown anchored to input, like on Search page */}
+          {companyDropdownOpen && companySuggestions.length > 0 && companyDropdownRect && isMounted && createPortal(
+            <div
+              ref={companyDropdownRef}
+              className="z-50 border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10"
+              style={{ position: 'fixed', top: companyDropdownRect.top, left: companyDropdownRect.left, width: companyDropdownRect.width }}
+            >
+              {companySuggestions.map((c, idx) => (
                 <button
-                  key={`${company.orgNumber}-${idx}`}
-                  onClick={() => handleCompanySelect(company.orgNumber)}
+                  key={`${c.orgNumber}-${idx}`}
+                  onClick={() => handleCompanySelect(c.orgNumber)}
                   className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
                 >
                   <div className="flex items-center justify-between gap-3">
-                    <span>{company.name || 'Uten navn'}</span>
-                    <span className="text-xs text-gray-400">{company.orgNumber}</span>
+                    <span>{c.name || 'Uten navn'}</span>
+                    <span className="text-xs text-gray-400">{c.orgNumber}</span>
                   </div>
                 </button>
               ))}
-              </div>
-            )}
+            </div>,
+            document.body
+          )}
           </div>
 
           {/* Recently Viewed Companies */}
@@ -1648,6 +1710,13 @@ function CompanyPageContent() {
             {/* Output schema UI removed; handled by compose service */}
             {researchError && (
               <div className="text-sm text-red-400 mt-3">{researchError}</div>
+            )}
+            {/* Tiny debug status line */}
+            {(researchRunId || lastRunStatus) && (
+              <div className="mt-2 text-[11px] text-gray-400">
+                Debug: runId={researchRunId || '—'} • status={lastRunStatus || researchStatus}
+                {lastPollAt ? ` • polled ${Math.max(0, Math.round((Date.now() - lastPollAt) / 1000))}s ago` : ''}
+              </div>
             )}
       {(researchStatus === 'running' || researchStatus === 'queued') && (
               <div className="flex items-center gap-3 text-sm text-gray-300 mt-3">

@@ -8,6 +8,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --ext .js,.jsx,.ts,.tsx && prettier --check .",
+  "test:parallel": "dotenv -e .env.local -- tsx scripts/test-parallel.ts",
+  "test:parallel:upstream": "dotenv -e .env.local -- tsx scripts/test-parallel-upstream.ts",
     "export:businesses:csv": "dotenv -e .env.local -- tsx scripts/export-businesses-csv.ts",
     "export:businesses:csv:10m": "dotenv -e .env.local -- tsx scripts/export-businesses-csv.ts --min-revenue=10000000 businesses_with_websites_over_10m.csv"
   },
