@@ -647,8 +647,9 @@ function CompanyPageContent() {
         }
       }
     } catch (e) {
-      if ((e as any)?.name === 'AbortError') setChatError('Avbrutt')
-      else setChatError((e as Error)?.message || 'Ukjent feil')
+      const err = e as unknown
+      if (err && typeof err === 'object' && 'name' in err && (err as { name?: unknown }).name === 'AbortError') setChatError('Avbrutt')
+      else setChatError((err as Error)?.message || 'Ukjent feil')
     } finally {
       setChatStreaming(false)
       chatAbortRef.current = null

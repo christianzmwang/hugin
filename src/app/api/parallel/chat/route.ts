@@ -32,7 +32,7 @@ export async function POST(req: Request) {
 
     // Helper to perform request with automatic fallback if we see the "No products found" signature.
     const attemptRequest = async (streaming: boolean) => {
-      let lastResp: Response | null = null
+  const lastResp: Response | null = null
       for (let i = 0; i < CHAT_ENDPOINTS.length; i++) {
         const url = CHAT_ENDPOINTS[i]
         const hdrs: Record<string,string> = {

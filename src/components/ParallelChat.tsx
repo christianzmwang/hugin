@@ -96,10 +96,11 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
         }
       }
     } catch (e) {
-      if ((e as any)?.name === 'AbortError') {
+      const err = e as unknown
+      if (err && typeof err === 'object' && 'name' in err && (err as { name?: unknown }).name === 'AbortError') {
         setError('Avbrutt')
       } else {
-        setError((e as Error)?.message || 'Ukjent feil')
+        setError((err as Error)?.message || 'Ukjent feil')
       }
     } finally {
       setIsStreaming(false)
