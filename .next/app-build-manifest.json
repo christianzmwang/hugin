@@ -41,11 +41,6 @@
       "static/chunks/main-app.js",
       "static/chunks/app/api/businesses/max-revenue/route.js"
     ],
-    "/api/businesses/min-revenue/route": [
-      "static/chunks/webpack.js",
-      "static/chunks/main-app.js",
-      "static/chunks/app/api/businesses/min-revenue/route.js"
-    ],
     "/api/businesses/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -70,6 +65,11 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/api/events/types/route.js"
+    ],
+    "/api/businesses/min-revenue/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/businesses/min-revenue/route.js"
     ],
     "/company/page": [
       "static/chunks/webpack.js",

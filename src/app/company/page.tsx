@@ -1322,37 +1322,37 @@ function CompanyPageContent() {
       return
     }
 
-    let cancelled = false
+    // Use optimized instant search endpoint with indexed search_vector/trigram
+    // and cancel in-flight requests when query changes rapidly
+    const ctl = new AbortController()
     const fetchSuggestions = async () => {
       try {
         const params = new URLSearchParams({
-          q: searchQuery,
-          limit: '8',
-          skipCount: '1'
+          search: searchQuery,
+          sortBy: 'name',
+          order: 'asc',
+          limit: '10',
         })
-        const response = await fetch(`/api/businesses?${params.toString()}`)
-        const data = await response.json()
-        const items = Array.isArray(data) ? data : data.items || []
-        
-        if (!cancelled) {
-          setCompanySuggestions(items.map((item: Business) => ({
-            name: item.name,
-            orgNumber: item.orgNumber
-          })))
-          setShowSuggestions(true)
-        }
-      } catch {
-        if (!cancelled) {
-          setCompanySuggestions([])
-          setShowSuggestions(false)
-        }
+        const res = await fetch(`/api/businesses/instant?${params.toString()}` , { signal: ctl.signal })
+        if (!res.ok) throw new Error('instant search failed')
+        const data = await res.json()
+        const items = Array.isArray(data?.items) ? data.items : []
+        setCompanySuggestions(items.map((it: any) => ({
+          name: (it?.name ?? '') as string,
+          orgNumber: (it?.org_number ?? it?.orgNumber ?? '') as string,
+        })))
+        setShowSuggestions(true)
+      } catch (e) {
+        if ((e as Error)?.name === 'AbortError') return
+        setCompanySuggestions([])
+        setShowSuggestions(false)
       }
     }
 
-    const timeoutId = setTimeout(fetchSuggestions, 300)
+    const timeoutId = setTimeout(fetchSuggestions, 200)
     return () => {
       clearTimeout(timeoutId)
-      cancelled = true
+      ctl.abort()
     }
   }, [searchQuery])
 
