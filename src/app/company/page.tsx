@@ -1337,10 +1337,17 @@ function CompanyPageContent() {
         if (!res.ok) throw new Error('instant search failed')
         const data = await res.json()
         const items = Array.isArray(data?.items) ? data.items : []
-        setCompanySuggestions(items.map((it: any) => ({
-          name: (it?.name ?? '') as string,
-          orgNumber: (it?.org_number ?? it?.orgNumber ?? '') as string,
-        })))
+        type InstantItem = { name?: unknown; org_number?: unknown; orgNumber?: unknown }
+        const suggestions = (items as InstantItem[]).map((it) => ({
+          name: typeof it.name === 'string' ? it.name : '',
+          orgNumber:
+            typeof it.org_number === 'string'
+              ? it.org_number
+              : typeof it.orgNumber === 'string'
+              ? it.orgNumber
+              : '',
+        }))
+        setCompanySuggestions(suggestions)
         setShowSuggestions(true)
       } catch (e) {
         if ((e as Error)?.name === 'AbortError') return
