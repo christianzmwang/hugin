@@ -602,14 +602,33 @@ function CompanyPageContent() {
     const ctl = new AbortController()
     chatAbortRef.current = ctl
     try {
-  // Concise company-focused system prompt; assume user questions refer to this company
-  const systemPrompt = `Answer concisely. Assume all user questions are about the selected company unless explicitly stated otherwise. If information is not available, say you don't know. Company: ${topCompany?.name || 'Unknown'}${topCompany?.orgNumber ? ` (Org ${topCompany.orgNumber})` : ''}.`
+      // Build business context + company block (mirror research input assembly)
+      const businessCtx = customInput.trim()
+        ? `Business context:\n${customInput.trim()}`
+        : 'Business context: (none provided)'
+      const companyBlock = (() => {
+        const override = companyInput.trim()
+        if (override) return override
+        const lines: string[] = []
+        lines.push(`Company: ${topCompany?.name || 'Unknown'}`)
+        if (topCompany?.orgNumber) lines.push(`Org number: ${topCompany.orgNumber}`)
+        if ((topCompany as any)?.website) lines.push(`Website: ${(topCompany as any).website}`)
+        return lines.join('\n')
+      })()
+      // Consolidated system prompt (stateless backend, so send each turn)
+      const systemPrompt = [
+        'Answer concisely. Assume user questions relate to the target company unless the user clearly changes topic.',
+        "If information isn't available from your knowledge/citations, say you don't know.",
+        businessCtx,
+        companyBlock,
+      ].join('\n\n')
 
       const payload = {
         model: 'speed',
         stream: true,
         messages: [
           { role: 'system', content: systemPrompt },
+          // Include prior messages (strip empty assistant placeholders)
           ...chatMessages.filter(m => m.content.trim()),
           { role: 'user', content: userMsg.content },
         ],
@@ -654,9 +673,72 @@ function CompanyPageContent() {
       setChatStreaming(false)
       chatAbortRef.current = null
     }
-  }, [chatInput, chatStreaming, chatMessages, topCompany?.name, topCompany?.orgNumber])
+  }, [chatInput, chatStreaming, chatMessages, topCompany?.name, topCompany?.orgNumber, (topCompany as any)?.website, customInput, companyInput])
 
   const stopChat = () => { chatAbortRef.current?.abort() }
+
+  // Mode switch animation state: fade out existing content before switching if it has text
+  const [switching, setSwitching] = useState(false)
+  const [pendingMode, setPendingMode] = useState<'research' | 'chat' | null>(null)
+  const TRANSITION_MS = 360
+  const handleModeChange = useCallback((next: 'research' | 'chat') => {
+    if (next === mode || switching) return
+    const hasContent = mode === 'research'
+      ? Boolean(researchStructured || translatedResearchText || researchText)
+      : chatMessages.some(m => m.content.trim())
+    // If no content, switch immediately (no staging needed)
+    if (!hasContent) { setMode(next); return }
+    setPendingMode(next)
+    setSwitching(true)
+    // We will: 1) lock current height, 2) ensure target rendered, 3) animate height -> target height, 4) finalize
+  }, [mode, switching, researchStructured, translatedResearchText, researchText, chatMessages])
+
+  // Smooth height animation for output region
+  const researchContentRef = useRef<HTMLDivElement | null>(null)
+  const chatContentRef = useRef<HTMLDivElement | null>(null)
+  const [outputHeight, setOutputHeight] = useState(0)
+  const outputWrapperRef = useRef<HTMLDivElement | null>(null)
+  const measureSingle = useCallback((which: 'research' | 'chat'): number => {
+    const el = which === 'research' ? researchContentRef.current : chatContentRef.current
+    if (!el) return 0
+    return el.offsetHeight
+  }, [])
+  const recomputeActiveHeight = useCallback(() => {
+    const target = pendingMode ? pendingMode : mode
+    setOutputHeight(measureSingle(target))
+  }, [mode, pendingMode, measureSingle])
+  // Orchestrate switch animation: when pendingMode set, measure target height after it renders, then animate
+  useEffect(() => {
+    if (!switching || !pendingMode) return
+    // Initial lock to current height
+    setOutputHeight(measureSingle(mode))
+    // Next frame measure target and animate height
+    const id = requestAnimationFrame(() => {
+      const targetH = measureSingle(pendingMode)
+      // Trigger transition by setting new height
+      setOutputHeight(targetH)
+      // Finalize after transition
+      const done = window.setTimeout(() => {
+        setMode(pendingMode)
+        setPendingMode(null)
+        setSwitching(false)
+        // Ensure final height matches settled content
+        setOutputHeight(measureSingle(pendingMode))
+      }, TRANSITION_MS + 40)
+      return () => window.clearTimeout(done)
+    })
+    return () => cancelAnimationFrame(id)
+  }, [switching, pendingMode, mode, measureSingle])
+  // Recompute when content changes (while not mid-switch)
+  useEffect(() => {
+    if (switching) return
+    recomputeActiveHeight()
+  }, [recomputeActiveHeight, researchStructured, translatedResearchText, researchText, researchStatus, chatMessages, chatStreaming, mode, switching])
+  useEffect(() => {
+    const r = () => recomputeActiveHeight()
+    window.addEventListener('resize', r)
+    return () => window.removeEventListener('resize', r)
+  }, [recomputeActiveHeight])
 
   useEffect(() => {
     const id = window.setInterval(() => setInfoTick((t) => t + 1), 5000)
@@ -1956,9 +2038,8 @@ function CompanyPageContent() {
         {/* Parallel Deep Research */}
         {topCompany && (
           <div className="border border-white/10 p-4 mb-6 bg-white/5">
-            {/* Mode + processor controls */}
             <div className="flex items-start gap-3">
-              {/* 1. Input area (research prompt or chat input) */}
+              {/* 1. Input area */}
               {mode === 'research' ? (
                 <textarea
                   id="research-prompt"
@@ -1967,8 +2048,8 @@ function CompanyPageContent() {
                   onChange={(e) => { setPrompt(e.target.value); setLastPromptEditAt(Date.now()); autoResizePrompt() }}
                   onInput={autoResizePrompt}
                   rows={1}
-                  placeholder={`Spør hugin`}
-                  className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-0 focus:border-red-600/70 overflow-hidden resize-none"
+                  placeholder="Spør hugin"
+                  className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/70 overflow-hidden resize-none"
                 />
               ) : (
                 <textarea
@@ -1976,21 +2057,19 @@ function CompanyPageContent() {
                   value={chatInput}
                   onChange={(e) => setChatInput(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
-                  placeholder={`Spør hugin`}
+                  placeholder="Spør hugin"
                   rows={1}
-                  className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:ring-0 focus:border-red-600/70 overflow-hidden resize-none"
+                  className="flex-1 min-h-[40px] bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/70 overflow-hidden resize-none"
                 />
               )}
-              {/* 2. Spør / Stopp button matching width (w-24) */}
+              {/* 2. Action button */}
               {mode === 'research' ? (
                 <button
                   onClick={triggerResearch}
                   disabled={researchStatus === 'running' || researchStatus === 'queued'}
-                  className={`h-10 w-24 border text-sm transition-colors ${
-                    researchStatus === 'running' || researchStatus === 'queued'
-                      ? 'border-white/20 text-white/50'
-                      : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'
-                  }`}
+                  className={`h-10 w-24 border text-sm ${researchStatus === 'running' || researchStatus === 'queued'
+                    ? 'border-white/20 text-white/50'
+                    : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'}`}
                 >{researchStatus === 'running' || researchStatus === 'queued' ? 'Flyr…' : 'Spør'}</button>
               ) : chatStreaming ? (
                 <button
@@ -2004,7 +2083,7 @@ function CompanyPageContent() {
                   className={`h-10 w-24 border text-sm ${chatInput.trim() ? 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60' : 'border-white/10 text-white/40'}`}
                 >Spør</button>
               )}
-              {/* 3. Processor group (research) or Chat/Research toggle (chat) with matching width */}
+              {/* 3. Processor group (research) or Chat dropdown toggle (chat) */}
               <div ref={procAnchorRef} className="relative flex items-stretch h-10">
                 {mode === 'research' ? (
                   <div ref={procButtonsContainerRef} className="h-10 bg-black border border-white/20 overflow-hidden flex items-stretch text-sm select-none">
@@ -2034,7 +2113,6 @@ function CompanyPageContent() {
                         </button>
                       )
                     })}
-                    {/* Mode dropdown toggle (arrow only) */}
                     <button
                       type="button"
                       onClick={() => setProcDropdownOpen(o => !o)}
@@ -2052,43 +2130,38 @@ function CompanyPageContent() {
                   <button
                     type="button"
                     onClick={() => setProcDropdownOpen(o => !o)}
-                    className="h-10 border border-white/20 text-sm text-white/85 hover:bg-white/10"
+                    className="h-10 border border-white/20 text-sm text-white/85 hover:bg-white/10 flex items-center justify-between px-4 pl-5 pr-3"
                     style={{ width: procGroupWidth ? `${procGroupWidth}px` : undefined }}
                     aria-haspopup="menu"
                     aria-expanded={procDropdownOpen}
                     title="Velg modus"
                   >
-                    <span className="flex items-center justify-center gap-2">
-                      <span>Chat</span>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none">
-                        <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
-                    </span>
+                    <span className="tracking-wide">Chat</span>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none shrink-0 ml-2">
+                      <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
                   </button>
                 )}
                 {procDropdownOpen && (
                   <div ref={procDropdownRef} className="absolute right-0 top-full bg-black border border-white/20 shadow-xl z-50" style={{ width: mode==='research' ? ((procAnchorRef.current?.firstElementChild as HTMLElement | null)?.offsetWidth || 0) : (procGroupWidth || undefined) }}>
                     <div className="flex flex-col py-1">
-                      <button onClick={() => { setMode('chat'); setProcDropdownOpen(false) }} className={`text-left px-4 py-2 text-sm hover:bg-white/10 ${mode==='chat' ? 'text-white' : 'text-white/80'}`}>Chat</button>
-                      <button onClick={() => { setMode('research'); setProcDropdownOpen(false) }} className={`text-left px-4 py-2 text-sm hover:bg-white/10 ${mode==='research' ? 'text-white' : 'text-white/80'}`}>Research</button>
+                      <button onClick={() => { handleModeChange('chat'); setProcDropdownOpen(false) }} className={`text-left px-4 py-2 text-sm hover:bg-white/10 ${mode==='chat' ? 'text-white' : 'text-white/80'}`}>Chat</button>
+                      <button onClick={() => { handleModeChange('research'); setProcDropdownOpen(false) }} className={`text-left px-4 py-2 text-sm hover:bg-white/10 ${mode==='research' ? 'text-white' : 'text-white/80'}`}>Research</button>
                     </div>
                   </div>
                 )}
               </div>
+              {/* 4. Clear / abort */}
               {mode === 'research' ? (
                 <button
                   onClick={handleClearResearch}
-                  className={`h-10 w-24 border text-sm transition-colors ${
-                    researchStatus === 'running' || researchStatus === 'queued'
-                      ? 'border-red-600/60 text-white hover:bg-red-600/20'
-                      : (researchText || researchStructured || translatedResearchText)
-                        ? 'border-white/20 text-white/80 hover:bg-white/10'
-                        : 'border-white/10 text-white/40 hover:bg-white/5'
-                  }`}
+                  className={`h-10 w-24 border text-sm ${researchStatus === 'running' || researchStatus === 'queued'
+                    ? 'border-red-600/60 text-white hover:bg-red-600/20'
+                    : (researchText || researchStructured || translatedResearchText)
+                      ? 'border-white/20 text-white/80 hover:bg-white/10'
+                      : 'border-white/10 text-white/40 hover:bg-white/5'}`}
                   title={researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm svar'}
-                >
-                  {researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm'}
-                </button>
+                >{researchStatus === 'running' || researchStatus === 'queued' ? 'Avbryt' : 'Tøm'}</button>
               ) : (
                 <button
                   onClick={() => { if (chatStreaming) chatAbortRef.current?.abort(); setChatMessages([]); setChatError(null) }}
@@ -2097,83 +2170,84 @@ function CompanyPageContent() {
               )}
             </div>
             {/* Output schema UI removed; handled by compose service */}
-            {mode === 'research' && researchError && (
-              <div className="text-sm text-red-400 mt-3">{researchError}</div>
-            )}
-            {/* Tiny debug status line */}
-            {mode === 'research' && (researchRunId || lastRunStatus) && (
-              <div className="mt-2 text-[11px] text-gray-400">
-                {(() => {
-                  // Use infoTick to refresh UI every 5s even if nothing else changes
-                  void infoTick
-                  const bits: string[] = []
-                  // Derive a single status reflecting active events
-                  const base = String(lastRunStatus || researchStatus)
-                  const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
-                  const derived = (() => {
-                    // Show composing if we're preparing the prompt/schema (highest priority)
-                    if (isComposing) return 'composing'
-                    // If a run is in progress, show that
-                    if (researchStatus === 'queued' || researchStatus === 'running') return base
-                    // After completion but translation is happening, show translating
-                    if (isTranslating) return 'translating'
-                    // Only show completed once output is visible
-                    if (base === 'completed' && !hasOutput) return 'running'
-                    // Otherwise show the latest known status (completed, error, idle)
-                    return base
-                  })()
-                  bits.push(`Info: runId=${researchRunId || '—'} • status=${derived}`)
-                  if (lastPollAt && !hasOutput) {
-                    bits.push(`polled ${Math.max(0, Math.round((Date.now() - lastPollAt) / 1000))}s ago`)
-                  }
-                  return bits.join(' • ')
-                })()}
-              </div>
-            )}
-      {mode === 'research' && (researchStatus === 'running' || researchStatus === 'queued') && (
-              <div className="flex items-center gap-3 text-sm text-gray-300 mt-3">
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-400"></div>
-        Hugin søker… Dette kan ta litt tid.
-              </div>
-            )}
-            {mode === 'research' && researchStructured ? (
-              <div className="mt-4 text-sm leading-6 text-gray-100">
-                {renderStructuredResearch(researchStructured)}
-              </div>
-            ) : mode === 'research' && (translatedResearchText || researchText) ? (
-              <div className="mt-4 text-sm leading-6 text-gray-100">
-                {renderResearchWithLinksAndBasis(translatedResearchText || researchText, researchBasis)}
-              </div>
-            ) : null }
-            {mode === 'chat' && (() => {
-              const hasChatContent = chatMessages.some(m => m.content.trim().length > 0)
-              if (!hasChatContent && !chatStreaming && !chatError) return null
-              return (
-                <div className="mt-4 text-sm leading-6 text-gray-100">
-                  {/* Mirror research output container: scroll region with subtle border + bg */}
-                  <div className="relative">
-                    <div
-                      ref={chatScrollRef}
-                      className="max-h-[55vh] min-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
-                      style={{ scrollbarWidth: 'thin' }}
-                    >
-                      {chatMessages.map(m => (
-                        <div key={m.id} className="mb-6 last:mb-0">
-                          {m.role === 'user' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Du</div>}
-                          {m.role === 'assistant' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Hugin</div>}
-                          <div className="whitespace-pre-wrap text-gray-200 leading-6">{m.content || (m.role === 'assistant' && chatStreaming ? <span className="opacity-60">Skriver…</span> : '')}</div>
-                        </div>
-                      ))}
-                      {chatStreaming && (
-                        <div className="mb-2 text-gray-400 text-xs">Streamer svar…</div>
-                      )}
-                    </div>
-
+            {/* Animated output region */}
+            <div ref={outputWrapperRef} className="relative mt-3 overflow-hidden" style={{ height: outputHeight, transition: 'height 360ms cubic-bezier(.16,.84,.44,1)' }}>
+              {/* Overlaid layers for crossfade */}
+              <div ref={researchContentRef} className={`absolute left-0 top-0 w-full ${ (mode==='research' || pendingMode==='research') ? 'block' : 'hidden' }`}>
+                <div className={`transition-all duration-360 ease-[cubic-bezier(.16,.84,.44,1)] ${mode==='research' && !pendingMode ? 'opacity-100 translate-y-0' : (pendingMode==='research' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1 pointer-events-none')}`}> 
+                {mode === 'research' && researchError && (
+                  <div className="text-sm text-red-400">{researchError}</div>
+                )}
+                {mode === 'research' && (researchRunId || lastRunStatus) && (
+                  <div className="mt-2 text-[11px] text-gray-400">
+                    {(() => {
+                      void infoTick
+                      const bits: string[] = []
+                      const base = String(lastRunStatus || researchStatus)
+                      const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
+                      const derived = (() => {
+                        if (isComposing) return 'composing'
+                        if (researchStatus === 'queued' || researchStatus === 'running') return base
+                        if (isTranslating) return 'translating'
+                        if (base === 'completed' && !hasOutput) return 'running'
+                        return base
+                      })()
+                      bits.push(`Info: runId=${researchRunId || '—'} • status=${derived}`)
+                      if (lastPollAt && !hasOutput) bits.push(`polled ${Math.max(0, Math.round((Date.now() - lastPollAt) / 1000))}s ago`)
+                      return bits.join(' • ')
+                    })()}
                   </div>
-                  {chatError && <div className="text-xs text-red-400 mt-3">{chatError}</div>}
+                )}
+                {mode === 'research' && (researchStatus === 'running' || researchStatus === 'queued') && (
+                  <div className="flex items-center gap-3 text-sm text-gray-300 mt-3">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-400"></div>
+                    Hugin søker… Dette kan ta litt tid.
+                  </div>
+                )}
+                {(mode==='research' || pendingMode==='research') && researchStructured && (
+                  <div className="mt-4 text-sm leading-6 text-gray-100">
+                    {renderStructuredResearch(researchStructured)}
+                  </div>
+                )}
+                {(mode==='research' || pendingMode==='research') && !researchStructured && (translatedResearchText || researchText) && (
+                  <div className="mt-4 text-sm leading-6 text-gray-100">
+                    {renderResearchWithLinksAndBasis(translatedResearchText || researchText, researchBasis)}
+                  </div>
+                )}
                 </div>
-              )
-            })()}
+              </div>
+              <div ref={chatContentRef} className={`absolute left-0 top-0 w-full ${ (mode==='chat' || pendingMode==='chat') ? 'block' : 'hidden' }`}>
+                <div className={`transition-all duration-360 ease-[cubic-bezier(.16,.84,.44,1)] ${mode==='chat' && !pendingMode ? 'opacity-100 translate-y-0' : (pendingMode==='chat' ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-1 pointer-events-none')}`}>
+                {(() => {
+                  const hasChatContent = chatMessages.some(m => m.content.trim().length > 0)
+                  if (!hasChatContent && !chatStreaming && !chatError) return null
+                  return (
+                    <div className="text-sm leading-6 text-gray-100">
+                      <div className="relative">
+                        <div
+                          ref={chatScrollRef}
+                          className="max-h-[55vh] min-h-[200px] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+                          style={{ scrollbarWidth: 'thin' }}
+                        >
+                          {chatMessages.map(m => (
+                            <div key={m.id} className="mb-6 last:mb-0">
+                              {m.role === 'user' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Du</div>}
+                              {m.role === 'assistant' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Hugin</div>}
+                              <div className="whitespace-pre-wrap text-gray-200 leading-6">{m.content || (m.role === 'assistant' && chatStreaming ? <span className="opacity-60">Skriver…</span> : '')}</div>
+                            </div>
+                          ))}
+                          {chatStreaming && (
+                            <div className="mb-2 text-gray-400 text-xs">Streamer svar…</div>
+                          )}
+                        </div>
+                      </div>
+                      {chatError && <div className="text-xs text-red-400 mt-3">{chatError}</div>}
+                    </div>
+                  )
+                })()}
+                </div>
+              </div>
+            </div>
           </div>
         )}
         {loading ? (
