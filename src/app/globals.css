@@ -1,0 +1,257 @@
+@import 'tailwindcss';
+
+/* Glass navbar variants */
+.glass {
+  background: rgba(255, 255, 255, 0.05);
+  backdrop-filter: blur(4px);
+  border: 0.5px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+}
+.glass-dark {
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(4px);
+  border: 0.5px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.25);
+}
+
+/* Cursor pointer for all interactive elements */
+button,
+a,
+[role='button'],
+[tabindex]:not([tabindex='-1']) {
+  cursor: pointer;
+}
+
+/* Typing animations for brand text */
+@keyframes typing-disappear {
+  from {
+    width: 100%;
+  }
+  to {
+    width: 0;
+  }
+}
+
+@keyframes typing-appear {
+  from {
+    width: 0;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@keyframes caret-fade-out {
+  0% {
+    opacity: 1;
+  }
+  90% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+/* Base and variants (reduced duplication) */
+.allvitr-typing {
+  white-space: nowrap;
+  overflow: hidden;
+  vertical-align: bottom;
+  position: relative;
+}
+.allvitr-typing::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 10px;
+  height: 2px;
+  background-color: red;
+}
+.allvitr-typing-disappear {
+  animation: typing-disappear 0.8s steps(7, end) forwards;
+}
+.allvitr-typing-disappear::after {
+  animation: caret-fade-out 0.8s steps(7, end) forwards;
+}
+.allvitr-typing-appear {
+  animation: typing-appear 0.8s steps(7, end) forwards;
+}
+.allvitr-typing-appear::after {
+  animation: caret-fade-out 1.2s steps(7, end) forwards;
+}
+
+/* Reusable component classes to reduce Tailwind verbosity */
+@layer components {
+  .container-95 {
+    @apply w-[95%] md:max-w-[95%] mx-auto;
+  }
+  .container-80 {
+    @apply w-[95%] md:max-w-[80%] mx-auto;
+  }
+  .pad-section {
+    @apply px-4 md:px-8;
+  }
+  .page {
+    @apply min-h-screen flex flex-col relative;
+  }
+
+  .btn {
+    @apply px-6 py-3 font-semibold border-2 border-transparent transition duration-300;
+  }
+  .btn-primary {
+    @apply bg-gray-400 text-black hover:border-white;
+  }
+  .btn-outline {
+    @apply border-2 border-gray-400 text-gray-400 hover:border-white hover:text-white;
+  }
+
+  .input {
+    @apply w-full rounded bg-white/5 text-white placeholder-gray-400 px-3 py-2 ring-1 ring-white/10 focus:outline-none focus:ring-white/30;
+  }
+  /* Hide native number input spinners for consistent custom controls */
+  .input[type='number']::-webkit-inner-spin-button,
+  .input[type='number']::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+  .input[type='number'] {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+
+  .panel {
+    @apply bg-black/40 ring-1 ring-white/10 rounded;
+  }
+
+  .label {
+    @apply block text-sm text-gray-700 mb-1;
+  }
+  .input-underline {
+    @apply w-full rounded-none bg-transparent border-0 border-b border-gray-400 text-gray-900 placeholder-gray-500 px-0 py-2 focus:outline-none focus:ring-0 focus:border-black focus:border-b-2;
+  }
+  .textarea-base {
+    @apply w-full rounded-none bg-transparent border border-gray-400 text-gray-900 placeholder-gray-500 px-3 py-2 focus:outline-none focus:ring-0 focus:border-black;
+  }
+
+  /* Square thumb slider styling for event weights */
+  .slider-square {
+    appearance: none;
+    -webkit-appearance: none; /* Safari */
+    height: 4px;
+    background: rgba(255,255,255,0.2);
+    border-radius: 2px;
+  }
+  .slider-square:focus {
+    outline: none;
+  }
+  .slider-square::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 10px;
+    height: 10px;
+    background: #9ca3af; /* gray-400 solid */
+    border-radius: 0; /* square */
+    border: 1px solid #6b7280; /* gray-500 border */
+    cursor: pointer;
+    margin-top: -3px; /* centers thumb on 4px track */
+  }
+  .slider-square::-moz-range-thumb {
+    width: 10px;
+    height: 10px;
+    background: #9ca3af;
+    border: 1px solid #6b7280;
+    border-radius: 0;
+    cursor: pointer;
+  }
+  .slider-square::-ms-thumb {
+    width: 10px;
+    height: 10px;
+    background: #9ca3af;
+    border: 1px solid #6b7280;
+    border-radius: 0;
+    cursor: pointer;
+  }
+  .slider-square::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 2px;
+  }
+  .slider-square::-moz-range-track {
+    height: 4px;
+    border-radius: 2px;
+  }
+  /* Ghost track to overlay multiple thumbs on one custom track */
+  .slider-ghost {
+    appearance: none;
+    -webkit-appearance: none; /* Safari */
+    background: transparent !important;
+    pointer-events: none; /* let only thumbs handle pointer events */
+  }
+  .slider-ghost:focus {
+    outline: none;
+  }
+  .slider-ghost::-webkit-slider-runnable-track {
+    background: transparent;
+    pointer-events: none;
+  }
+  .slider-ghost::-moz-range-track {
+    background: transparent;
+    pointer-events: none;
+  }
+  .slider-ghost::-webkit-slider-thumb {
+    pointer-events: auto; /* allow dragging the thumb itself */
+  }
+  .slider-ghost::-moz-range-thumb {
+    pointer-events: auto;
+  }
+
+  .nav-links {
+    @apply hidden md:flex items-center gap-6 mx-auto;
+  }
+  .nav-link {
+    @apply text-white transition-colors duration-200 hover:text-red-600 md:group-data-[glass=dark]:hover:text-sky-400;
+  }
+
+  /* Context-aware button hover borders based on section background theme */
+  [data-nav-theme='light'] .btn:hover {
+    @apply border-gray-900; /* dark border on light backgrounds */
+  }
+  [data-nav-theme='dark'] .btn:hover,
+  [data-nav-theme='dark-contrast'] .btn:hover {
+    @apply border-white; /* light border on dark backgrounds */
+  }
+
+  /* Keep outline buttons (e.g., Explore) white on hover even on light backgrounds */
+  [data-nav-theme='light'] .btn-outline:hover {
+    @apply border-white;
+  }
+
+  /* Common heading outlines (replace verbose [-webkit-text-stroke-*]) */
+  .heading-outline-dark {
+    -webkit-text-stroke-width: 1.5px;
+    -webkit-text-stroke-color: rgb(17, 24, 39); /* gray-900 */
+  }
+  @media (min-width: 768px) {
+    .heading-outline-dark {
+      -webkit-text-stroke-width: 2px;
+    }
+  }
+  .heading-outline-light {
+    -webkit-text-stroke-width: 1.5px;
+    -webkit-text-stroke-color: rgb(255, 255, 255);
+  }
+  @media (min-width: 768px) {
+    .heading-outline-light {
+      -webkit-text-stroke-width: 2px;
+    }
+  }
+
+  /* Hide scrollbar for webkit browsers */
+  .scrollbar-hide {
+    -ms-overflow-style: none;  /* Internet Explorer 10+ */
+    scrollbar-width: none;  /* Firefox */
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;  /* Safari and Chrome */
+  }
+}
