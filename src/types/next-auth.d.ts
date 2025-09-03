@@ -10,6 +10,7 @@ declare module 'next-auth' {
       image?: string | null
       emailVerified?: Date | null
   mainAccess?: boolean
+  businessContext?: string | null
     }
   }
 
@@ -21,6 +22,7 @@ declare module 'next-auth' {
     image?: string | null
     emailVerified?: Date | null
   mainAccess?: boolean
+    businessContext?: string | null
   }
 }
 
@@ -29,6 +31,7 @@ declare module 'next-auth/jwt' {
     id: string
   emailVerified?: Date | null
   mainAccess?: boolean
+  businessContext?: string | null
   }
 }
 

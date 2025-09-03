@@ -1,5 +1,8 @@
 import { NextResponse } from 'next/server'
 import { checkApiAccess } from '@/lib/access-control'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
+import type { Session } from 'next-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -187,6 +190,14 @@ export async function POST(req: Request) {
     }
 
     const body = (await req.json()) as ComposeBody
+    // Fallback businessContext to session value if not provided
+    try {
+      if (!body.businessContext) {
+        const session = (await getServerSession(authOptions)) as Session | null
+        const bc = session?.user?.businessContext as string | undefined
+        if (bc && bc.trim()) body.businessContext = bc
+      }
+    } catch {}
     const prompt = (body.prompt || '').trim()
     if (!prompt) {
       return NextResponse.json({ error: 'prompt is required' }, { status: 400 })

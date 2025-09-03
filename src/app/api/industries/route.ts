@@ -35,38 +35,33 @@ export async function GET(req: Request) {
   let params: (string | null)[]
 
   if (!q) {
-    // No search query - return ALL industries for client-side filtering
+    // Use precomputed/filter matrix for fast industry listing
     sql = `
       SELECT DISTINCT
-        "industryCode1" as code,
-        "industryText1" as text,
-        1 as count
-      FROM "Business" 
-      WHERE "industryCode1" IS NOT NULL 
-        AND "industryText1" IS NOT NULL
-        AND (COALESCE("registeredInForetaksregisteret", false) = true 
-             OR "orgFormCode" IN ('AS','ASA','ENK','ANS','DA','NUF','SA','SAS','A/S','A/S/ASA'))
-      ORDER BY "industryCode1" ASC
+        m.industry_code1 AS code,
+        m.industry_text1 AS text,
+        1 AS count
+      FROM public.business_filter_matrix m
+      WHERE m.industry_code1 IS NOT NULL AND m.industry_text1 IS NOT NULL
+      ORDER BY m.industry_code1 ASC
     `
     params = []
   } else {
     // Search query - target specific matches only
     sql = `
       SELECT DISTINCT
-        "industryCode1" as code,
-        "industryText1" as text,
-        1 as count,
+        m.industry_code1 AS code,
+        m.industry_text1 AS text,
+        1 AS count,
         CASE
-          WHEN "industryCode1" ILIKE $1 OR "industryText1" ILIKE $1 THEN 0
+          WHEN m.industry_code1 ILIKE $1 OR m.industry_text1 ILIKE $1 THEN 0
           ELSE 1
-        END as relevance
-      FROM "Business" 
-      WHERE "industryCode1" IS NOT NULL 
-        AND "industryText1" IS NOT NULL
-        AND (COALESCE("registeredInForetaksregisteret", false) = true 
-             OR "orgFormCode" IN ('AS','ASA','ENK','ANS','DA','NUF','SA','SAS','A/S','A/S/ASA'))
-        AND ("industryCode1" ILIKE $2 OR "industryText1" ILIKE $2)
-      ORDER BY relevance ASC, "industryCode1" ASC
+        END AS relevance
+      FROM public.business_filter_matrix m
+      WHERE m.industry_code1 IS NOT NULL 
+        AND m.industry_text1 IS NOT NULL
+        AND (m.industry_code1 ILIKE $2 OR m.industry_text1 ILIKE $2)
+      ORDER BY relevance ASC, m.industry_code1 ASC
       LIMIT 50
     `
     params = [`${q}%`, `%${q}%`]
@@ -81,5 +76,7 @@ export async function GET(req: Request) {
   // Cache results for 5 minutes
   apiCache.set(cacheKey, rows, 5 * 60 * 1000)
 
-  return NextResponse.json(rows)
+  return NextResponse.json(rows, {
+    headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' },
+  })
 }

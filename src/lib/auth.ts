@@ -161,15 +161,17 @@ export const authOptions: any = {
       if (user) {
         token.id = user.id
         token.emailVerified = user.emailVerified
-        // Fetch mainAccess from DB on initial login
+        // Fetch mainAccess and businessContext from DB on initial login
         try {
-          const res = await query<{ main_access: boolean | null }>(
-            'SELECT main_access FROM users WHERE id = $1',
+          const res = await query<{ main_access: boolean | null; business_context: string | null }>(
+            'SELECT main_access, business_context FROM users WHERE id = $1',
             [user.id]
           )
           token.mainAccess = Boolean(res.rows[0]?.main_access)
+          token.businessContext = res.rows[0]?.business_context ?? null
         } catch (e) {
           token.mainAccess = false
+          token.businessContext = null
         }
         
         // For Google OAuth users, ensure emailVerified is set
@@ -184,17 +186,21 @@ export const authOptions: any = {
       if (token && session.user) {
         session.user.id = token.id as string
         session.user.emailVerified = token.emailVerified as Date | null
-        // Always fetch latest main_access so admin toggles apply immediately
+        // Always fetch latest main_access and business_context so admin toggles and context apply immediately
         try {
-          const res = await query<{ main_access: boolean | null }>(
-            'SELECT main_access FROM users WHERE id = $1',
+          const res = await query<{ main_access: boolean | null; business_context: string | null }>(
+            'SELECT main_access, business_context FROM users WHERE id = $1',
             [token.id]
           )
           const current = Boolean(res.rows[0]?.main_access)
           session.user.mainAccess = current
           token.mainAccess = current
+          const bc = res.rows[0]?.business_context ?? null
+          session.user.businessContext = bc
+          token.businessContext = bc
         } catch {
           session.user.mainAccess = Boolean(token.mainAccess)
+          session.user.businessContext = (token.businessContext ?? null) as string | null
         }
 
         // Double-check: If this is a Google user without verified email, fix it

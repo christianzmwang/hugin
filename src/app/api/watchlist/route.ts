@@ -7,24 +7,8 @@ export const dynamic = 'force-dynamic'
 export const preferredRegion = ['fra1', 'arn1', 'cdg1']
 export const maxDuration = 15
 
-async function ensureTable() {
-  if (!dbConfigured) return
-  try {
-    await query(
-      `CREATE TABLE IF NOT EXISTS watchlist (
-        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-        org_number TEXT NOT NULL,
-        created_at TIMESTAMPTZ DEFAULT NOW(),
-        UNIQUE(user_id, org_number)
-      );`
-    )
-    await query(`CREATE INDEX IF NOT EXISTS watchlist_user_idx ON watchlist(user_id);`)
-    await query(`CREATE INDEX IF NOT EXISTS watchlist_org_idx ON watchlist(org_number);`)
-  } catch (e) {
-    // swallow to avoid breaking requests; callers gate on dbConfigured
-  }
-}
+// Avoid DDL on hot path; assume migrations created table and indexes.
+async function ensureTable() { /* no-op at runtime */ }
 
 
 
@@ -36,7 +20,7 @@ export async function GET(req: Request) {
 
   if (!dbConfigured) return NextResponse.json({ items: [] })
 
-  await ensureTable()
+  // No DDL here; rely on migrations
 
   const session = await getAuthorizedSession()
   if (!session?.user?.id) return NextResponse.json({ items: [] })
@@ -58,9 +42,9 @@ export async function GET(req: Request) {
       params.push(limit)
     }
 
-    const res = await query<{ org_number: string; name: string | null }>(sql, params)
-    const items = (res.rows || []).map((r) => ({ orgNumber: r.org_number, name: r.name || null }))
-    return NextResponse.json({ items })
+  const res = await query<{ org_number: string; name: string | null }>(sql, params)
+  const items = (res.rows || []).map((r) => ({ orgNumber: r.org_number, name: r.name || null }))
+  return NextResponse.json({ items }, { headers: { 'Cache-Control': 's-maxage=30, stale-while-revalidate=120' } })
   } catch {
     return NextResponse.json({ items: [] })
   }

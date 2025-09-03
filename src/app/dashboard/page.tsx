@@ -309,7 +309,7 @@ export default function DashboardPage() {
                       <div className="text-xs text-gray-400 truncate">{it.orgNumber}</div>
                     </div>
                     <div className="flex items-center gap-2">
-                      <a className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10" href={`/search?q=${encodeURIComponent(it.name || it.orgNumber)}`}>Open</a>
+                      <a className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10" href={`/company?orgNumber=${encodeURIComponent(it.orgNumber)}`}>Open</a>
                       <button className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10" onClick={() => removeWatchlistItem(it.orgNumber)}>Remove</button>
                     </div>
                   </li>

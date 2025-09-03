@@ -332,6 +332,38 @@ export async function GET(req: Request) {
     orgNumberClause = `AND b."orgNumber" = $${orgNumberIdx}`
   }
 
+  // Fast path: when requesting a single orgNumber and not countOnly, skip heavy joins and return minimal fields quickly
+  if (orgNumberParam && !countOnly) {
+    const fastSql = `
+      SELECT 
+        b."orgNumber",
+        b.name,
+        b.website,
+        b.employees,
+        b."addressStreet",
+        b."addressPostalCode",
+        b."addressCity",
+        b."industryCode1",
+        b."industryText1",
+        b."orgFormCode",
+        b."orgFormText",
+        b."updatedAt"
+      FROM "Business" b
+      WHERE b."orgNumber" = $${orgNumberIdx}
+      LIMIT 1
+    `
+    try {
+      const start = Date.now()
+      const { rows } = await query(fastSql, params)
+      console.log(`[businesses] Fast orgNumber lookup took ${Date.now() - start}ms`)
+      const response = { items: rows as Record<string, unknown>[], total: rows.length, grandTotal: 0 }
+      return NextResponse.json(response)
+    } catch (e) {
+      console.error('[businesses] Fast orgNumber lookup failed, falling back', e)
+      // Fall through to full pipeline
+    }
+  }
+
   // Update clause placeholders with actual parameter positions
   if (revenueClause) {
     revenueClause = revenueClause
@@ -573,36 +605,33 @@ export async function GET(req: Request) {
     LIMIT ${limit} OFFSET ${offset}
   `
 
+  // For counts, avoid joining latest financials unless we actually filter by revenue/profit.
+  const needsFinancialJoin = Boolean(revenueClause || profitClause)
   const countSql = `
     SELECT COUNT(*)::int as total
     FROM "Business" b
-    LEFT JOIN LATERAL (
-      SELECT f."fiscalYear", f.revenue
+    ${needsFinancialJoin ? `LEFT JOIN LATERAL (
+      SELECT f."fiscalYear", f.revenue, f.profit
       FROM "FinancialReport" f
       WHERE f."businessId" = b.id
       ORDER BY f."fiscalYear" DESC NULLS LAST
       LIMIT 1
-    ) fLatest ON TRUE
+    ) fLatest ON TRUE` : ''}
     ${baseWhere}
-    ${revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
-    ${profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
+    ${needsFinancialJoin && revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
+    ${needsFinancialJoin && profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${(() => {
       const conditions = []
-      
       // Event existence filtering
       if (withoutEvents) {
         conditions.push('NOT EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber")')
       } else if (withEvents || eventTypesIdx) {
-        // If "with events" is selected OR specific event types are selected, only show companies with events
         if (eventTypesIdx) {
-          // Only companies with the specific event types
           conditions.push(`EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber" AND e.event_type = ANY($${eventTypesIdx}::text[]))`)
         } else {
-          // Only companies with any events
           conditions.push('EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber")')
         }
       }
-      
       return conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : ''
     })()}
   `
@@ -613,9 +642,31 @@ export async function GET(req: Request) {
   if (countOnly) {
     const start = Date.now()
     try {
-      const countRes = await query<{ total: number }>(countSql, params)
-      console.log(`[businesses] Count query took ${Date.now() - start}ms`)
-      total = countRes.rows?.[0]?.total ?? 0
+      // Use fast path when no filters are applied
+      const noIndustry = !hasIndustries
+      const noAreas = !hasAreas
+      const noRevenue = !revenueClause
+      const noProfit = !profitClause
+      const noEvents = !withoutEvents && !withEvents && !eventTypesIdx
+      const noSearch = !q && !orgNumberParam
+      const noOrgForm = orgFormCodes.length === 0
+      const canUseFastCount = noIndustry && noAreas && noRevenue && noProfit && noEvents && noSearch && noOrgForm
+
+      if (canUseFastCount) {
+        try {
+          const fast = await query<{ total: number }>('SELECT get_fast_business_count()::int AS total')
+          total = fast.rows?.[0]?.total ?? 0
+          console.log(`[businesses] Fast count function used in ${Date.now() - start}ms`)
+        } catch {
+          const countRes = await query<{ total: number }>(countSql, params)
+          console.log(`[businesses] Count query (fallback) took ${Date.now() - start}ms`)
+          total = countRes.rows?.[0]?.total ?? 0
+        }
+      } else {
+        const countRes = await query<{ total: number }>(countSql, params)
+        console.log(`[businesses] Count query took ${Date.now() - start}ms`)
+        total = countRes.rows?.[0]?.total ?? 0
+      }
     } catch (error) {
       console.error(`[businesses] Count query failed:`, error)
       console.error(`[businesses] Count query was:`, countSql)
@@ -656,11 +707,31 @@ export async function GET(req: Request) {
     if (!skipCount) {
       const countStart = Date.now()
       try {
-        const countRes = await query<{ total: number }>(countSql, params)
-        console.log(
-          `[businesses] Count query took ${Date.now() - countStart}ms`,
-        )
-        total = countRes.rows?.[0]?.total ?? 0
+        // Use fast path when no filters are applied
+        const noIndustry = !hasIndustries
+        const noAreas = !hasAreas
+        const noRevenue = !revenueClause
+        const noProfit = !profitClause
+        const noEvents = !withoutEvents && !withEvents && !eventTypesIdx
+        const noSearch = !q && !orgNumberParam
+        const noOrgForm = orgFormCodes.length === 0
+        const canUseFastCount = noIndustry && noAreas && noRevenue && noProfit && noEvents && noSearch && noOrgForm
+
+        if (canUseFastCount) {
+          try {
+            const fast = await query<{ total: number }>('SELECT get_fast_business_count()::int AS total')
+            total = fast.rows?.[0]?.total ?? 0
+            console.log(`[businesses] Fast count function used in ${Date.now() - countStart}ms`)
+          } catch {
+            const countRes = await query<{ total: number }>(countSql, params)
+            console.log(`[businesses] Count query (fallback) took ${Date.now() - countStart}ms`)
+            total = countRes.rows?.[0]?.total ?? 0
+          }
+        } else {
+          const countRes = await query<{ total: number }>(countSql, params)
+          console.log(`[businesses] Count query took ${Date.now() - countStart}ms`)
+          total = countRes.rows?.[0]?.total ?? 0
+        }
       } catch (error) {
         console.error(`[businesses] Count query failed:`, error)
         console.error(`[businesses] Count query was:`, countSql)
@@ -697,7 +768,9 @@ export async function GET(req: Request) {
       apiCache.set(cacheParams, countResponse, 30 * 1000) // 30s cache for counts
     }
 
-    return NextResponse.json(countResponse)
+    return NextResponse.json(countResponse, {
+      headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=300' },
+    })
   }
 
   const response = { items: filteredItems, total, grandTotal }
@@ -707,6 +780,8 @@ export async function GET(req: Request) {
     apiCache.set(cacheParams, response, 2 * 60 * 1000) // 2min cache
   }
 
-  return NextResponse.json(response)
+  return NextResponse.json(response, {
+    headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=300' },
+  })
 }
 

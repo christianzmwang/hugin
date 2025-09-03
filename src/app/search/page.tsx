@@ -242,7 +242,20 @@ const BusinessCard = memo(
       <div 
         ref={cardRef} 
         className="py-6 hover:bg-red-600/10 transition-colors duration-200 -mx-4 px-4 cursor-pointer first:border-t first:border-white/10"
-        onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(business.orgNumber)}`)}
+        onClick={(e) => {
+          // If the click originated from an interactive element (e.g., link/button),
+          // don't trigger navigation to the company page.
+          if (e.defaultPrevented) return
+          const el = e.target as Element | null
+          const isInteractive = el?.closest?.(
+            'a, button, input, textarea, select, [role="button"], [role="link"]'
+          )
+          if (isInteractive) return
+          // Only handle primary-click without modifier keys
+          if (e.button !== 0) return
+          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
+          router.push(`/company?orgNumber=${encodeURIComponent(business.orgNumber)}`)
+        }}
       >
         <div className="flex justify-between items-start mb-4">
           <div className="flex-1">
@@ -273,7 +286,12 @@ const BusinessCard = memo(
                 <div className="mb-2">
                   <span className="font-medium">Website:</span>{' '}
                   {business.website ? (
-                    <a className="text-sky-400 underline hover:text-sky-300" href={business.website} target="_blank" rel="noreferrer">
+                    <a
+                      className="text-sky-400 underline hover:text-sky-300"
+                      href={business.website.startsWith('http') ? business.website : `https://${business.website}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
                       {business.website}
                     </a>
                   ) : (

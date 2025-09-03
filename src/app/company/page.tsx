@@ -407,7 +407,7 @@ function CompanyPageContent() {
   const [researchBasis, setResearchBasis] = useState<Array<{ title?: string; url?: string }>>([])
   const [researchError, setResearchError] = useState<string | null>(null)
   const pollTokenRef = useRef(0)
-  const [processor, setProcessor] = useState<'lite' | 'base' | 'core' | 'pro' | 'ultra'>('pro')
+  const [processor, setProcessor] = useState<'lite' | 'base' | 'core' | 'pro' | 'ultra'>('base')
   const [customInput, setCustomInput] = useState<string>('')
   // Optional editable block describing the current company (replaces auto Company/Org/Website)
   const [companyInput, setCompanyInput] = useState<string>('')
@@ -940,9 +940,15 @@ function CompanyPageContent() {
     })
   }, [topCompany])
 
-  // Load business context from Configuration (localStorage) once on mount
+  // Load business context: prefer session.user.businessContext, fallback to localStorage
   useEffect(() => {
     try {
+      const fromSession = session?.user?.businessContext as string | undefined
+      if (fromSession && fromSession.trim()) {
+        setCustomInput(fromSession)
+        try { localStorage.setItem('businessContext', fromSession) } catch {}
+        return
+      }
       const bc = localStorage.getItem('businessContext')
       if (bc && typeof bc === 'string') {
         setCustomInput(bc)
@@ -950,7 +956,7 @@ function CompanyPageContent() {
     } catch {
       // ignore
     }
-  }, [])
+  }, [session?.user])
 
   // Poll for research result when queued/running
   useEffect(() => {
@@ -973,7 +979,12 @@ function CompanyPageContent() {
             if (contentAny !== undefined && contentAny !== null) {
               const structured = coerceStructuredResearch(contentAny)
               if (structured) {
-                setResearchStructured(structured)
+                try {
+                  const trd = await translateStructured(structured, (prompt || '').slice(0, 400))
+                  setResearchStructured(trd)
+                } catch {
+                  setResearchStructured(structured)
+                }
                 setResearchText('')
                 setTranslatedResearchText('')
               } else {
@@ -983,7 +994,7 @@ function CompanyPageContent() {
                   const tr = await fetch('/api/translate', {
                     method: 'POST',
                     headers: { 'content-type': 'application/json' },
-                    body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: prompt }),
+                    body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: (prompt || '').slice(0, 400) }),
                   })
                   if (tr.ok) {
                     const trData = await tr.json()
@@ -1039,6 +1050,58 @@ function CompanyPageContent() {
   setParallelMs(null)
     setResearchStatus('queued')
     await composeRunTranslate()
+  }
+
+  // Translate structured research sections to match the prompt language
+  const translateStructured = async (data: StructuredResearch, promptText: string): Promise<StructuredResearch> => {
+    const out: StructuredResearch = { ...data }
+    const promptSample = (promptText || '').slice(0, 400)
+    const tasks: Array<Promise<void>> = []
+    // Translate directAnswer in parallel with key points
+    if (data.directAnswer && data.directAnswer.trim()) {
+      tasks.push(
+        (async () => {
+          try {
+            const tr = await fetch('/api/translate', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ text: data.directAnswer, matchPrompt: true, promptText: promptSample }),
+            })
+            if (tr.ok) {
+              const td = await tr.json()
+              out.directAnswer = String(td.text || data.directAnswer)
+            }
+          } catch {}
+        })()
+      )
+    }
+    // Translate keyPoints concurrently (preserve order)
+    if (Array.isArray(data.keyPoints) && data.keyPoints.length > 0) {
+      const promises = data.keyPoints.map(async (kp) => {
+        const s = typeof kp === 'string' ? kp : String(kp)
+        if (!s.trim()) return s
+        try {
+          const tr = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: s, matchPrompt: true, promptText: promptSample }),
+          })
+          if (!tr.ok) return s
+          const td = await tr.json()
+          return String(td.text || s)
+        } catch {
+          return s
+        }
+      })
+      tasks.push(
+        (async () => {
+          const translated = await Promise.all(promises)
+          out.keyPoints = translated
+        })()
+      )
+    }
+    if (tasks.length) await Promise.all(tasks)
+    return out
   }
 
   const composeRunTranslate = async () => {
@@ -1101,7 +1164,12 @@ function CompanyPageContent() {
       if (contentAny === undefined || contentAny === null) throw new Error('Empty result')
       const structured = coerceStructuredResearch(contentAny)
       if (structured) {
-        setResearchStructured(structured)
+        try {
+          const trd = await translateStructured(structured, prompt)
+          setResearchStructured(trd)
+        } catch {
+          setResearchStructured(structured)
+        }
         setResearchText('')
         setTranslatedResearchText('')
         // End Parallel timing and log summary
@@ -1119,7 +1187,7 @@ function CompanyPageContent() {
         const tr = await fetch('/api/translate', {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: prompt }),
+          body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: (prompt || '').slice(0, 400) }),
         })
         if (!tr.ok) {
           setResearchText(englishText)
@@ -1492,17 +1560,20 @@ function CompanyPageContent() {
                   const selected = processor === key
                   const level = idx + 1 // 1,2,3 dots
                   const costStr = processorMeta[key].cost
-                  const credits = (() => {
+                  // Derive points per question from cost and apply a 1.2x multiplier (display only)
+                  const basePoints = (() => {
                     const n = parseFloat(String(costStr).replace(/[^0-9.]/g, ''))
-                    return Number.isFinite(n) ? Math.round(n * 1000) : '?'
+                    return Number.isFinite(n) ? Math.round(n * 1000) : NaN
                   })()
+                  const points: number | '?' = Number.isFinite(basePoints) ? Math.round((basePoints as number) * 1.2) : '?'
+                  const pointsLabel = typeof points === 'number' ? numberFormatter.format(points) : String(points)
                   return (
                     <button
                       key={key}
                       type="button"
                       aria-pressed={selected}
                       onClick={() => setProcessor(key)}
-                      title={`Estimert tid: ${processorMeta[key].est} • ${processorMeta[key].cost} × 1000 = ${credits} credits per question`}
+                      title={`Estimert tid: ${processorMeta[key].est} • ${pointsLabel} poeng / spørsmål`}
           className={`px-3 h-full flex items-center ${
                         selected
                           ? 'bg-red-600/20 text-white border-red-600/60'
@@ -1608,10 +1679,7 @@ function CompanyPageContent() {
                       <span className="font-medium text-gray-300">Antall ansatte:</span>
                       <div className="text-white">{topCompany.employees ?? '—'}</div>
                     </div>
-                    <div>
-                      <span className="font-medium text-gray-300">Gjennomsnittlig ansatte:</span>
-                      <div className="text-white">{topCompany.employeesAvg ?? '—'}</div>
-                    </div>
+                    
                   </div>
                 </div>
 
@@ -1647,12 +1715,7 @@ function CompanyPageContent() {
                          `${fmt(topCompany.aarsresultat || topCompany.profit)} ${topCompany.valuta || 'NOK'}`}
                       </div>
                     </div>
-                    {topCompany.employeesAvg !== null && topCompany.employeesAvg !== undefined && (
-                      <div>
-                        <span className="font-medium text-gray-300">Gjennomsnittlig ansatte:</span>
-                        <div className="text-white">{topCompany.employeesAvg}</div>
-                      </div>
-                    )}
+                    
                   </div>
                 </div>
 
@@ -2057,14 +2120,7 @@ function CompanyPageContent() {
                   <div className="space-y-4">
                     <h4 className="text-lg font-semibold border-b border-white/10 pb-2">Risikovurdering</h4>
                     <div className="space-y-3 text-sm">
-                      <div>
-                        <span className="font-medium text-gray-300">Risikoflagg:</span>
-                        <div className="text-white">{topCompany.webRiskFlags || '—'}</div>
-                      </div>
-                      <div>
-                        <span className="font-medium text-gray-300">Feil:</span>
-                        <div className="text-white">{topCompany.webErrors || '—'}</div>
-                      </div>
+                      
                       <div>
                         <span className="font-medium text-gray-300">Placeholder nettside:</span>
                         <div className="text-white">

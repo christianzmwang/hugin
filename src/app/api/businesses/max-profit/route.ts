@@ -41,7 +41,7 @@ export async function GET() {
     const maxProfit = res.rows?.[0]?.maxProfit ?? 0
     const payload = { maxProfit }
     apiCache.set(cacheKey, payload, 5 * 60 * 1000) // cache 5 minutes
-    return NextResponse.json(payload)
+  return NextResponse.json(payload, { headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' } })
   } catch {
     return NextResponse.json({ maxProfit: 0 }, { status: 200 })
   }

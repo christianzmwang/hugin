@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { checkApiAccess } from '@/lib/access-control'
+import { apiCache } from '@/lib/api-cache'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -22,6 +23,52 @@ const MODEL_ORDER = [
   'openai/gpt-5-mini',
   'google/gemini-2.5-flash',
 ]
+
+// Tiny heuristic language detector: focuses on English, Norwegian, Swedish, Danish.
+// Returns 'en' | 'no' | 'sv' | 'da' | 'unknown'.
+function detectLangHeuristic(text: string): 'en' | 'no' | 'sv' | 'da' | 'unknown' {
+  const t = (text || '').toLowerCase()
+  if (!t || t.replace(/[^a-zæøåäö]/gi, '').length < 8) return 'unknown'
+
+  // Diacritics strong hints
+  if (/[æøå]/.test(t)) {
+    // Distinguish no vs da by "av" vs "af"
+    const hasAv = /\bav\b/.test(t)
+    const hasAf = /\baf\b/.test(t)
+    if (hasAf && !hasAv) return 'da'
+    return 'no'
+  }
+  if (/[äö]/.test(t)) return 'sv'
+
+  // Stopword scoring
+  const count = (re: RegExp) => (t.match(re) || []).length
+  const score = {
+    en: count(/\b(the|and|of|to|in|for|with|on|as|is|are|that|from)\b/g),
+    no: count(/\b(og|i|på|av|til|for|med|er|som|det|ikke)\b/g),
+    sv: count(/\b(och|i|på|av|till|för|med|är|som|det|inte)\b/g),
+    da: count(/\b(og|i|på|af|til|for|med|er|som|det|ikke)\b/g),
+  }
+  // Penalize overlaps a bit
+  score.no += count(/\bav\b/g)
+  score.da += count(/\baf\b/g)
+  // Pick max if sufficiently above others
+  const entries = Object.entries(score) as Array<[keyof typeof score, number]>
+  entries.sort((a, b) => b[1] - a[1])
+  const [top, next] = entries
+  if (!top || top[1] < 2) return 'unknown'
+  if (next && top[1] - next[1] < 1) return 'unknown'
+  return top[0]
+}
+
+function normalizeTargetLang(input: string | null | undefined): 'en' | 'no' | 'sv' | 'da' | 'unknown' {
+  const s = (input || '').toLowerCase().trim()
+  if (!s) return 'unknown'
+  if (s === 'en' || /english/.test(s)) return 'en'
+  if (s === 'no' || s === 'nb' || s === 'nn' || /norwegian|norsk/.test(s)) return 'no'
+  if (s === 'sv' || /swedish|svenska/.test(s)) return 'sv'
+  if (s === 'da' || /danish|dansk/.test(s)) return 'da'
+  return 'unknown'
+}
 
 async function translateViaModel(model: string, text: string, target: string, referer?: string, promptText?: string | null, matchPrompt?: boolean | null): Promise<string> {
   try {
@@ -88,11 +135,13 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'OpenRouter API key not configured' }, { status: 500 })
     }
 
-    const body = (await req.json()) as TranslateBody
+  const body = (await req.json()) as TranslateBody
     const text = (body.text || '').trim()
     const targetLanguage = (body.targetLanguage || '')?.trim()
     const matchPrompt = Boolean(body.matchPrompt)
+    // Use only a small sample of the prompt for language detection to reduce payload size
     const promptText = (body.promptText || '')?.trim()
+    const promptSample = promptText ? promptText.slice(0, 400) : ''
     if (!text) return NextResponse.json({ error: 'text is required' }, { status: 400 })
     if (!targetLanguage && !matchPrompt) return NextResponse.json({ error: 'targetLanguage or matchPrompt is required' }, { status: 400 })
 
@@ -103,12 +152,46 @@ export async function POST(req: Request) {
       return NextResponse.json({ text, model: 'no-op' })
     }
 
+    // Heuristic short-circuit: if source already matches target/prompt language, return unchanged
+    try {
+      const srcLang = detectLangHeuristic(text)
+      if (matchPrompt && promptSample) {
+        const promptLang = detectLangHeuristic(promptSample)
+        if (srcLang !== 'unknown' && promptLang !== 'unknown' && srcLang === promptLang) {
+          console.log('[translate] short-circuit (matchPrompt): same language detected; returning original')
+          return NextResponse.json({ text, model: 'no-op' })
+        }
+      }
+      const tgtLang = normalizeTargetLang(targetLanguage)
+      if (!matchPrompt && tgtLang !== 'unknown' && srcLang !== 'unknown' && tgtLang === srcLang) {
+        console.log('[translate] short-circuit (targetLanguage): same language detected; returning original')
+        return NextResponse.json({ text, model: 'no-op' })
+      }
+    } catch {}
+
+    // Cache key (keep prompt sample short to avoid oversized keys)
+    const cacheKey = {
+      route: 'translate',
+      text,
+      target: targetLanguage || 'match_prompt',
+      matchPrompt,
+      promptSample,
+    }
+    const cached = apiCache.get<{ text: string; model: string }>(cacheKey)
+    if (cached) {
+      try { console.log('[translate] cache hit') } catch {}
+      return NextResponse.json(cached)
+    }
+
     const referer = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL || undefined
   let lastErr: unknown = null
   for (const model of MODEL_ORDER) {
       try {
-    const translated = await translateViaModel(model, text, targetLanguage || 'match_prompt', referer, promptText || null, matchPrompt)
-        return NextResponse.json({ text: translated, model })
+    const translated = await translateViaModel(model, text, targetLanguage || 'match_prompt', referer, promptSample || null, matchPrompt)
+        const payload = { text: translated, model }
+        // Store for a reasonable TTL (10 minutes) to avoid repeated translations of same text
+        apiCache.set(cacheKey, payload, 10 * 60 * 1000)
+        return NextResponse.json(payload)
       } catch (e) {
         lastErr = e
       }

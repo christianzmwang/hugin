@@ -27,9 +27,9 @@ export default function ConfigurationPage() {
   if (!session) return null
 
   return (
-    <div className="p-6">
-      <div className="bg-gray-900 border border-white/10 p-6 max-w-3xl">
-        <h2 className="text-xl font-semibold mb-4">Konfigurasjon</h2>
+    <div className="p-6 w-full">
+      <div className="w-full border border-white/10 p-6">
+        <h2 className="text-xl font-semibold mb-4">Company profile</h2>
         <BusinessContextEditor />
       </div>
     </div>
@@ -37,34 +37,165 @@ export default function ConfigurationPage() {
 }
 
 function BusinessContextEditor() {
-  const [value, setValue] = useState<string>('')
+  type Bc = {
+    businessName: string
+    orgNumber: string
+    delivers: string
+    icp: string
+  }
+  const [form, setForm] = useState<Bc>({ businessName: '', orgNumber: '', delivers: '', icp: '' })
+  const [legacyText, setLegacyText] = useState<string>('')
   const [saved, setSaved] = useState<boolean>(false)
+  const [loading, setLoading] = useState<boolean>(true)
+  const [error, setError] = useState<string | null>(null)
+
   useEffect(() => {
-    try {
-      const v = localStorage.getItem('businessContext')
-      if (v) setValue(v)
-    } catch {}
+    let cancelled = false
+    const fetchBc = async () => {
+      try {
+        const res = await fetch('/api/user/business-context', { cache: 'no-store' })
+        if (!res.ok) throw new Error('Kunne ikke laste forretningskontekst')
+        const data = await res.json()
+        const shape = data?.shape as 'object' | 'string' | 'null' | undefined
+        if (!cancelled) {
+          if (shape === 'object' && data?.businessContext) {
+            const v = data.businessContext as Partial<Bc>
+            setForm({
+              businessName: v.businessName ?? '',
+              orgNumber: v.orgNumber ?? '',
+              delivers: v.delivers ?? '',
+              icp: v.icp ?? '',
+            })
+            try { localStorage.setItem('businessContext', JSON.stringify(v)) } catch {}
+          } else if (shape === 'string' && typeof data?.businessContext === 'string') {
+            const v = data.businessContext as string
+            setLegacyText(v)
+            try { localStorage.setItem('businessContext', v || '') } catch {}
+          } else {
+            // null/unknown: try localStorage
+            try {
+              const raw = localStorage.getItem('businessContext') || ''
+              if (raw.startsWith('{')) {
+                const v = JSON.parse(raw) as Partial<Bc>
+                setForm({
+                  businessName: v.businessName ?? '',
+                  orgNumber: v.orgNumber ?? '',
+                  delivers: v.delivers ?? '',
+                  icp: v.icp ?? '',
+                })
+              } else if (raw) {
+                setLegacyText(raw)
+              }
+            } catch {}
+          }
+        }
+      } catch (e) {
+        if (!cancelled) {
+          // Fallback to localStorage if API fails
+          try {
+            const raw = localStorage.getItem('businessContext') || ''
+            if (raw.startsWith('{')) {
+              const v = JSON.parse(raw) as Partial<Bc>
+              setForm({
+                businessName: v.businessName ?? '',
+                orgNumber: v.orgNumber ?? '',
+                delivers: v.delivers ?? '',
+                icp: v.icp ?? '',
+              })
+            } else if (raw) {
+              setLegacyText(raw)
+            }
+          } catch {}
+          setError('Kunne ikke hente lagret verdi fra server')
+        }
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
+    }
+    fetchBc()
+    return () => { cancelled = true }
   }, [])
-  const onSave = () => {
+
+  const onSave = async () => {
     try {
-      localStorage.setItem('businessContext', value || '')
+      setError(null)
+      const payload = { businessContext: form }
+      const res = await fetch('/api/user/business-context', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(payload)
+      })
+      if (!res.ok) throw new Error('Lagring feilet')
+      try { localStorage.setItem('businessContext', JSON.stringify(form)) } catch {}
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
-    } catch {}
+    } catch (e) {
+      setError('Kunne ikke lagre til server. Prøv igjen.')
+    }
   }
+
   return (
-    <div>
-      <label className="block text-xs text-gray-400 mb-1">Forretningskontekst (om deg/din virksomhet)</label>
-      <textarea
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        rows={6}
-        placeholder="Beskriv kort hvem du er, hva du selger, segment og preferanser."
-        className="w-full bg-black border border-white/20 text-sm p-2 text-white"
-      />
-      <div className="mt-2 flex items-center gap-2">
-        <button onClick={onSave} className="px-3 py-2 border border-white/20 text-sm text-white/90 hover:bg-white/10">Lagre</button>
-        {saved && <span className="text-xs text-green-400">Lagret</span>}
+    <div className="w-full">
+      {loading && <div className="text-xs text-gray-400 mb-2">Laster...</div>}
+
+      <div className="grid grid-cols-1 gap-6 w-full">
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Business name</label>
+          <input
+            type="text"
+            value={form.businessName}
+            onChange={(e) => setForm((f) => ({ ...f, businessName: e.target.value }))}
+            placeholder="Acme AS"
+            className="w-full bg-transparent border border-white/20 text-sm px-3 py-2 text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">Organization number</label>
+          <input
+            type="text"
+            value={form.orgNumber}
+            onChange={(e) => setForm((f) => ({ ...f, orgNumber: e.target.value }))}
+            placeholder="999999999"
+            className="w-full bg-transparent border border-white/20 text-sm px-3 py-2 text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">What the company delivers</label>
+          <textarea
+            value={form.delivers}
+            onChange={(e) => setForm((f) => ({ ...f, delivers: e.target.value }))}
+            rows={4}
+            placeholder="Short description of your product/service."
+            className="w-full bg-transparent border border-white/20 text-sm p-2 text-white"
+          />
+        </div>
+
+        <div>
+          <label className="block text-xs text-gray-400 mb-1">ICP (Ideal Customer Profile)</label>
+          <textarea
+            value={form.icp}
+            onChange={(e) => setForm((f) => ({ ...f, icp: e.target.value }))}
+            rows={4}
+            placeholder="Who you sell to, key segments, company size, industry, etc."
+            className="w-full bg-transparent border border-white/20 text-sm p-2 text-white"
+          />
+        </div>
+      </div>
+
+      {legacyText && (
+        <div className="mt-4">
+          <div className="text-xs text-gray-400 mb-1">Legacy note</div>
+          <div className="text-xs text-gray-500">We found an older single-text business context. You can copy details into the fields above.</div>
+          <pre className="mt-2 text-xs whitespace-pre-wrap bg-transparent border border-white/10 p-2 text-gray-300">{legacyText}</pre>
+        </div>
+      )}
+
+      <div className="mt-4 flex items-center gap-2">
+        <button onClick={onSave} className="px-3 py-2 border border-white/20 text-sm text-white/90 hover:bg-white/10">Save</button>
+        {saved && <span className="text-xs text-green-400">Saved</span>}
+        {error && <span className="text-xs text-red-400">{error}</span>}
       </div>
     </div>
   )
