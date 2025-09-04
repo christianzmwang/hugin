@@ -1,92 +1,6 @@
 import { NextResponse } from 'next/server'
 import { checkApiAccess } from '@/lib/access-control'
 
-// Optional OpenRouter delegate models (fallback order) to optimize the user + system messages before hitting Parallel.
-// Ordered per request: DeepSeek → Gemini Flash → OpenAI gpt-5-mini
-const DELEGATE_MODELS = [
-  'deepseek/deepseek-chat-v3.1:free',
-  'google/gemini-2.5-flash',
-  'openai/gpt-5-mini'
-]
-const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
-
-type DelegateResult = { system: string; user: string }
-
-async function delegateOptimize(
-  history: { role: 'user' | 'assistant'; content: string }[],
-  latestUser: string,
-  companyContext?: string | null
-): Promise<DelegateResult | null> {
-  if (!process.env.OPENROUTER_API_KEY) return null
-  // Build a concise distilled context (last 4 exchanges) to keep token use low.
-  const recent = history.slice(-8)
-  const convo = recent.map(m => `${m.role.toUpperCase()}: ${m.content.replace(/\s+/g, ' ').slice(0, 600)}`).join('\n')
-  const sysPrompt = [
-    'You are a delegation optimizer that converts a raw chat turn into an ideal retrieval-oriented question for the Parallel.ai chat endpoint.',
-    'Return STRICT JSON with keys system and user. No extra keys. No markdown.',
-    'Goals:',
-    '- Craft a minimal, precise system instruction (business English) that guides the model to answer accurately, avoid hallucinations, admit uncertainty, be concise, and focus on verifiable facts.',
-    '- Rewrite the user message into a clear, self-contained query referencing the target company or entity only if necessary for disambiguation.',
-    'Rules:',
-    '- Do not add speculative claims.',
-    '- If the user asks for sensitive data not present, instruct to say it is unavailable.',
-    '- Preserve the user intent fully but remove filler, duplicates, language switching, emoji.',
-    '- If the user message already optimal, return it unchanged as user.',
-    '- If company context is irrelevant to the question, omit it entirely.',
-    'System Style Requirements:',
-    '- Encourage step-by-step internal reasoning (NOT shown) then produce an answer; the final answer must NOT expose chain-of-thought—only concise conclusions.',
-    '- If numerical data is older than 24 months based on context, warn that it may be outdated.',
-    '',
-    'JSON schema (do not include descriptions): {"type":"object","properties":{"system":{"type":"string"},"user":{"type":"string"}},"required":["system","user"],"additionalProperties":false}',
-  ].join('\n')
-  const userPrompt = [
-    '=== RECENT CONVERSATION (truncated) ===',
-    convo || '(none)',
-    '=== LATEST USER MESSAGE ===',
-    latestUser,
-    companyContext ? '=== OPTIONAL COMPANY CONTEXT ===\n' + companyContext : '',
-    '=== TASK ===',
-    'Produce optimized JSON now.'
-  ].join('\n')
-  for (const model of DELEGATE_MODELS) {
-    try {
-      const res = await fetch(OPENROUTER_URL, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-          'X-Title': 'Hugin Parallel Chat Delegate'
-        },
-        body: JSON.stringify({
-          model,
-          temperature: 0.2,
-          response_format: { type: 'json_object' },
-          messages: [
-            { role: 'system', content: sysPrompt },
-            { role: 'user', content: userPrompt }
-          ]
-        }),
-        cache: 'no-store'
-      })
-      if (!res.ok) continue
-      const data = await res.json().catch(() => null)
-      const content: string | undefined = data?.choices?.[0]?.message?.content
-      if (!content) continue
-      let json: Record<string, unknown> | null = null
-      try { json = JSON.parse(content) } catch {
-        const s = content.indexOf('{'); const e = content.lastIndexOf('}')
-        if (s >= 0 && e > s) { try { json = JSON.parse(content.slice(s, e + 1)) } catch { continue } }
-      }
-      if (!json || typeof json.system !== 'string' || typeof json.user !== 'string') continue
-      return { system: json.system.slice(0, 4000), user: json.user.slice(0, 6000) }
-    } catch {
-      // try next model
-      continue
-    }
-  }
-  return null
-}
-
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const preferredRegion = ['fra1','arn1','cdg1']
@@ -98,7 +12,7 @@ const CHAT_ENDPOINTS = [
 ]
 
 type ChatMessage = { role: 'system' | 'user' | 'assistant'; content: string }
-type ChatBody = { messages: ChatMessage[]; model?: string; stream?: boolean; delegate?: boolean; companyContext?: string }
+type ChatBody = { messages: ChatMessage[]; model?: string; stream?: boolean }
 
 export async function POST(req: Request) {
   // NOTE: This implementation is intentionally fresh (no reuse of tasks/runs research code)
@@ -115,27 +29,6 @@ export async function POST(req: Request) {
     }
     const model = (body?.model && typeof body.model === 'string') ? body.model : 'speed'
     const stream = body?.stream !== false // default true for interactive chat
-    const delegate = body?.delegate !== false // default ON unless explicitly false
-
-    // Attempt delegation (only if last message is user)
-    let delegatedMessages = messages
-    if (delegate) {
-      const lastUserIndex = [...delegatedMessages].reverse().findIndex(m => m.role === 'user')
-      if (lastUserIndex !== -1) {
-        const idx = delegatedMessages.length - 1 - lastUserIndex
-        const latestUser = delegatedMessages[idx].content
-        const prior = delegatedMessages.slice(0, idx).filter(m => m.role !== 'system') as { role: 'user' | 'assistant'; content: string }[]
-        const companyContext = body?.companyContext && typeof body.companyContext === 'string' ? body.companyContext : null
-        const result = await delegateOptimize(prior, latestUser, companyContext)
-        if (result) {
-          // Replace/insert system at beginning, drop existing system messages other than first
-          delegatedMessages = [
-            { role: 'system', content: result.system },
-            ...delegatedMessages.filter(m => m.role !== 'system').map((m, i) => i === delegatedMessages.filter(mm => mm.role !== 'system').length -1 ? { ...m, content: result.user } : m)
-          ]
-        }
-      }
-    }
 
     // Helper to perform request with automatic fallback if we see the "No products found" signature.
     const attemptRequest = async (streaming: boolean) => {
@@ -150,7 +43,7 @@ export async function POST(req: Request) {
         const resp = await fetch(url, {
           method: 'POST',
           headers: hdrs,
-          body: JSON.stringify({ model, messages: delegatedMessages, stream: streaming }),
+          body: JSON.stringify({ model, messages, stream: streaming }),
           cache: 'no-store'
         })
         if (resp.status === 401) {
@@ -175,7 +68,7 @@ export async function POST(req: Request) {
     }
 
     if (!stream) {
-  const { resp, text } = await attemptRequest(false)
+      const { resp, text } = await attemptRequest(false)
       if (!resp || !resp.ok) {
         const bodyTxt = text ?? (resp ? await resp.text().catch(() => '') : '')
         return NextResponse.json({ error: 'Upstream chat failed', status: resp?.status || 502, details: bodyTxt }, { status: 502 })
@@ -184,7 +77,7 @@ export async function POST(req: Request) {
       return NextResponse.json(json)
     }
 
-  const { resp: upstream, text: preBody } = await attemptRequest(true)
+    const { resp: upstream, text: preBody } = await attemptRequest(true)
     if (!upstream || !upstream.ok || !upstream.body) {
       const txt = preBody ?? (upstream ? await upstream.text().catch(() => '') : '')
       return NextResponse.json({ error: 'Upstream chat failed', status: upstream?.status || 502, details: txt }, { status: 502 })

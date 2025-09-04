@@ -384,6 +384,39 @@ type StructuredResearch = {
   sources?: Array<{ title?: string; url?: string; accessed_at?: string }>
 }
 
+// Attempt to flatten various Parallel output.content shapes into a string
+function flattenParallelContent(val: unknown): string | null {
+  if (val == null) return null
+  if (typeof val === 'string') return val
+  // Array of segments (strings or objects with text/content)
+  if (Array.isArray(val)) {
+    const parts = val.map(seg => {
+      if (typeof seg === 'string') return seg
+      if (seg && typeof seg === 'object') {
+        const s = (seg as any).text || (seg as any).content || (seg as any).value
+        return typeof s === 'string' ? s : ''
+      }
+      return ''
+    }).filter(Boolean)
+    return parts.length ? parts.join('\n').trim() : null
+  }
+  if (typeof val === 'object') {
+    const anyObj = val as any
+    // Common shapes: { text }, { content: '...' }, { content: { text: '...' } }, { content: [ ...segments ] }
+    if (typeof anyObj.text === 'string') return anyObj.text
+    if (typeof anyObj.content === 'string') return anyObj.content
+    if (Array.isArray(anyObj.content)) {
+      const arr = flattenParallelContent(anyObj.content)
+      if (arr) return arr
+    }
+    if (anyObj.content && typeof anyObj.content === 'object') {
+      const nested = flattenParallelContent(anyObj.content)
+      if (nested) return nested
+    }
+  }
+  return null
+}
+
 function coerceStructuredResearch(input: unknown): StructuredResearch | null {
   try {
     let obj: unknown = input
@@ -482,6 +515,7 @@ function CompanyPageContent() {
   const [lastPollAt, setLastPollAt] = useState<number | null>(null)
   const [researchText, setResearchText] = useState<string>('')
   const [researchStructured, setResearchStructured] = useState<StructuredResearch | null>(null)
+  const [translatedResearchText, setTranslatedResearchText] = useState<string>('')
   const [researchBasis, setResearchBasis] = useState<Array<{ title?: string; url?: string }>>([])
   const [researchError, setResearchError] = useState<string | null>(null)
   const pollTokenRef = useRef(0)
@@ -651,6 +685,20 @@ function CompanyPageContent() {
       clearInterval(id)
     }
   }, [mode, processor, procGroupWidth])
+
+  // Heartbeat for Info line to refresh relative times every 5s
+  useEffect(() => {
+    const id = window.setInterval(() => setInfoTick((t) => t + 1), 5000)
+    return () => window.clearInterval(id)
+  }, [])
+  
+  // Set status to completed only when output is actually available for display
+  useEffect(() => {
+    const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
+    if (hasOutput && researchStatus === 'running' && !isComposing) {
+      setResearchStatus('completed')
+    }
+  }, [researchStructured, translatedResearchText, researchText, researchStatus, isComposing])
 
   const updateScrollButtons = useCallback(() => {
     const el = recentlyRef.current
@@ -986,6 +1034,42 @@ function CompanyPageContent() {
     }
   }, [chatStreaming, chatInput, customInput, companyInput, topCompany?.name, topCompany?.orgNumber, topCompany?.website, topCompany?.ceo, chatMessages])
 
+  // Keep companyInput synced to the currently viewed company to avoid mismatches in Compose/Parallel
+  useEffect(() => {
+    if (!topCompany) return
+    const buildDefaultBlock = (c: Business) => [
+      `Company: ${c.name}`,
+      c.orgNumber ? `Org number: ${c.orgNumber}` : undefined,
+      c.website ? `Website: ${c.website}` : undefined,
+    ].filter(Boolean).join('\n')
+    const normalize = (s: string) => s.replace(/\r\n/g, '\n').trim()
+    const defaultBlock = buildDefaultBlock(topCompany)
+    setCompanyInput(prev => {
+      const prevNorm = normalize(prev || '')
+      const defNorm = normalize(defaultBlock)
+      // If empty, set to current company
+      if (!prevNorm) return defaultBlock
+      // If previous block clearly refers to a different company/org, reset
+      const prevOrg = prevNorm.match(/Org number:\s*(\d+)/i)?.[1] || null
+      const prevName = prevNorm.match(/^Company:\s*(.+)$/m)?.[1]?.trim() || null
+      const currOrg = topCompany.orgNumber || null
+      const currName = topCompany.name
+      if ((prevOrg && currOrg && prevOrg !== currOrg) || (prevName && prevName !== currName)) {
+        return defaultBlock
+      }
+      // Otherwise, enforce the header lines to match the current company, keep user's extra lines
+      const lines = prevNorm.split(/\n/)
+      const filtered = lines.filter(l => !/^\s*(Company:|Org number:|Website:)\b/i.test(l))
+      const header = [
+        `Company: ${currName}`,
+        currOrg ? `Org number: ${currOrg}` : null,
+        topCompany.website ? `Website: ${topCompany.website}` : null,
+      ].filter(Boolean) as string[]
+      const merged = [...header, ...(filtered.length ? [''] : []), ...filtered].join('\n').trim()
+      return merged || defaultBlock
+    })
+  }, [topCompany?.orgNumber, topCompany?.name, topCompany?.website])
+
   // Fetch company data
   useEffect(() => {
     if (status !== 'authenticated') return
@@ -1270,7 +1354,7 @@ function CompanyPageContent() {
       const merged = [...header, ...(filtered.length ? [''] : []), ...filtered].join('\n').trim()
       return merged || defaultBlock
     })
-  }, [topCompany?.orgNumber, topCompany?.name, topCompany?.website, topCompany])
+  }, [topCompany?.orgNumber, topCompany?.name, topCompany?.website])
 
   // Load business context: prefer session.user.businessContext, fallback to localStorage
   useEffect(() => {
@@ -1311,22 +1395,43 @@ function CompanyPageContent() {
           setLastPollAt(Date.now())
           if (status === 'completed' && result) {
             const output = (result as { output?: unknown })?.output as unknown
-            const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
+            let contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
+            const flattened = flattenParallelContent(contentAny)
+            if (flattened) contentAny = flattened
             if (contentAny !== undefined && contentAny !== null) {
               const structured = coerceStructuredResearch(contentAny)
               if (structured) {
-                // Fast path: show English structured content immediately; translate in background
-                setResearchStructured(structured)
+                try {
+                  const trd = await translateStructured(structured, (prompt || '').slice(0, 400))
+                  setResearchStructured(trd)
+                } catch {
+                  setResearchStructured(structured)
+                }
                 setResearchText('')
-                setResearchBasis(extractCitationsFromBasis(structured.keyPoints || []))
-                setResearchStatus('completed')
-                return
+                setTranslatedResearchText('')
+              } else {
+                const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
+                setResearchText(stripChainOfThought(englishText))
+                try {
+                  const tr = await fetch('/api/translate', {
+                    method: 'POST',
+                    headers: { 'content-type': 'application/json' },
+                    body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: (prompt || '').slice(0, 400) }),
+                  })
+                  if (tr.ok) {
+                    const trData = await tr.json()
+                    setTranslatedResearchText(stripChainOfThought(String(trData.text || '')))
+                  } else {
+                    setTranslatedResearchText('')
+                  }
+                } catch {
+                  setTranslatedResearchText('')
+                }
               }
-              const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
-              // Show source text directly (no translation step)
-              setResearchText(stripChainOfThought(englishText))
-              setResearchStatus('completed')
             }
+            const basis = (output as { basis?: unknown })?.basis
+            setResearchBasis(extractCitationsFromBasis(basis))
+            // Status will be set to 'completed' by useEffect when output is available
             return
           }
           // still queued
@@ -1359,24 +1464,60 @@ function CompanyPageContent() {
     }
   }, [researchRunId, researchStatus])
 
-  const triggerResearch = async () => {
-    if (!topCompany) return
-    pollTokenRef.current += 1
-    setResearchError(null)
-    setResearchRunId(null)
-    setResearchBasis([])
-    setResearchText('')
-    setResearchStructured(null)
-    // reset timing and start total timer
-    setResearchStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
-    setComposeStartedAt(null)
-    setComposeMs(null)
-    setParallelStartedAt(null)
-    setParallelMs(null)
-    setResearchStatus('queued')
-    setLastRunStatus('queued')
-    setLastPollAt(Date.now())
-    await composeRunTranslate()
+  // Translate structured research sections to match the prompt language
+  const translateStructured = async (data: StructuredResearch, promptText: string): Promise<StructuredResearch> => {
+    const out: StructuredResearch = { ...data }
+    const promptSample = (promptText || '').slice(0, 400)
+    const tasks: Array<Promise<void>> = []
+    // Translate directAnswer in parallel with key points
+    if (data.directAnswer && data.directAnswer.trim()) {
+      tasks.push(
+        (async () => {
+          try {
+            const tr = await fetch('/api/translate', {
+              method: 'POST',
+              headers: { 'content-type': 'application/json' },
+              body: JSON.stringify({ text: data.directAnswer, matchPrompt: true, promptText: promptSample }),
+            })
+            if (tr.ok) {
+              const td = await tr.json()
+              out.directAnswer = String(td.text || data.directAnswer)
+            }
+          } catch {}
+        })()
+      )
+    }
+    // Translate keyPoints concurrently (preserve order)
+    if (Array.isArray(data.keyPoints) && data.keyPoints.length > 0) {
+      const promises = data.keyPoints.map(async (kp) => {
+        const s = typeof kp === 'string' ? kp : String(kp)
+        if (!s.trim()) return s
+        try {
+          const tr = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: s, matchPrompt: true, promptText: promptSample }),
+          })
+          if (!tr.ok) return s
+          const td = await tr.json()
+          return String(td.text || s)
+        } catch {
+          return s
+        }
+      })
+      tasks.push(
+        (async () => {
+          const translated = await Promise.all(promises)
+          out.keyPoints = translated
+        })()
+      )
+    }
+    try {
+      if (tasks.length) await Promise.all(tasks)
+      return out
+    } finally {
+      // Translation complete
+    }
   }
 
   const composeRunTranslate = async () => {
@@ -1384,8 +1525,8 @@ function CompanyPageContent() {
     try {
       // Start AI (compose) timing
       setComposeStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
-  setIsComposing(true)
-    try { console.log('[company] compose:start', { processor, orgNumber: topCompany.orgNumber }) } catch {}
+      setIsComposing(true)
+      try { console.log('[company] compose:start', { processor, orgNumber: topCompany.orgNumber }) } catch {}
       // Build an up-to-date company block; only use the editable textarea if user actually modified it
       const buildCompanyBlock = (c: Business) => {
         const lines = [
@@ -1395,7 +1536,7 @@ function CompanyPageContent() {
         ].filter(Boolean) as string[]
         return lines.join('\n')
       }
-  // normalizeBlock removed (unused)
+      const normalizeBlock = (s: string) => s.replace(/\r\n/g, '\n').trim()
       const defaultBlock = buildCompanyBlock(topCompany)
       // Enforce that the header (Company/Org number/Website) always matches the currently viewed company
       const enforceCurrentHeader = (c: Business, s: string) => {
@@ -1425,15 +1566,15 @@ function CompanyPageContent() {
         const data = await composeResp.json().catch(() => ({}))
         throw new Error(data?.error || 'Compose failed')
       }
-  const composeData = await composeResp.json()
-    try { console.log('[company] compose:ok', { model: (composeData as { model?: string })?.model }) } catch {}
+      const composeData = await composeResp.json()
+      try { console.log('[company] compose:ok', { model: (composeData as { model?: string })?.model }) } catch {}
       // End AI timing
-      {
-        const endStart = (typeof performance !== 'undefined' ? performance.now() : Date.now())
-        const s = composeStartedAt ?? endStart
-        setComposeMs(Math.max(0, endStart - s))
-      }
-  setIsComposing(false)
+      setComposeMs((prev) => {
+        const start = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+        const s = composeStartedAt ?? start
+        return Math.max(0, start - s)
+      })
+      setIsComposing(false)
       const inputStr: string = composeData.input
       const outputSchemaStr: string = composeData.outputSchema
 
@@ -1451,29 +1592,31 @@ function CompanyPageContent() {
       })
       // Start Parallel timing (from POST request start)
       setParallelStartedAt((typeof performance !== 'undefined' ? performance.now() : Date.now()))
-  if (!runResp.ok && runResp.status !== 202) {
+      if (!runResp.ok && runResp.status !== 202) {
         const data = await runResp.json().catch(() => ({}))
         throw new Error(data?.error || 'Failed to start research')
       }
-  const runData: unknown = await runResp.json()
-  const runId: string | undefined = (runData as { runId?: string })?.runId
-  const result = (runData as { result?: unknown })?.result as unknown
-    try { console.log('[company] run:start', { status: runResp.status, runId, hasImmediateResult: Boolean(result) }) } catch {}
-  if (runId && (!result || runResp.status === 202)) {
+      const runData: unknown = await runResp.json()
+      const runId: string | undefined = (runData as { runId?: string })?.runId
+      const result = (runData as { result?: unknown })?.result as unknown
+      try { console.log('[company] run:start', { status: runResp.status, runId, hasImmediateResult: Boolean(result) }) } catch {}
+      if (runId && (!result || runResp.status === 202)) {
         setResearchRunId(runId)
         setResearchStatus('running')
         return
       }
-  const output = (result as { output?: unknown })?.output as unknown
-  const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
+      const output = (result as { output?: unknown })?.output as unknown
+      const contentAny: unknown = (output as { content?: unknown })?.content ?? (output as { text?: unknown })?.text ?? output
       if (contentAny === undefined || contentAny === null) throw new Error('Empty result')
       const structured = coerceStructuredResearch(contentAny)
-  if (structured) {
-        // Fast path: show English structured content immediately; translate asynchronously
-        setResearchStructured(structured)
+      if (structured) {
+        try {
+          const trd = await translateStructured(structured, prompt)
+          setResearchStructured(trd)
+        } catch {
+          setResearchStructured(structured)
+        }
         setResearchText('')
-        setResearchBasis(extractCitationsFromBasis(structured.keyPoints || []))
-        setResearchStatus('completed')
         // End Parallel timing and log summary
         const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
         const pStart = parallelStartedAt ?? end
@@ -1486,44 +1629,71 @@ function CompanyPageContent() {
         try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
       } else {
         const englishText = typeof contentAny === 'string' ? contentAny : String(contentAny)
-        // Show English immediately
-  setResearchText(stripChainOfThought(englishText))
-  setResearchStatus('completed')
+        setResearchText(stripChainOfThought(englishText))
+        try {
+          const tr = await fetch('/api/translate', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ text: englishText, matchPrompt: true, promptText: (prompt || '').slice(0, 400) }),
+          })
+          if (tr.ok) {
+            const trData = await tr.json()
+            // Use translated text as the main text if translation succeeded
+            setResearchText(stripChainOfThought(String(trData.text || englishText)))
+          }
+        } catch {
+          // Keep English text if translation fails
+        }
         // End Parallel timing and log summary
         const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
         const pStart = parallelStartedAt ?? end
         const pMs = Math.max(0, end - pStart)
         setParallelMs(pMs)
-        // Status will be set to 'completed' by useEffect when output is available
         const totalStart = researchStartedAt ?? end
-  const totalMs = Math.max(0, end - totalStart)
-  // reference previous composeMs via updater to avoid unused var lint for 'prev'
-  setComposeMs(v => v)
-  const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
+        const totalMs = Math.max(0, end - totalStart)
+        const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
         try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
-        // translation continues in background
       }
+      const basis = (output as { basis?: unknown })?.basis
+      setResearchBasis(extractCitationsFromBasis(basis))
     } catch (e) {
       setResearchStatus('error')
-      setResearchError(e instanceof Error ? e.message : 'Compose/Run failed')
+      setResearchError(e instanceof Error ? e.message : 'Compose/Run/Translate failed')
       setIsComposing(false)
     }
   }
 
-  // designPromptAndSchema removed (unused optimization flow)
+  const triggerResearch = async () => {
+    if (!topCompany) return
+    pollTokenRef.current += 1
+    setResearchError(null)
+    setResearchRunId(null)
+    setResearchBasis([])
+    setResearchText('')
+    setResearchStructured(null)
+    // reset timing and start total timer
+    setResearchStartedAt(typeof performance !== 'undefined' ? performance.now() : Date.now())
+    setComposeStartedAt(null)
+    setComposeMs(null)
+    setParallelStartedAt(null)
+    setParallelMs(null)
+    setResearchStatus('queued')
+    setLastRunStatus('queued')
+    setLastPollAt(Date.now())
+  }
 
   const handleClearResearch = () => {
     // Invalidate polling and clear all research state
     pollTokenRef.current += 1
     setResearchRunId(null)
     setResearchText('')
+    setTranslatedResearchText('')
     setResearchStructured(null)
     setResearchBasis([])
     setResearchError(null)
     setResearchStatus('idle')
     setLastRunStatus(null)
     setLastPollAt(null)
-  // translation removed
     setIsComposing(false)
   }
 
@@ -1977,7 +2147,7 @@ function CompanyPageContent() {
             {/* Output region with smooth height transitions */}
             {/* Ensure research/chat output wrapper only mounts when there's content or activity */}
             {(() => {
-              const hasResearchContent = Boolean(researchText || researchStructured || researchError || researchStatus === 'running' || researchStatus === 'queued')
+              const hasResearchContent = Boolean(researchText || translatedResearchText || researchStructured || researchError || researchStatus === 'running' || researchStatus === 'queued')
               const hasChatContent = chatMessages.some(m => m.content.trim().length > 0) || chatStreaming || chatError
               const showOutputWrapper = mode === 'research' ? hasResearchContent : hasChatContent
               return showOutputWrapper
@@ -1994,7 +2164,7 @@ function CompanyPageContent() {
                           void infoTick
                           const bits: string[] = []
                           const base = String(lastRunStatus || researchStatus)
-                          const hasOutput = Boolean(researchStructured || researchText)
+                          const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
                           const derived = (() => {
                             if (isComposing) return 'composing'
                             if (researchStatus === 'queued' || researchStatus === 'running') return base
@@ -2017,9 +2187,9 @@ function CompanyPageContent() {
                         {renderStructuredResearch(researchStructured)}
                       </div>
                     )}
-                    {!researchStructured && researchText && (
+                    {!researchStructured && (translatedResearchText || researchText) && (
                       <div className="mt-4 text-sm leading-6 text-gray-100">
-                        {renderResearchWithLinksAndBasis(researchText, researchBasis)}
+                        {renderResearchWithLinksAndBasis(translatedResearchText || researchText, researchBasis)}
                       </div>
                     )}
                   </div>
@@ -2585,7 +2755,17 @@ function CompanyPageContent() {
               <div className="border border-white/10 p-6 mb-8">
                 <h3 className="text-xl font-semibold mb-4">Nettstedsanalyse</h3>
                 <p className="text-sm text-gray-400">Webanalyse-data er ikke tilgjengelig for denne bedriften ennå.</p>
-                <p className="text-sm text-gray-300 mt-2">Nettside: <a href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">{topCompany.website}</a></p>
+                <p className="text-sm text-gray-500 mt-2">
+                  Nettsted: 
+                  <a 
+                    href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="text-sky-400 hover:text-sky-300 underline"
+                  >
+                    {topCompany.website}
+                  </a>
+                </p>
               </div>
             )}
 
