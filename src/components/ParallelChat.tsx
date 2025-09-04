@@ -30,9 +30,11 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
       try {
         const res = await fetch('/api/user/business-context', { cache: 'no-store' })
         if (!res.ok) return
-        const data = await res.json().catch(() => ({})) as any
+        const raw: unknown = await res.json().catch(() => ({}))
+        type BusinessContextObj = { businessContext?: unknown; shape?: string }
+        const data: BusinessContextObj = (typeof raw === 'object' && raw) ? raw as BusinessContextObj : {}
         let block: string | null = null
-        if (data?.shape === 'object' && data?.businessContext) {
+        if (data.shape === 'object' && data.businessContext && typeof data.businessContext === 'object' && data.businessContext !== null) {
           const bc = data.businessContext as Record<string, string>
           const lines: string[] = []
           if (bc.businessName) lines.push(`Business name: ${bc.businessName}`)
@@ -40,8 +42,8 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
           if (bc.delivers) lines.push(`Delivers: ${bc.delivers}`)
           if (bc.icp) lines.push(`ICP: ${bc.icp}`)
           if (lines.length) block = lines.join('\n')
-        } else if (data?.shape === 'string' && typeof data?.businessContext === 'string') {
-          const txt = data.businessContext.trim()
+        } else if (data.shape === 'string' && typeof data.businessContext === 'string') {
+          const txt = (data.businessContext as string).trim()
           if (txt) block = txt.slice(0, 2000)
         }
         if (!cancelled) setUserCompanyProfile(block)

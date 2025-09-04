@@ -89,7 +89,7 @@ function BusinessContextEditor() {
             } catch {}
           }
         }
-      } catch (e) {
+  } catch {
         if (!cancelled) {
           // Fallback to localStorage if API fails
           try {
@@ -129,7 +129,7 @@ function BusinessContextEditor() {
       try { localStorage.setItem('businessContext', JSON.stringify(form)) } catch {}
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
-    } catch (e) {
+  } catch {
       setError('Kunne ikke lagre til server. Prøv igjen.')
     }
   }

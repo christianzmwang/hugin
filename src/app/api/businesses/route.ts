@@ -182,9 +182,11 @@ export async function GET(req: Request) {
   const allowedSorts = [
     'updatedAt',
     'name',
-    'revenue',
-    'employees',
-    // new: score sorting
+    'revenue',       // revenue high -> low
+    'revenueAsc',    // revenue low -> high
+    'employees',     // employees high -> low
+    'employeesAsc',  // employees low -> high
+    'registreringsdato', // registration date newest -> oldest
     'scoreAsc',
     'scoreDesc',
   ]
@@ -241,15 +243,67 @@ export async function GET(req: Request) {
   }
 
   const hasIndustries = industries.length > 0
-  const industryParams = industries.map((v) => `%${v}%`)
+  
+  // Prepare industry parameters based on whether they look like NACE codes
+  const industryParams: string[] = []
+  const industryCodeParams: string[] = []
+  const industryTextParams: string[] = []
+  
+  industries.forEach((v) => {
+    // More precise NACE code detection: 
+    // - Starts with 2+ digits (with optional decimal places)
+    // - OR starts with a single uppercase letter followed by digits/dot
+    // - OR is a single uppercase letter (for section codes like A, B, C, etc.)
+    const looksLikeCode = /^(\d{2}(\.\d{1,2})?|[A-Z](\d|\.)|[A-Z])$/.test(v.trim())
+    if (looksLikeCode) {
+      // For NACE codes, use "starts with" pattern
+      industryCodeParams.push(`${v}%`)
+      // Still search text fields with full wildcard for fallback
+      industryTextParams.push(`%${v}%`)
+    } else {
+      // For text searches, use full wildcard
+      industryTextParams.push(`%${v}%`)
+    }
+  })
+  
+  // Combine all parameters in order
+  industryParams.push(...industryCodeParams, ...industryTextParams)
+  
   const hasAreas = areas.length > 0
   const areaParams = areas.map((v) => `%${v}%`)
-  const perColumnClause = (col: string) =>
-    industries.length > 0
-      ? industries.map((_, i) => `${col} ILIKE $${i + 1}`).join(' OR ')
-      : ''
+  
+  const perColumnClause = (col: string, isCodeColumn: boolean) => {
+    if (!hasIndustries) return ''
+    
+    if (isCodeColumn) {
+      // For code columns, use "starts with" for NACE codes
+      const codeConditions = industryCodeParams.map((_, i) => `${col} ILIKE $${i + 1}`)
+      return codeConditions.join(' OR ')
+    } else {
+      // For text columns, use full wildcard search
+      const startIdx = industryCodeParams.length
+      const textConditions = industryTextParams.map((_, i) => `${col} ILIKE $${startIdx + i + 1}`)
+      return textConditions.join(' OR ')
+    }
+  }
+  
   const industryClause = hasIndustries
-    ? `AND ((${perColumnClause('b."industryCode1"')} ) OR (${perColumnClause('b."industryText1"')}) OR (${perColumnClause('b."industryCode2"')}) OR (${perColumnClause('b."industryText2"')}) OR (${perColumnClause('b."industryCode3"')}) OR (${perColumnClause('b."industryText3"')}))`
+    ? (() => {
+        const codeConditions = [
+          perColumnClause('b."industryCode1"', true),
+          perColumnClause('b."industryCode2"', true),
+          perColumnClause('b."industryCode3"', true)
+        ].filter(Boolean)
+        
+        const textConditions = [
+          perColumnClause('b."industryText1"', false),
+          perColumnClause('b."industryText2"', false),
+          perColumnClause('b."industryText3"', false)
+        ].filter(Boolean)
+        
+        const allConditions = [...codeConditions, ...textConditions].filter(Boolean)
+        return allConditions.length > 0 ? `AND (${allConditions.map(c => `(${c})`).join(' OR ')})` : ''
+      })()
     : ''
 
   // Build area clause using parameter indexes after industries
@@ -301,6 +355,8 @@ export async function GET(req: Request) {
       params.push(profitParams[0])
     }
   }
+
+  // Removed event score params
 
   // Optional company type (org form) filter - support multiple values
   let orgFormIdx: number | null = null
@@ -372,6 +428,7 @@ export async function GET(req: Request) {
         b."isUnderCompulsory",
         b."createdAt",
         b."updatedAt",
+        b."registeredAtBrreg",
         fLatest."fiscalYear" as "fiscalYear",
         fLatest.revenue as revenue,
         fLatest.profit as profit,
@@ -504,6 +561,23 @@ export async function GET(req: Request) {
       .replace('$PROFIT_MAX', profitMaxIdx ? `$${profitMaxIdx}` : '$PROFIT_MAX')
   }
 
+  // Registration date filter
+  let registrationClause = ''
+  let registrationFromIdx: number | null = null
+  let registrationToIdx: number | null = null
+  const registeredFrom = searchParams.get('registeredFrom')?.trim()
+  const registeredTo = searchParams.get('registeredTo')?.trim()
+  if (registeredFrom) {
+    registrationFromIdx = params.length + 1
+    params.push(registeredFrom)
+    registrationClause += ` AND b."registeredAtBrreg" >= $${registrationFromIdx}`
+  }
+  if (registeredTo) {
+    registrationToIdx = params.length + 1
+    params.push(registeredTo + 'T23:59:59.999Z')
+    registrationClause += ` AND b."registeredAtBrreg" <= $${registrationToIdx}`
+  }
+
   // Optimized query structure
   const baseWhere = `
 		WHERE (b."registeredInForetaksregisteret" = true OR b."orgFormCode" IN ('AS','ASA','ENK','ANS','DA','NUF','SA','SAS','A/S','A/S/ASA'))
@@ -512,6 +586,7 @@ export async function GET(req: Request) {
     ${orgFormIdx ? `AND b."orgFormCode" = ANY($${orgFormIdx}::text[])` : ''}
     ${searchClause}
     ${orgNumberClause}
+    ${registrationClause}
 	`
 
   // Compute parameter indexes for optional event filters/weights
@@ -563,6 +638,7 @@ export async function GET(req: Request) {
       b."isUnderCompulsory",
       b."createdAt",
       b."updatedAt",
+      b."registeredAtBrreg",
 			fLatest."fiscalYear" as "fiscalYear",
       fLatest.revenue as revenue,
       fLatest.profit as profit,
@@ -688,6 +764,7 @@ export async function GET(req: Request) {
     ${baseWhere}
     ${revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
+    ${registrationClause}
     ${(() => {
       const conditions = []
       
@@ -720,13 +797,18 @@ export async function GET(req: Request) {
           return 'b.name ASC'
         case 'revenue':
           return 'fLatest.revenue DESC NULLS LAST'
+        case 'revenueAsc':
+          return 'fLatest.revenue ASC NULLS LAST'
         case 'employees':
           return 'b.employees DESC NULLS LAST'
+        case 'employeesAsc':
+          return 'b.employees ASC NULLS LAST'
+        case 'registreringsdato':
+          return 'b."registeredAtBrreg" DESC NULLS LAST'
         case 'scoreAsc':
-          // Always prefer weighted score when event types are selected, as that's what frontend displays
           return `${hasWeights && eventTypes.length > 0 ? 'evScore."eventWeightedScore" ASC NULLS FIRST' : 'evRaw."eventScore" ASC NULLS FIRST'}`
         case 'scoreDesc':
-      return `${hasWeights && eventTypes.length > 0 ? 'evScore."eventWeightedScore" DESC NULLS LAST' : 'evRaw."eventScore" DESC NULLS LAST'}`
+          return `${hasWeights && eventTypes.length > 0 ? 'evScore."eventWeightedScore" DESC NULLS LAST' : 'evRaw."eventScore" DESC NULLS LAST'}`
         default:
           return 'b."updatedAt" DESC'
       }
@@ -749,6 +831,7 @@ export async function GET(req: Request) {
     ${baseWhere}
     ${needsFinancialJoin && revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${needsFinancialJoin && profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
+    ${registrationClause}
     ${(() => {
       const conditions = []
       // Event existence filtering

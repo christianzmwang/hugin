@@ -314,7 +314,7 @@ export default function AdminPage() {
       } else {
         alert(data.message || 'Failed to update access')
       }
-    } catch (e) {
+  } catch {
       alert('Failed to update access')
     } finally {
       setUserActionLoading(userId, false)

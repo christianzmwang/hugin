@@ -57,6 +57,41 @@ function formatEventDate(dateValue: unknown): string {
   }
 }
 
+function formatDateEU(dateValue: unknown): string {
+  if (dateValue == null) return ''
+  try {
+    if (typeof dateValue === 'string') {
+      const trimmed = dateValue.trim()
+      if (/^\d{4}$/.test(trimmed)) return trimmed
+      const d = new Date(trimmed)
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      }
+      return trimmed
+    }
+    if (typeof dateValue === 'number') {
+      const d = new Date(dateValue)
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      }
+      return String(dateValue)
+    }
+    if (dateValue instanceof Date) {
+      if (!isNaN(dateValue.getTime())) {
+        return dateValue.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      }
+      return ''
+    }
+    const d = new Date(String(dateValue))
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    }
+    return String(dateValue)
+  } catch {
+    return ''
+  }
+}
+
 type Business = {
   orgNumber: string
   name: string
@@ -85,6 +120,7 @@ type Business = {
   hasEvents?: boolean | null
   eventScore?: number | null
   eventWeightedScore?: number | null
+  registeredAtBrreg?: string | null
 }
 
 type RawBusinessData = Partial<Business & {
@@ -226,17 +262,19 @@ const BusinessCard = memo(
     }, [business.orgNumber, business.hasEvents, selectedEventTypes, isInView])
 
     const companyScore = useMemo(() => {
+      // Score is purely derived from this card's loaded events and the current weights.
       if (!selectedEventTypes || selectedEventTypes.length === 0) return 0
-      const backendScore = business.eventWeightedScore
-      if (typeof backendScore === 'number') {
-        return backendScore
-      }
-      const fallbackScore = business.eventScore
-      if (typeof fallbackScore === 'number') {
-        return fallbackScore
-      }
-      return 0
-    }, [business.eventWeightedScore, business.eventScore, selectedEventTypes])
+      if (!Array.isArray(events) || events.length === 0) return 0
+      return events.reduce((acc, ev) => {
+        if (!ev) return acc
+        const src = typeof ev.source === 'string' ? ev.source : ev?.source == null ? '' : String(ev.source)
+        if (!src || !selectedEventTypes.includes(src)) return acc
+        const weight = eventWeights[src] ?? 0
+        if (weight === 0) return acc
+        // Each matching event contributes its weight (ignoring any backend-provided event.score)
+        return acc + weight
+      }, 0)
+    }, [events, eventWeights, selectedEventTypes])
 
     return (
       <div 
@@ -265,6 +303,11 @@ const BusinessCard = memo(
                 <div className="mb-2">
                   <span className="font-medium">Org:</span> {business.orgNumber}
                 </div>
+                {business.registeredAtBrreg && (
+                  <div className="mb-2">
+                    <span className="font-medium">Registreringsdato:</span> {formatDateEU(business.registeredAtBrreg)}
+                  </div>
+                )}
                 <div className="mb-2">
                   <span className="font-medium">CEO:</span> {business.ceo || '—'}
                 </div>
@@ -343,7 +386,7 @@ const BusinessCard = memo(
           </div>
         </div>
 
-        <div className="mt-4">
+  <div className="mt-4">
           <h4 className="text-lg font-semibold mb-3">Latest events</h4>
           {!business.hasEvents ? (
             <div className="text-sm text-gray-400">No events available</div>
@@ -558,6 +601,8 @@ export default function SearchPage() {
   const areaDropdownRef = useRef<HTMLDivElement | null>(null)
   const [areaDropdownRect] = useState<{ top: number; left: number; width: number } | null>(null)
   const [areaDropdownOpen, setAreaDropdownOpen] = useState(false)
+  // Area suggestions (UI consumption currently disabled)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [areaSuggestions, setAreaSuggestions] = useState<string[]>([])
   const [companyTypeQuery, setCompanyTypeQuery] = useState('')
   const [selectedCompanyTypes, setSelectedCompanyTypes] = useState<string[]>(() => {
@@ -590,7 +635,10 @@ export default function SearchPage() {
     if (typeof window === 'undefined') return ''
     return new URLSearchParams(window.location.search).get('revenueRange') || ''
   })
+  // Revenue bounds (sliders hidden in current layout)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [maxRevenue, setMaxRevenue] = useState<number>(108070744000)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [minRevenue, setMinRevenue] = useState<number>(-1868256000)
   const [profitMin, setProfitMin] = useState<number | ''>(() => {
     if (typeof window === 'undefined') return ''
@@ -609,7 +657,10 @@ export default function SearchPage() {
   // Draft values for profit inputs; only applied when clicking Apply  
   const [draftProfitMin, setDraftProfitMin] = useState<string>('')
   const [draftProfitMax, setDraftProfitMax] = useState<string>('')
+  // Profit bounds (sliders hidden in current layout)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [maxProfit, setMaxProfit] = useState<number>(0)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [minProfit, setMinProfit] = useState<number>(0)
   const [, setApiLoaded] = useState<boolean>(false)
   const [eventsFilter, setEventsFilter] = useState<string>(() => {
@@ -639,7 +690,7 @@ export default function SearchPage() {
   const [sortBy, setSortBy] = useState<string>(() => {
     if (typeof window === 'undefined') return 'updatedAt'
     const v = new URLSearchParams(window.location.search).get('sortBy') || 'updatedAt'
-    const allowed = new Set(['updatedAt', 'name', 'revenue', 'employees', 'scoreDesc', 'scoreAsc'])
+  const allowed = new Set(['updatedAt', 'name', 'revenue', 'revenueAsc', 'employees', 'employeesAsc', 'scoreDesc', 'scoreAsc', 'registreringsdato'])
     return allowed.has(v) ? v : 'updatedAt'
   })
   const [offset, setOffset] = useState<number>(0)
@@ -650,6 +701,7 @@ export default function SearchPage() {
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const [isMounted, setIsMounted] = useState(false)
   const eventsRef = useRef<HTMLDivElement>(null);
+  const [isEventTypesCollapsed, setIsEventTypesCollapsed] = useState<boolean>(false)
 
   // Watchlist state
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
@@ -695,6 +747,8 @@ export default function SearchPage() {
     } catch {}
   }
 
+  // Keyword scanner moved to /sandbox
+
   // Use hardcoded revenue bounds for immediate loading
 
 
@@ -706,6 +760,16 @@ export default function SearchPage() {
 
   // Only apply profit filter if user has explicitly set values
   const hasProfitFilter = profitMin !== '' || profitMax !== ''
+
+  // Registration date filters (moved up so they are declared before queryParam useMemo)
+  const [registrationFrom, setRegistrationFrom] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('registeredFrom') || ''
+  })
+  const [registrationTo, setRegistrationTo] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    return new URLSearchParams(window.location.search).get('registeredTo') || ''
+  })
 
   const queryParam = useMemo(() => {
     const sp = new URLSearchParams()
@@ -724,12 +788,32 @@ export default function SearchPage() {
     if (selectedEventTypes.length > 0) sp.append('eventTypes', selectedEventTypes.join(','))
     if (selectedEventTypes.length > 0) sp.append('eventWeights', JSON.stringify(eventWeights))
     sp.append('source', selectedSource)
-    if (sortBy) sp.append('sortBy', sortBy)
+  if (sortBy) sp.append('sortBy', sortBy)
     selectedCompanyTypes.forEach((t) => sp.append('orgFormCode', t))
     if (offset) sp.append('offset', String(offset))
     if (offset === 0) sp.append('skipCount', '1')
+    if (registrationFrom) sp.append('registeredFrom', registrationFrom)
+    if (registrationTo) sp.append('registeredTo', registrationTo)
     return sp.toString() ? `?${sp.toString()}` : ''
-  }, [selectedIndustries, selectedAreas, committedGlobalSearch, hasRevenueFilter, revenueMin, revenueMax, hasProfitFilter, profitMin, profitMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, offset, selectedCompanyTypes])
+  }, [
+    selectedIndustries,
+    selectedAreas,
+    committedGlobalSearch,
+    hasRevenueFilter,
+    revenueMin,
+    revenueMax,
+    hasProfitFilter,
+    profitMin,
+    profitMax,
+    eventsFilter,
+    selectedEventTypes,
+    eventWeights,
+    sortBy,
+    offset,
+    selectedCompanyTypes,
+    registrationFrom, // added: ensure date-from filter updates query
+    registrationTo,   // added: ensure date-to filter updates query
+  ])
 
   const addSelectedIndustry = (value: string, label?: string) => {
     const v = value.trim()
@@ -759,57 +843,57 @@ export default function SearchPage() {
     setSelectedAreas((prev) => prev.filter((p) => p.toLowerCase() !== value.toLowerCase()))
   }
 
+
   useEffect(() => {
     setLoading(true)
     setCountPending(queryParam.includes('skipCount=1'))
-    const hasEventWeights = Object.keys(eventWeights).length > 0
-    const delay = hasEventWeights ? Math.random() * 2000 + 2000 : 0
-    const timeoutId = setTimeout(() => {
-      fetch('/api/businesses' + queryParam)
-        .then((r) => r.json())
-        .then((res: BusinessesResponse | Business[]) => {
-          if (Array.isArray(res)) {
-            setData((prev) => {
-              const normalize = (arr: RawBusinessData[]): Business[] =>
-                (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
-              if (offset > 0) {
-                const combined = [...prev, ...normalize(res)]
-                const seen = new Set<string>()
-                return combined.filter((business) => {
-                  const org = business?.orgNumber
-                  if (!org) return false
-                  if (seen.has(org)) return false
-                  seen.add(org)
-                  return true
-                })
-              }
-              return normalize(res)
-            })
-            setTotal(res.length)
-          } else {
-            setData((prev) => {
-              const normalize = (arr: RawBusinessData[]): Business[] =>
-                (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
-              if (offset > 0) {
-                const combined = [...prev, ...normalize(res.items)]
-                const seen = new Set<string>()
-                return combined.filter((business) => {
-                  const org = business?.orgNumber
-                  if (!org) return false
-                  if (seen.has(org)) return false
-                  seen.add(org)
-                  return true
-                })
-              }
-              return normalize(res.items)
-            })
-            if (typeof res.total === 'number' && res.total > 0) setTotal(res.total)
-            if (typeof res.grandTotal === 'number') setGrandTotal(res.grandTotal)
-          }
-        })
-        .finally(() => setLoading(false))
-    }, delay)
-    return () => clearTimeout(timeoutId)
+    const controller = new AbortController()
+    fetch('/api/businesses' + queryParam, { signal: controller.signal })
+      .then((r) => r.json())
+      .then((res: BusinessesResponse | Business[]) => {
+        if (controller.signal.aborted) return
+        if (Array.isArray(res)) {
+          setData((prev) => {
+            const normalize = (arr: RawBusinessData[]): Business[] =>
+              (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
+            if (offset > 0) {
+              const combined = [...prev, ...normalize(res)]
+              const seen = new Set<string>()
+              return combined.filter((business) => {
+                const org = business?.orgNumber
+                if (!org) return false
+                if (seen.has(org)) return false
+                seen.add(org)
+                return true
+              })
+            }
+            return normalize(res)
+          })
+          setTotal(res.length)
+        } else {
+          setData((prev) => {
+            const normalize = (arr: RawBusinessData[]): Business[] =>
+              (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
+            if (offset > 0) {
+              const combined = [...prev, ...normalize(res.items)]
+              const seen = new Set<string>()
+              return combined.filter((business) => {
+                const org = business?.orgNumber
+                if (!org) return false
+                if (seen.has(org)) return false
+                seen.add(org)
+                return true
+              })
+            }
+            return normalize(res.items)
+          })
+          if (typeof res.total === 'number' && res.total > 0) setTotal(res.total)
+          if (typeof res.grandTotal === 'number') setGrandTotal(res.grandTotal)
+        }
+      })
+      .catch(() => { /* swallow fetch abort or network errors */ })
+      .finally(() => { if (!controller.signal.aborted) setLoading(false) })
+    return () => controller.abort()
   }, [queryParam, offset, eventWeights])
 
   useEffect(() => {
@@ -1106,7 +1190,6 @@ export default function SearchPage() {
     return () => window.removeEventListener('resize', updateHeight);
   }, [eventsFilter]);  // Re-run when eventsFilter changes as it affects height
 
-  const sortedData = data
 
   if (!isMounted) {
     return (
@@ -1375,8 +1458,7 @@ export default function SearchPage() {
           hasRevenueFilter ||
           hasProfitFilter ||
           !!eventsFilter ||
-          selectedEventTypes.length > 0 ||
-          selectedCompanyTypes.length > 0
+          selectedEventTypes.length > 0
         if (!hasAnyAppliedFilter) return null
         const revenueLabel = `${revenueMin !== '' ? numberFormatter.format(Math.floor(revenueMin / 1000)) : 'Min'} - ${revenueMax !== '' ? numberFormatter.format(Math.floor(revenueMax / 1000)) : 'Max'} NOK`
         const profitLabel = `${profitMin !== '' ? numberFormatter.format(Math.floor(profitMin / 1000)) : 'Min'} - ${profitMax !== '' ? numberFormatter.format(Math.floor(profitMax / 1000)) : 'Max'} NOK`
@@ -1536,9 +1618,18 @@ export default function SearchPage() {
             
             </div>
             <div className="mt-6">
-              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2">
+              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
                 <label className="block text-sm font-medium">Event types</label>
+                <button
+                  type="button"
+                  onClick={() => setIsEventTypesCollapsed(prev => !prev)}
+                  className="text-xs px-2 py-1 border border-white/20 text-white/70 hover:text-white hover:border-red-600/60 hover:bg-red-600/10 focus:outline-none focus:ring-1 focus:ring-red-600/40"
+                  aria-expanded={!isEventTypesCollapsed}
+                >
+                  {isEventTypesCollapsed ? 'Show' : 'Hide'}
+                </button>
               </div>
+              {!isEventTypesCollapsed && (
               <div className="space-y-3 pr-1">
                 {availableEventTypes.map((raw) => {
                   const t = raw
@@ -1569,6 +1660,42 @@ export default function SearchPage() {
                     </div>
                   )
                 })}
+              </div>
+              )}
+            </div>
+          </div>
+          <div className="mt-6">
+            <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2">
+              <div className="text-[11px] text-gray-400 leading-relaxed">
+                <div className="flex flex-col gap-1">
+                  <div className="text-xs uppercase tracking-wide text-gray-500">Registration date</div>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={registrationFrom}
+                      onChange={(e) => setRegistrationFrom(e.target.value)}
+                      className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                      placeholder="From"
+                    />
+                    <span className="text-gray-500 text-xs">to</span>
+                    <input
+                      type="date"
+                      value={registrationTo}
+                      onChange={(e) => setRegistrationTo(e.target.value)}
+                      className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                      placeholder="To"
+                    />
+                    {(registrationFrom || registrationTo) && (
+                      <button
+                        type="button"
+                        onClick={() => { setRegistrationFrom(''); setRegistrationTo('') }}
+                        className="text-[10px] px-2 py-1 border border-white/20 text-gray-300 hover:text-white hover:border-red-600/60"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
@@ -1616,16 +1743,13 @@ export default function SearchPage() {
                             const maxVal = draftProfitMax.trim() === '' ? '' : Number(draftProfitMax.replace(/[^-\d]/g, '')) * 1000
                             
                             // Validation: check if max is lower than min
-                            if (minVal !== '' && maxVal !== '' && maxVal < minVal) {
-                              alert('Maximum value cannot be lower than minimum value')
-                              return
-                            }
+                           
                             
                             setProfitMin(minVal)
                             setProfitMax(maxVal)
                             setOffset(0)
                           }
-                        }}
+ }}
                       >
                         Apply
                       </button>
@@ -1659,7 +1783,7 @@ export default function SearchPage() {
                                   const value = e.target.value.replace(/[^0-9-]/g, '')
                                   setDraftRevenueMax(value)
                                 }}
-                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
+                                className="w-full bgtransparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
                               />
                             </div>
                           </div>
@@ -1710,10 +1834,13 @@ export default function SearchPage() {
                         setSortBy(newValue)
                       }
                     }} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
-                      <option value="updatedAt">Last Updated</option>
-                      <option value="name">Company Name</option>
-                      <option value="revenue">Revenue (High to Low)</option>
-                      <option value="employees">Employees (High to Low)</option>
+                      <option value="updatedAt">Last Updated (New → Old)</option>
+                      <option value="name">Company Name (A → Z)</option>
+                      <option value="revenue">Revenue (High → Low)</option>
+                      <option value="revenueAsc">Revenue (Low → High)</option>
+                      <option value="employees">Employees (High → Low)</option>
+                      <option value="employeesAsc">Employees (Low → High)</option>
+                      <option value="registreringsdato">Registreringsdato (New → Old)</option>
                       <option value="scoreDesc" disabled={selectedEventTypes.length === 0} className={selectedEventTypes.length === 0 ? 'text-gray-500' : ''}>
                         Score (High to Low) {selectedEventTypes.length === 0 ? '(Select event types first)' : ''}
                       </option>
@@ -1727,8 +1854,6 @@ export default function SearchPage() {
             </div>
           </div>
 
-          
-
           {loading ? (
             <div className="flex items-center justify-center py-12">
               <div className="text-center">
@@ -1736,7 +1861,7 @@ export default function SearchPage() {
                 <div className="text-lg text-gray-400">Loading businesses...</div>
               </div>
             </div>
-          ) : sortedData.length === 0 ? (
+          ) : data.length === 0 ? (
             (() => {
               const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0
               return (
@@ -1750,20 +1875,21 @@ export default function SearchPage() {
             })()
           ) : (
             <div className="mt-4 divide-y divide-white/10">
-              {sortedData.map((business) => {
+              {data.map((business) => {
                 const org = business.orgNumber
                 const isWatched = watchlist.has(org)
                 return (
-                  <BusinessCard
-                    key={org}
-                    business={{ ...business, hasEvents: eventsFilter === 'with' ? true : business.hasEvents }}
-                    numberFormatter={numberFormatter}
-                    selectedEventTypes={selectedEventTypes}
-                    eventWeights={eventWeights}
-                    isWatched={isWatched}
-                    onToggle={() => (isWatched ? removeWatch(org) : addWatch(org))}
-                    router={router}
-                  />
+                  <div key={org} className="relative">
+                    <BusinessCard
+                      business={{ ...business, hasEvents: eventsFilter === 'with' ? true : business.hasEvents }}
+                      numberFormatter={numberFormatter}
+                      selectedEventTypes={selectedEventTypes}
+                      eventWeights={eventWeights}
+                      isWatched={isWatched}
+                      onToggle={() => (isWatched ? removeWatch(org) : addWatch(org))}
+                      router={router}
+                    />
+                  </div>
                 )
               })}
             </div>

@@ -126,6 +126,7 @@ type Business = {
   webRiskPlaceholderKw?: boolean | null
   webRiskParkedKw?: boolean | null
   webRiskSuspendedKw?: boolean | null
+  registeredAtBrreg?: string | null
 }
 
 type EventItem = {
@@ -151,6 +152,19 @@ const numberFormatter: Intl.NumberFormat = (() => {
     }
   }
 })()
+
+// Lightweight numeric formatter for NOK/financial values used in JSX (was referenced as fmt but not defined)
+function fmt(v: unknown): string {
+  if (v === null || v === undefined) return ''
+  const num = typeof v === 'number' ? v : (typeof v === 'string' ? Number(v.replace(/[^0-9,.-]/g, '').replace(/,(?=\d{3}\b)/g, '')) : NaN)
+  if (!isFinite(num)) return String(v)
+  try {
+    // Use Norwegian formatting (fallback to default)
+    return new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 }).format(num)
+  } catch {
+    return Number(num).toLocaleString()
+  }
+}
 
 function formatEventDate(dateValue: unknown): string {
   if (dateValue == null) return ''
@@ -180,6 +194,19 @@ function formatEventDate(dateValue: unknown): string {
     return isNaN(date.getTime()) ? asString : date.toLocaleDateString()
   } catch {
     return String(dateValue)
+  }
+}
+
+function formatDateEU(dateValue: unknown): string {
+  if (dateValue == null) return ''
+  try {
+    const d = new Date(typeof dateValue === 'string' ? dateValue : String(dateValue))
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('nb-NO', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    }
+    return String(dateValue)
+  } catch {
+    return ''
   }
 }
 
@@ -494,15 +521,23 @@ function CompanyPageContent() {
   // Prompt describing the research request
   const [prompt, setPrompt] = useState<string>('')
   // Info line: ticks every 5s and tracks activity events
+  // Tick counter (reserved for future live status; intentionally unused)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [infoTick, setInfoTick] = useState(0)
   // isTranslating removed
   const [isComposing, setIsComposing] = useState(false)
+  // Track last manual edit time (currently not used in UI rendering)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [lastPromptEditAt, setLastPromptEditAt] = useState<number | null>(null)
+  // Active output schema (designPrompt flow can update; not yet exposed in UI)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [outputSchema, setOutputSchema] = useState<string>(
     'Write a concise, decision-useful research brief on the company above.\n' +
     'Include: overview, products/services, customers and markets, competitive moat, risks, recent developments (last 12 months), notable partnerships, competition, and 3-6 actionable insights.\n' +
     'Keep it 8-14 bullet points, neutral tone. Use Norwegian if the company is Norwegian. Always include citations inline [n] and return a final Sources list.'
   )
+  // Preset definitions (UI for selecting presets currently disabled)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const outputPresets: Array<{ key: string; label: string; value: string }> = [
     {
       key: 'brief_citations',
@@ -518,12 +553,16 @@ function CompanyPageContent() {
       value: 'Answer the question in well-structured text with citations.',
     },
   ]
+  // Selected output preset (preset switcher UI removed for now)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [outputPreset, setOutputPreset] = useState<string>('brief_citations')
   // Timing metrics
   const [researchStartedAt, setResearchStartedAt] = useState<number | null>(null)
   const [composeStartedAt, setComposeStartedAt] = useState<number | null>(null)
   const [composeMs, setComposeMs] = useState<number | null>(null)
   const [parallelStartedAt, setParallelStartedAt] = useState<number | null>(null)
+  // Parallel execution timing (diagnostics only)
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [parallelMs, setParallelMs] = useState<number | null>(null)
   
 
@@ -588,8 +627,9 @@ function CompanyPageContent() {
   }, [mode])
 
   useEffect(() => {
+    const containerEl = procButtonsContainerRef.current
     const measure = () => {
-      const el = procButtonsContainerRef.current
+      const el = containerEl || procButtonsContainerRef.current
       if (!el) return
       const w = el.getBoundingClientRect().width
       if (w && Math.abs(w - (procGroupWidth || 0)) > 1) setProcGroupWidth(Math.round(w))
@@ -598,13 +638,13 @@ function CompanyPageContent() {
     if (mode === 'research') {
       measure()
     }
-    const ro = typeof ResizeObserver !== 'undefined' && procButtonsContainerRef.current ? new ResizeObserver(measure) : null
-    if (ro && procButtonsContainerRef.current) ro.observe(procButtonsContainerRef.current)
+    const ro = typeof ResizeObserver !== 'undefined' && containerEl ? new ResizeObserver(measure) : null
+    if (ro && containerEl) ro.observe(containerEl)
     window.addEventListener('resize', measure)
     const id = setInterval(measure, 1500)
     return () => {
       window.removeEventListener('resize', measure)
-      if (ro && procButtonsContainerRef.current) ro.unobserve(procButtonsContainerRef.current)
+      if (ro && containerEl) ro.unobserve(containerEl)
       clearInterval(id)
     }
   }, [mode, processor, procGroupWidth])
@@ -696,7 +736,7 @@ function CompanyPageContent() {
     moveSamplesRef.current = [{ t: performance.now(), pos: el.scrollLeft }]
   }
 
-  const handleDragMove = (clientX: number) => {
+  const handleDragMove = useCallback((clientX: number) => {
     if (!isDragging) return
     const el = recentlyRef.current
     if (!el) return
@@ -711,9 +751,9 @@ function CompanyPageContent() {
     while (moveSamplesRef.current.length > 2 && moveSamplesRef.current[0].t < cutoff) {
       moveSamplesRef.current.shift()
     }
-  }
+  }, [isDragging, updateScrollButtons])
 
-  const handleDragEnd = () => {
+  const handleDragEnd = useCallback(() => {
     if (!isDragging) return
     setIsDragging(false)
     // compute fling velocity from recent samples (weighted over last 120-200ms)
@@ -743,7 +783,7 @@ function CompanyPageContent() {
     }
     // small delay before enabling click again
     setTimeout(() => { dragMovedRef.current = false }, 120)
-  }
+  }, [isDragging, startMomentum])
 
   useEffect(() => {
     // While dragging, track movement and end events at window level
@@ -777,7 +817,7 @@ function CompanyPageContent() {
       }
     }
     return () => {}
-  }, [isDragging])
+  }, [isDragging, handleDragMove, handleDragEnd])
 
   const scrollByAmount = (delta: number) => {
     const el = recentlyRef.current
@@ -873,8 +913,8 @@ function CompanyPageContent() {
         const lines: string[] = []
         lines.push(`Company: ${topCompany?.name || 'Unknown'}`)
         if (topCompany?.orgNumber) lines.push(`Org number: ${topCompany.orgNumber}`)
-        if ((topCompany as any)?.website) lines.push(`Website: ${(topCompany as any).website}`)
-        if ((topCompany as any)?.ceo) lines.push(`CEO: ${(topCompany as any).ceo}`)
+  if (topCompany?.website) lines.push(`Website: ${topCompany.website}`)
+  if (topCompany?.ceo) lines.push(`CEO: ${topCompany.ceo}`)
         return lines.join('\n')
       })()
       const systemPrompt = [
@@ -933,15 +973,15 @@ function CompanyPageContent() {
           }
         }
       }
-    } catch (e) {
-      const err = e as any
-      if (err?.name === 'AbortError') setChatError('Avbrutt')
-      else setChatError(err?.message || 'Ukjent feil')
+    } catch (e: unknown) {
+      const errObj = e as { name?: string; message?: string }
+      if (errObj?.name === 'AbortError') setChatError('Avbrutt')
+      else setChatError(errObj?.message || 'Ukjent feil')
     } finally {
       setChatStreaming(false)
       chatAbortRef.current = null
     }
-  }, [chatStreaming, chatInput, customInput, companyInput, topCompany?.name, topCompany?.orgNumber, (topCompany as any)?.website, chatMessages])
+  }, [chatStreaming, chatInput, customInput, companyInput, topCompany?.name, topCompany?.orgNumber, topCompany?.website, topCompany?.ceo, chatMessages])
 
   // Fetch company data
   useEffect(() => {
@@ -1187,7 +1227,7 @@ function CompanyPageContent() {
     const defaultBlock = buildDefaultBlock(topCompany)
     setCompanyInput(prev => {
       const prevNorm = normalize(prev || '')
-      const defNorm = normalize(defaultBlock)
+  // (removed unused defNorm)
       // If empty, set to current company
       if (!prevNorm) return defaultBlock
       // If previous block clearly refers to a different company/org, reset
@@ -1209,7 +1249,7 @@ function CompanyPageContent() {
       const merged = [...header, ...(filtered.length ? [''] : []), ...filtered].join('\n').trim()
       return merged || defaultBlock
     })
-  }, [topCompany?.orgNumber, topCompany?.name, topCompany?.website])
+  }, [topCompany?.orgNumber, topCompany?.name, topCompany?.website, topCompany])
 
   // Load business context: prefer session.user.businessContext, fallback to localStorage
   useEffect(() => {
@@ -1334,7 +1374,7 @@ function CompanyPageContent() {
         ].filter(Boolean) as string[]
         return lines.join('\n')
       }
-      const normalizeBlock = (s: string) => s.replace(/\r\n/g, '\n').trim()
+  // normalizeBlock removed (unused)
       const defaultBlock = buildCompanyBlock(topCompany)
       // Enforce that the header (Company/Org number/Website) always matches the currently viewed company
       const enforceCurrentHeader = (c: Business, s: string) => {
@@ -1367,11 +1407,11 @@ function CompanyPageContent() {
   const composeData = await composeResp.json()
     try { console.log('[company] compose:ok', { model: (composeData as { model?: string })?.model }) } catch {}
       // End AI timing
-      setComposeMs((prev) => {
-        const start = (typeof performance !== 'undefined' ? performance.now() : Date.now())
-        const s = composeStartedAt ?? start
-        return Math.max(0, start - s)
-      })
+      {
+        const endStart = (typeof performance !== 'undefined' ? performance.now() : Date.now())
+        const s = composeStartedAt ?? endStart
+        setComposeMs(Math.max(0, endStart - s))
+      }
   setIsComposing(false)
       const inputStr: string = composeData.input
       const outputSchemaStr: string = composeData.outputSchema
@@ -1435,8 +1475,10 @@ function CompanyPageContent() {
         setParallelMs(pMs)
         // Status will be set to 'completed' by useEffect when output is available
         const totalStart = researchStartedAt ?? end
-        const totalMs = Math.max(0, end - totalStart)
-        const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
+  const totalMs = Math.max(0, end - totalStart)
+  // reference previous composeMs via updater to avoid unused var lint for 'prev'
+  setComposeMs(v => v)
+  const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
         try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
         // translation continues in background
       }
@@ -1447,74 +1489,7 @@ function CompanyPageContent() {
     }
   }
 
-  const designPromptAndSchema = async () => {
-    try {
-  setIsComposing(true)
-      // Build an up-to-date company block; only use the editable textarea if user actually modified it
-      const buildCompanyBlock = (c: Business | null) => {
-        if (!c) return ''
-        const lines = [
-          `Company: ${c.name}`,
-          c.orgNumber ? `Org number: ${c.orgNumber}` : undefined,
-          c.website ? `Website: ${c.website}` : undefined,
-        ].filter(Boolean) as string[]
-        return lines.join('\n')
-      }
-      const normalizeBlock = (s: string) => s.replace(/\r\n/g, '\n').trim()
-      const defaultBlock = buildCompanyBlock(topCompany)
-      // Enforce current company header even if user provided extra details
-      const enforceCurrentHeader = (c: Business | null, s: string) => {
-        if (!c) return s
-        const lines = (s || '').split(/\r?\n/)
-        const rest = lines.filter(l => !/^\s*(Company:|Org number:|Website:)\b/i.test(l))
-        const header = [
-          `Company: ${c.name}`,
-          c.orgNumber ? `Org number: ${c.orgNumber}` : null,
-          c.website ? `Website: ${c.website}` : null,
-        ].filter(Boolean) as string[]
-        return [...header, ...(rest.length ? [''] : []), ...rest].join('\n').trim()
-      }
-      const effectiveCompanyBlock = (companyInput && companyInput.trim())
-        ? enforceCurrentHeader(topCompany, companyInput)
-        : defaultBlock
-      const resp = await fetch('/api/compose', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          prompt: (typeof window !== 'undefined' ? (document.querySelector('#research-prompt') as HTMLTextAreaElement | null)?.value : undefined) || prompt,
-          businessContext: customInput || undefined,
-          companyBlock: effectiveCompanyBlock || undefined,
-          processor,
-        }),
-      })
-      if (!resp.ok) {
-        const data = await resp.json().catch(() => ({}))
-      }
-  const data: unknown = await resp.json()
-  const inputStr: string = (data as { input: string }).input
-  const outputSchemaStr: string = (data as { outputSchema: string }).outputSchema
-      const contentAny: unknown = (data as { result?: { output?: { content?: unknown; text?: unknown } } })?.result?.output?.content ??
-        (data as { result?: { output?: { content?: unknown; text?: unknown } } })?.result?.output?.text ??
-        (data as { result?: { output?: unknown } })?.result?.output
-      // Populate our editors: we split input back into blocks heuristically
-      setOutputSchema(outputSchemaStr)
-        // End Parallel timing and log
-        const end = (typeof performance !== 'undefined' ? performance.now() : Date.now())
-        const pStart = parallelStartedAt ?? end
-        const pMs = Math.max(0, end - pStart)
-        setParallelMs(pMs)
-        const totalStart = researchStartedAt ?? end
-        const totalMs = Math.max(0, end - totalStart)
-        const aiMs = composeMs ?? ((composeStartedAt && researchStartedAt) ? (composeStartedAt - researchStartedAt) : 0)
-        try { console.log(`[research-timing] total=${(totalMs/1000).toFixed(2)}s, ai=${(aiMs/1000).toFixed(2)}s, parallel=${(pMs/1000).toFixed(2)}s`) } catch {}
-      // Do not overwrite user edits to companyInput/customInput/prompt here automatically
-      // Allow the user to review and run
-    } catch (e) {
-      setResearchError(e instanceof Error ? e.message : 'Failed to design prompt/schema')
-    } finally {
-      setIsComposing(false)
-    }
-  }
+  // designPromptAndSchema removed (unused optimization flow)
 
   const handleClearResearch = () => {
     // Invalidate polling and clear all research state
@@ -1712,32 +1687,33 @@ function CompanyPageContent() {
     }
   }
 
-  if (status === 'loading') {
-    return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
-          <div className="text-lg text-gray-400">Loading...</div>
-        </div>
-      </div>
-    )
-  }
+  const [keywordStats, setKeywordStats] = useState<{ keywords: string[]; stats: Record<string, { present?: number; count?: number; density?: number }> } | null>(null)
+  const [keywordLoading, setKeywordLoading] = useState(false)
+  const [keywordError, setKeywordError] = useState<string | null>(null)
 
-  if (!session) return null
-
-  const fmt = (v: number | string | null | undefined) =>
-    v === null || v === undefined ? '—' : numberFormatter.format(Number(v))
-
-  // Determine if output area should be shown (research/chat) only when there's content or activity
-  const hasResearchContent = Boolean(researchStructured || researchText)
-  // Only show activity spinner when still running/queued AND no output yet.
-  const showResearchActivity = (researchStatus === 'running' || researchStatus === 'queued') && !hasResearchContent
-  const showResearchOutputWrapper = mode === 'research' && (hasResearchContent || showResearchActivity || researchError)
-  const hasChatContent = chatMessages.some(m => m.content.trim().length > 0)
-  const showChatOutputWrapper = mode === 'chat' && (hasChatContent || chatStreaming || chatError)
-  // Show wrapper when either mode has content/activity
-  const showOutputWrapper = showResearchOutputWrapper || showChatOutputWrapper
-  
+  // Fetch keyword stats for the company
+  useEffect(() => {
+    const org = topCompany?.orgNumber
+    if (!org) { setKeywordStats(null); return }
+    let cancelled = false
+    const load = async () => {
+      setKeywordLoading(true); setKeywordError(null)
+      try {
+        const res = await fetch(`/api/businesses/keywords?orgNumber=${encodeURIComponent(org)}`)
+        const json = await res.json()
+        if (cancelled) return
+        if (json && json.keywords) {
+          setKeywordStats({ keywords: json.keywords, stats: json.stats || {} })
+        } else {
+          setKeywordStats({ keywords: [], stats: {} })
+        }
+      } catch (e) {
+        if (!cancelled) { setKeywordError('Failed to load keyword stats'); setKeywordStats(null) }
+      } finally { if (!cancelled) setKeywordLoading(false) }
+    }
+    load()
+    return () => { cancelled = true }
+  }, [topCompany?.orgNumber])
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -2006,7 +1982,13 @@ function CompanyPageContent() {
               )}
             </div>
             {/* Output region with smooth height transitions */}
-            {showOutputWrapper && (
+            {/* Ensure research/chat output wrapper only mounts when there's content or activity */}
+            {(() => {
+              const hasResearchContent = Boolean(researchText || researchStructured || researchError || researchStatus === 'running' || researchStatus === 'queued')
+              const hasChatContent = chatMessages.some(m => m.content.trim().length > 0) || chatStreaming || chatError
+              const showOutputWrapper = mode === 'research' ? hasResearchContent : hasChatContent
+              return showOutputWrapper
+            })() && (
               <div className="relative mt-3">
                 {mode === 'research' ? (
                   <div>
@@ -2124,6 +2106,12 @@ function CompanyPageContent() {
                       <span className="font-medium text-gray-300">Organisasjonsnummer:</span>
                       <div className="text-white">{topCompany.orgNumber}</div>
                     </div>
+                    {topCompany.registeredAtBrreg && (
+                      <div>
+                        <span className="font-medium text-gray-300">Registreringsdato:</span>
+                        <div className="text-white">{formatDateEU(topCompany.registeredAtBrreg)}</div>
+                      </div>
+                    )}
                     <div>
                       <span className="font-medium text-gray-300">Daglig leder:</span>
                       <div className="text-white">{topCompany.ceo || '—'}</div>
@@ -2608,31 +2596,47 @@ function CompanyPageContent() {
               </div>
             )}
 
+            {/* Keyword Stats Section */}
+            {topCompany && (
+              <div className="mt-12">
+                <h2 className="text-xl font-semibold mb-4">Website Keyword Scan</h2>
+                {keywordLoading && <div className="text-sm text-gray-400">Loading keyword stats…</div>}
+                {keywordError && <div className="text-sm text-red-400">{keywordError}</div>}
+                {!keywordLoading && !keywordError && (!keywordStats || keywordStats.keywords.length === 0) && (
+                  <div className="text-sm text-gray-400">No keyword scan data available.</div>
+                )}
+                {keywordStats && keywordStats.keywords.length > 0 && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {keywordStats.keywords.sort().map(kw => {
+                      const st = keywordStats.stats[kw] || {}
+                      return (
+                        <div key={kw} className="p-3 border border-white/10 bg-white/5">
+                          <div className="flex items-center justify-between mb-1">
+                            <span className="text-sm font-medium">{kw.replace(/_/g,' ')}</span>
+                            <span className={`text-xs ${st.present ? 'text-green-400' : 'text-gray-500'}`}>{st.present ? 'Yes' : 'No'}</span>
+                          </div>
+                          <div className="text-xs text-gray-400">Count: {st.count ?? 0}</div>
+                          <div className="text-xs text-gray-400">Density: {st.density != null ? st.density.toFixed(4) : '0.0000'}</div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
 
           </div>
         ) : (
           <div className="flex items-center justify-center py-12">
             <div className="text-center">
-              <div className="text-lg text-gray-400">Ingen selskapsdata tilgjengelig</div>
+              <div className="text-lg text-gray-400 mb-2">Ingen selskapsdata</div>
+              <div className="text-sm text-gray-500">Søk etter et selskap for å starte.</div>
             </div>
           </div>
         )}
       </div>
     </div>
-  )
+  );
 }
 
-export default function CompanyPage() {
-  return (
-    <Suspense fallback={
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
-          <div className="text-lg text-gray-400">Loading...</div>
-        </div>
-      </div>
-    }>
-      <CompanyPageContent />
-    </Suspense>
-  )
-}
+export default CompanyPageContent

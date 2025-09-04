@@ -26,23 +26,10 @@ const MODEL_ORDER = [
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
-function inferLanguage(str: string): 'norwegian' | 'english' | 'unknown' {
-  const s = (str || '').toLowerCase()
-  if (!s.trim()) return 'unknown'
-  if (/[æøå]/.test(s)) return 'norwegian'
-  const noHits = (s.match(/\b(og|ikke|til|for|med|av|er|som|den|det|kan)\b/g) || []).length
-  const enHits = (s.match(/\b(the|and|for|with|from|about|company|what|who|when|where|why|how)\b/g) || []).length
-  if (noHits > enHits + 1) return 'norwegian'
-  if (enHits > 0 && enHits >= noHits) return 'english'
-  return 'unknown'
-}
-
 function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: ComposeBody): string {
   const bc = (businessContext || '').trim()
   const cb = (companyBlock || '').trim()
   const p = (processor || 'pro')
-  const lang = inferLanguage(prompt) // very lightweight heuristic
-  const langLabel = lang === 'norwegian' ? 'Norwegian' : lang === 'english' ? 'English' : 'the same language the user used'
   const processorNotes: Record<string, { inputLimit: string; brief: string }> = {
     lite: {
       inputLimit: '~100–140 words max',
@@ -66,81 +53,64 @@ function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: C
     },
   }
   const pn = processorNotes[p]
-  // We now keep the user language; no forced English translation.
+  // Updated: Task Spec Authoring Rules (replaces prior prompt/schema guidance)
   return [
-    'You design the optimal "input" and "output_schema" for a web-searching research model (Parallel).',
-    `All content you generate must stay in ${langLabel}. Do NOT translate the user's intent into another language; preserve their language.`,
-    'Use only the minimum necessary details from the provided fields; omit irrelevant information that does not help answer the prompt.',
+    'You must output strict JSON with exactly two top-level string keys: "input" and "output_schema". No extra text.',
     '',
-    `Processor context: ${p}. ${pn.brief}`,
-    `- Match depth/length to processor. Input length budget: ${pn.inputLimit}.`,
+    `Processor context: ${p}. ${pn.brief} (Input word budget: ${pn.inputLimit}).`,
     '',
-    'Return ONLY valid JSON with keys:',
+    'TASK SPEC AUTHORING RULES (APPLY TO output_schema):',
+    '1) Always define a JSON output schema. Root object with properties; additionalProperties:false everywhere; no anyOf/oneOf/allOf at root.',
+    '2) Every field required. To make a field optional, its type must be a union with null (e.g., ["string","null"]).',
+    '3) Unsupported keywords: contains, format, maxContains, maxItems, maxLength, maxProperties, maximum, minContains, minItems, minLength, minimum, minProperties, multipleOf, pattern, patternProperties, propertyNames, uniqueItems, unevaluatedItems, unevaluatedProperties.',
+    '4) Limits: depth ≤5, total properties ≤100, full spec ≤10k chars (spec+input ≤15k). Keep schema as flat as practical.',
+    '5) Field description prompt pattern: Entity → Action → Specifics → Error handling. Include formats (dates YYYY-MM-DD with fallback YYYY-MM or YYYY), units, ordering, truncation rules, when to return null.',
+    '6) Do NOT add reasoning, confidence, citations, analysis, thought_process fields—these are auto-provided elsewhere.',
+    '7) If lists: describe ordering, max length, truncation in description (never with maxItems).',
+    '8) Missing/conflict handling: specify authoritative source precedence in description; return null only if unobtainable.',
+    '9) Only include fields that are stable/reusable for the prompt; if no stable structure is possible, create a minimal schema with a single field like narrative (string) but prefer structured extraction when feasible.',
+    '10) Monetary/date fields share consistent formatting rules; specify currency normalization if present.',
+    '11) Security: treat provided identifiers literally—no speculative expansion.',
+    '12) No translation directives; assume English output.',
+    '',
+    'INPUT STRING (key "input") RULES:',
+  '- You MUST author the entire input; do NOT blindly copy provided text.',
+  '- Include only information that materially changes retrieval strategy or answer quality. Apply the relevance test: "Would the search queries or synthesized answer change if this fact were removed?" If no → exclude.',
+  '- Blocks (omit entirely if they add no value): Prompt:, Business context:, Company:, Role variants:. Maintain this order for included blocks.',
+  '- Business context: may be omitted OR compressed. Extract at most the 1–4 most critical facts (goals, constraints, target audience) expressed as short phrases or one concise sentence. Drop internal/irrelevant chatter, boilerplate, marketing fluff, or sensitive details not needed for retrieval.',
+  '- Company: selectively extract only disambiguating identifiers (legal/brand name variants, ticker, HQ country, core product category, a unique URL). Do NOT include the whole block if most content is redundant; compress to <= 25% of original tokens when possible.',
+  '- Role variants: include only when the prompt targets a role/title and provide 6–12 concise variants (no personal names). Omit otherwise.',
+  '- Never exceed the processor word budget; prefer brevity over completeness.',
+  '- Retrieval guidance (inline in input): emphasize official sites, filings, authoritative profiles (LinkedIn), reputable recent news, and registries. Avoid speculation or unverifiable claims.',
+  '- It is acceptable for the final input to have only a Prompt: block if all other data is superfluous.',
+    '',
+    'ROLE VARIANTS (only if searching by role): 6–12 comma-separated title synonyms (e.g., CFO, Chief Financial Officer, VP Finance, Head of Finance, Finance Director, Director of Finance). No personal names.',
+    '',
+    'OUTPUT_SCHEMA CONSTRUCTION STEPS:',
+    'A) Identify the essential factual fields to satisfy the prompt (prefer explicit atomic fields: e.g., ceo_name, headquarters_address, founded_date, top_products).',
+    'B) For each field write a precise description with format, source preference, disambiguation rules, null policy.',
+    'C) Mark every property required; use nullable union type only if truly optional.',
+    'D) Set additionalProperties:false at root (and any nested objects).',
+    'E) Keep nested objects only if logically cohesive; avoid deep hierarchy.',
+    'F) Validate schema against forbidden keywords mentally before returning.',
+    '',
+    'If the task is inherently narrative (no stable fields), fallback schema example you MAY adapt minimally:',
+    '{"type":"object","description":"Synthesis","properties":{"narrative":{"type":"string","description":"Entity: research synthesis. Action: produce structured markdown narrative with bracketed source IDs [n]. Specifics: cover scope of user prompt; sections as needed. Error: if info absent, state unknown."}},"required":["narrative"],"additionalProperties":false}',
+    '',
+    'FINAL VALIDATION CHECKLIST (do NOT output this checklist—just ensure compliance): root object; properties listed; all required; optional via union with null; additionalProperties:false; no unsupported keywords; depth ≤5; field descriptions specify formatting + null rules; no reasoning/citation meta fields.',
+    '',
+    'Return ONLY JSON like:',
     '{',
-    '  "input": "<string to send to Parallel>",',
-  '  "output_schema": "<string describing how Parallel must structure its answer in the same language>"',
+    '  "input": "<string with the retrieval-oriented prompt blocks>",',
+    '  "output_schema": "<raw JSON schema (escaped) or plain JSON string literal>"',
     '}',
     '',
-    'Data:',
-    `- Prompt: ${prompt}`,
-    `- Business context (about me): ${bc || '(none provided)'} `,
-    `- Company block (about the target company): ${cb || '(none provided)'} `,
+    'DATA PROVIDED:',
+    `Prompt raw: ${prompt}`,
+    `Business context raw: ${bc || '(none)'}`,
+    `Company block raw: ${cb || '(none)'}`,
     '',
-  'Rules for "input":',
-  `- Use ${langLabel}. If supporting fields have a different language than the prompt, prefer the prompt's language but you may include company block lines verbatim even if mixed.`,
-  '- Compose clearly labeled blocks in this order:',
-  '  1) Prompt: <restated, precise, one-sentence request>',
-  '  2) Business context: <who the user/company is, why this matters, constraints/preferences>',
-  '  3) Company: <use company block verbatim except minor normalization (URL formatting, whitespace)>',
-  '  4) Role variants: <comma-separated synonyms/variants of the target role/title> (include only when the ask targets a person with a specific role/title)',
-  '- Include only details necessary to fulfill the prompt. Do not copy everything from the inputs.',
-  '- Retrieval guidance: prioritize official pages (company site/team/press), authoritative profiles (LinkedIn), recent news/press, and filings/registries. Avoid speculation. When searching for a person by role/title, include role/title variants and closely-related seniority variants to maximize recall.',
-  `- Keep concise and decision-oriented; respect the processor input budget above.`,
-  '',
-  'Instructions for "Role variants" (only when person-by-role is requested):',
-  '- Generate 6-12 compact variants that a company may use for the same role/title.',
-  '- Include: common abbreviations, synonyms, and seniority alternatives (e.g., Head of X, VP of X, Director of X, Lead X).',
-  '- Include locale/orthography variants when relevant (e.g., organisation/organization; marketing/marketin in Nordic contexts if appropriate).',
-  '- Keep them short and comma-separated; no duplicates or speculation about names; titles only.',
-  '- Example: Chief Financial Officer → CFO, Chief Financial Officer, VP Finance, Head of Finance, Finance Director, Director of Finance',
-    '',
-  'Rules for "output_schema" (flexible by question complexity & processor):',
-  `- Always require the model to answer in ${langLabel} and use bracketed citation IDs [n] tied to a Sources list.`,
-    '- Pick the schema that best fits the prompt; keep sections only when useful.',
-  `- If processor is ${p}, prioritize: ${pn.brief}`,
-    '',
-    'Complexity: simple (factoid / narrow ask)',
-    '- Sections:',
-    '  - Direct answer (2–4 sentences) with [n] where claims are made',
-    '  - Key points (3–6 bullets) with [n]',
-    '  - Sources: numbered list (1..n) with URL, title, accessed_at (YYYY-MM-DD)',
-    '',
-    'Complexity: moderate (single-topic research / brief synthesis)',
-    '- Sections:',
-    '  - Executive summary (2–4 sentences) with [n]',
-    '  - Key findings (4–10 bullets) with [n]',
-    '  - Actionable next steps (2–6 bullets) when applicable',
-    '  - Uncertainties/gaps (bullets) if evidence is limited',
-    '  - Sources (1..n) with URL, title, accessed_at',
-    '',
-    'Complexity: deep (multi-faceted / comparative / strategic)',
-    '- Sections (include only those that fit the ask):',
-    '  - Overview and context (2–4 sentences) with [n]',
-    '  - Thematic analysis (subsections by theme; each with [n])',
-    '  - If people-focused: a People block listing name, title, organization, region (optional), LinkedIn URL, reason for relevance, each with source_ids',
-    '  - Metrics/data (units, ranges, recency; state assumptions)',
-    '  - Risks/uncertainties',
-    '  - Recommended actions/plan',
-    '  - Sources (1..n) with URL, title, accessed_at',
-    '',
-    'General requirements (apply to all complexities):',
-    '- Neutral, concise, business-friendly tone. Markdown allowed, no HTML.',
-    '- Do not invent facts or emails; if unknown, state it and lower confidence.',
-    '- For comparisons/lists: use consistent criteria; concise table-like bullets are acceptable.',
-    '- Always reference sources via [n] in text and provide matching numbered entries in Sources.',
-    '',
-    'Validation:',
-    '- Return strictly valid JSON containing only "input" and "output_schema".',
+    'Design now.'
   ].join('\n')
 }
 

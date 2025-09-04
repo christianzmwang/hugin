@@ -73,10 +73,11 @@ export async function GET(req: Request) {
 
   // Industry: accept either code or text for convenience; prefer code match
   if (industryCode) {
-    const looksLikeCode = /[0-9]{2}(\.[0-9]{1,2})?/.test(industryCode) || /^(\d|[A-Z])/.test(industryCode)
+    // More precise NACE code detection
+    const looksLikeCode = /^(\d{2}(\.\d{1,2})?|[A-Z](\d|\.)|[A-Z])$/.test(industryCode.trim())
     if (looksLikeCode) {
-      params.push(industryCode)
-      where.push(`m.industry_code1 = $${params.length}`)
+      params.push(`${industryCode}%`)
+      where.push(`m.industry_code1 ILIKE $${params.length}`)
     } else {
       params.push(`%${industryCode}%`)
       where.push(`m.industry_text1 ILIKE $${params.length}`)
