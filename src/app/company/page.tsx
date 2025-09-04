@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, Suspense, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
 // ParallelChat removed from inline usage; chat implemented directly in this page now
 import { createPortal } from 'react-dom'
 
@@ -600,8 +600,8 @@ function CompanyPageContent() {
   const momentumRef = useRef<{ raf: number | null; v: number; lastT: number | null } | null>(null)
   const moveSamplesRef = useRef<Array<{ t: number; pos: number }>>([])
   
-  // Add tab state for organizing the top section
-  const [activeTab, setActiveTab] = useState<'search' | 'recent'>('search')
+  // Remove unused tab state for organizing the top section
+  // const [activeTab, setActiveTab] = useState<'search' | 'recent'>('search')
 
   const autoResizePrompt = useCallback(() => {
     const el = promptRef.current
@@ -2603,4 +2603,15 @@ function CompanyPageContent() {
   );
 }
 
-export default CompanyPageContent
+export default function CompanyPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="text-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
+        <div className="text-lg text-gray-400">Loading...</div>
+      </div>
+    </div>}>
+      <CompanyPageContent />
+    </Suspense>
+  )
+}

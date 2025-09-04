@@ -169,7 +169,7 @@ export const authOptions: any = {
           )
           token.mainAccess = Boolean(res.rows[0]?.main_access)
           token.businessContext = res.rows[0]?.business_context ?? null
-        } catch (e) {
+        } catch {
           token.mainAccess = false
           token.businessContext = null
         }

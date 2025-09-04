@@ -170,12 +170,14 @@ export async function POST(req: Request) {
       const header = ['orgNumber','name','revenue','website','webStatus','webHtmlKb','webFinalUrl', ...keywords.flatMap(k => [`present_${k}`,`count_${k}`,`density_${k}`])]
       const lines = [header.join(',')]
       for (const it of items) {
-        const cols: (string|number)[] = [it.orgNumber, (it as any).name || '', (it as any).revenue ?? '', (it as any).website || '', it.webStatus ?? '', it.webHtmlKb ?? '', it.webFinalUrl || '']
+        const itemData = it as Record<string, unknown>
+        const cols: (string|number)[] = [it.orgNumber, (itemData.name as string) || '', (itemData.revenue as number) ?? '', (itemData.website as string) || '', it.webStatus ?? '', it.webHtmlKb ?? '', it.webFinalUrl || '']
         for (const kw of keywords) {
-          const st = (it as any).stats[kw]
+          const stats = itemData.stats as Record<string, { present?: boolean; count?: number; density?: number }> | undefined
+          const st = stats?.[kw]
             cols.push(st?.present ? 1 : 0)
           cols.push(st?.count || 0)
-          cols.push(st ? Number((st.density*100).toFixed(4)) : 0)
+          cols.push(st?.density ? Number((st.density*100).toFixed(4)) : 0)
         }
         lines.push(cols.join(','))
       }

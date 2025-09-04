@@ -72,7 +72,7 @@ async function delegateOptimize(
       const data = await res.json().catch(() => null)
       const content: string | undefined = data?.choices?.[0]?.message?.content
       if (!content) continue
-      let json: any
+      let json: Record<string, unknown> | null = null
       try { json = JSON.parse(content) } catch {
         const s = content.indexOf('{'); const e = content.lastIndexOf('}')
         if (s >= 0 && e > s) { try { json = JSON.parse(content.slice(s, e + 1)) } catch { continue } }

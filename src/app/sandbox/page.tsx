@@ -11,6 +11,21 @@ export default function SandboxPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
 
+  // All useState hooks must be at the top level
+  const [kwInput, setKwInput] = useState('')
+  const [keywords, setKeywords] = useState<string[]>([])
+  const [scanning, setScanning] = useState(false)
+  const [results, setResults] = useState<ScanItem[]>([])
+  const [sortKey, setSortKey] = useState<string | null>('org')
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
+  const [error, setError] = useState<string | null>(null)
+  const [limit, setLimit] = useState<number>(500)
+  const [progress, setProgress] = useState<string[]>([])
+  const [progressRef, setProgressRef] = useState<HTMLDivElement | null>(null)
+  const [scanProgress, setScanProgress] = useState<{percentage: number, processed: number, total: number} | null>(null)
+  const [scanStartTime, setScanStartTime] = useState<number | null>(null)
+  const [maxAvailable, setMaxAvailable] = useState<number | null>(null)
+
   useEffect(() => {
     if (status === 'loading') return
     if (!session) router.push('/auth/signin')
@@ -49,19 +64,6 @@ export default function SandboxPage() {
   if (!session) return null
 
   // Keyword scan (moved from search page)
-  const [kwInput, setKwInput] = useState('')
-  const [keywords, setKeywords] = useState<string[]>([])
-  const [scanning, setScanning] = useState(false)
-  const [results, setResults] = useState<ScanItem[]>([])
-  const [sortKey, setSortKey] = useState<string | null>('org')
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc')
-  const [error, setError] = useState<string | null>(null)
-  const [limit, setLimit] = useState<number>(500)
-  const [progress, setProgress] = useState<string[]>([])
-  const [progressRef, setProgressRef] = useState<HTMLDivElement | null>(null)
-  const [scanProgress, setScanProgress] = useState<{percentage: number, processed: number, total: number} | null>(null)
-  const [scanStartTime, setScanStartTime] = useState<number | null>(null)
-  const [maxAvailable, setMaxAvailable] = useState<number | null>(null)
   const TOP_REVENUE_DEFAULT = 40000
   const toggleSort = (col: string) => {
     if (sortKey !== col) {
@@ -200,9 +202,10 @@ export default function SandboxPage() {
         }
       }
       
-    } catch (e: any) {
-      addProgressLog('Error: ' + (e.message || e))
-      setError(e.message || 'Error')
+    } catch (e: unknown) {
+      const error = e as Error
+      addProgressLog('Error: ' + (error.message || String(e)))
+      setError(error.message || 'Error')
       setScanProgress(null)
       setScanning(false)
     }
@@ -232,8 +235,9 @@ export default function SandboxPage() {
       a.remove()
       URL.revokeObjectURL(url)
       addProgressLog('CSV export completed')
-    } catch (e: any) {
-      addProgressLog('CSV export error: ' + (e.message || e))
+    } catch (e: unknown) {
+      const error = e as Error
+      addProgressLog('CSV export error: ' + (error.message || String(e)))
     }
   }
 
@@ -391,7 +395,7 @@ function sortResults(items: ScanItem[], kws: string[], key: (string|null), dir:'
   const aHas = bestA > 0
   const bHas = bestB > 0
   if (aHas !== bHas) return aHas ? -1 : 1
-    let va:any; let vb:any
+    let va: string | number; let vb: string | number
     if (key === 'org') { va=a.orgNumber; vb=b.orgNumber }
     else if (key === 'name') { va=a.name||''; vb=b.name||'' }
     else if (key === 'revenue') { va=a.revenue??-Infinity; vb=b.revenue??-Infinity }
@@ -424,17 +428,6 @@ function Sortable({ label, col, sortKey, sortDir, setSort }: SortableProps) {
       </span>
     </th>
   )
-}
-
-function toggleSortFactory(sortKey: string, sortDir: string, setSortKey: (k:any)=>void, setSortDir:(d:any)=>void){
-  return (col: 'org'|'name'|'revenue'|'kwCount'|'kwPct') => {
-    if (sortKey === col) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortKey(col)
-      setSortDir(col === 'org' ? 'asc' : 'desc')
-    }
-  }
 }
 
 
