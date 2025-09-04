@@ -23,6 +23,7 @@ export async function GET(req: Request) {
     )
   }
   const { searchParams } = new URL(req.url)
+  const debugMode = ['1','true','debug'].includes((searchParams.get('debug')||'').toLowerCase())
   const source = 'general'
   const offset = Math.max(
     0,
@@ -225,7 +226,7 @@ export async function GET(req: Request) {
   }
 
   // Check cache first
-  const shouldCache = true
+  const shouldCache = !debugMode
   if (shouldCache) {
     const cached = apiCache.get<{
       items: Record<string, unknown>[]
@@ -392,63 +393,64 @@ export async function GET(req: Request) {
         /* Event hints */
         EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber") as "hasEvents",
         /* Website analysis data */
-        b."webFinalUrl",
-        b."webStatus",
-        b."webElapsedMs",
-        b."webIp",
-        b."webTlsValid",
-        b."webTlsNotBefore",
-        b."webTlsNotAfter",
-        b."webTlsDaysToExpiry",
-        b."webTlsIssuer",
-        b."webPrimaryCms",
-        b."webCmsWordpress",
-        b."webCmsDrupal",
-        b."webCmsJoomla",
-        b."webCmsTypo3",
-        b."webCmsShopify",
-        b."webCmsWix",
-        b."webCmsSquarespace",
-        b."webCmsWebflow",
-        b."webCmsGhost",
-        b."webCmsDuda",
-        b."webCmsCraft",
-        b."webEcomWoocommerce",
-        b."webEcomMagento",
-        b."webPayStripe",
-        b."webPayPaypal",
-        b."webPayKlarna",
-        b."webAnalyticsGa4",
-        b."webAnalyticsGtm",
-        b."webAnalyticsUa",
-        b."webAnalyticsFbPixel",
-        b."webAnalyticsLinkedin",
-        b."webAnalyticsHotjar",
-        b."webAnalyticsHubspot",
-        b."webJsReact",
-        b."webJsVue",
-        b."webJsAngular",
-        b."webJsNextjs",
-        b."webJsNuxt",
-        b."webJsSvelte",
-        b."webHasEmailText",
-        b."webHasPhoneText",
-        b."webHtmlKb",
-        b."webHtmlKbOver500",
-        b."webHeaderServer",
-        b."webHeaderXPoweredBy",
-        b."webSecurityHsts",
-        b."webSecurityCsp",
-        b."webCookiesPresent",
-        b."webCdnHint",
-        b."webServerHint",
-        b."webRiskFlags",
-        b."webErrors",
-        b."webCmsWordpressHtml",
-        b."webRiskPlaceholderKw",
-        b."webRiskParkedKw",
-        b."webRiskSuspendedKw"
-      FROM "Business" b
+        w."webFinalUrl",
+        w."webStatus",
+        w."webElapsedMs",
+        w."webIp",
+        w."webTlsValid",
+        w."webTlsNotBefore",
+        w."webTlsNotAfter",
+        w."webTlsDaysToExpiry",
+        w."webTlsIssuer",
+        w."webPrimaryCms",
+        w."webCmsWordpress",
+        w."webCmsDrupal",
+        w."webCmsJoomla",
+        w."webCmsTypo3",
+        w."webCmsShopify",
+        w."webCmsWix",
+        w."webCmsSquarespace",
+        w."webCmsWebflow",
+        w."webCmsGhost",
+        w."webCmsDuda",
+        w."webCmsCraft",
+        w."webEcomWoocommerce",
+        w."webEcomMagento",
+        w."webPayStripe",
+        w."webPayPaypal",
+        w."webPayKlarna",
+        w."webAnalyticsGa4",
+        w."webAnalyticsGtm",
+        w."webAnalyticsUa",
+        w."webAnalyticsFbPixel",
+        w."webAnalyticsLinkedin",
+        w."webAnalyticsHotjar",
+        w."webAnalyticsHubspot",
+        w."webJsReact",
+        w."webJsVue",
+        w."webJsAngular",
+        w."webJsNextjs",
+        w."webJsNuxt",
+        w."webJsSvelte",
+        w."webHasEmailText",
+        w."webHasPhoneText",
+        w."webHtmlKb",
+        w."webHtmlKbOver500",
+        w."webHeaderServer",
+        w."webHeaderXPoweredBy",
+        w."webSecurityHsts",
+        w."webSecurityCsp",
+        w."webCookiesPresent",
+        w."webCdnHint",
+        w."webServerHint",
+        w."webRiskFlags",
+        w."webErrors",
+        w."webCmsWordpressHtml",
+        w."webRiskPlaceholderKw",
+        w."webRiskParkedKw",
+        w."webRiskSuspendedKw"
+  FROM "Business" b
+  LEFT JOIN "BusinessWebMeta" w ON w."businessId" = b.id
       LEFT JOIN LATERAL (
         SELECT 
           f."fiscalYear", 
@@ -584,63 +586,64 @@ export async function GET(req: Request) {
       ${hasWeights ? 'evScore."eventWeightedScore"' : 'NULL::int as "eventWeightedScore"'},
 			EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber") as "hasEvents",
       /* Website analysis data */
-      b."webFinalUrl",
-      b."webStatus",
-      b."webElapsedMs",
-      b."webIp",
-      b."webTlsValid",
-      b."webTlsNotBefore",
-      b."webTlsNotAfter",
-      b."webTlsDaysToExpiry",
-      b."webTlsIssuer",
-      b."webPrimaryCms",
-      b."webCmsWordpress",
-      b."webCmsDrupal",
-      b."webCmsJoomla",
-      b."webCmsTypo3",
-      b."webCmsShopify",
-      b."webCmsWix",
-      b."webCmsSquarespace",
-      b."webCmsWebflow",
-      b."webCmsGhost",
-      b."webCmsDuda",
-      b."webCmsCraft",
-      b."webEcomWoocommerce",
-      b."webEcomMagento",
-      b."webPayStripe",
-      b."webPayPaypal",
-      b."webPayKlarna",
-      b."webAnalyticsGa4",
-      b."webAnalyticsGtm",
-      b."webAnalyticsUa",
-      b."webAnalyticsFbPixel",
-      b."webAnalyticsLinkedin",
-      b."webAnalyticsHotjar",
-      b."webAnalyticsHubspot",
-      b."webJsReact",
-      b."webJsVue",
-      b."webJsAngular",
-      b."webJsNextjs",
-      b."webJsNuxt",
-      b."webJsSvelte",
-      b."webHasEmailText",
-      b."webHasPhoneText",
-      b."webHtmlKb",
-      b."webHtmlKbOver500",
-      b."webHeaderServer",
-      b."webHeaderXPoweredBy",
-      b."webSecurityHsts",
-      b."webSecurityCsp",
-      b."webCookiesPresent",
-      b."webCdnHint",
-      b."webServerHint",
-      b."webRiskFlags",
-      b."webErrors",
-      b."webCmsWordpressHtml",
-      b."webRiskPlaceholderKw",
-      b."webRiskParkedKw",
-      b."webRiskSuspendedKw"
+      w."webFinalUrl",
+      w."webStatus",
+      w."webElapsedMs",
+      w."webIp",
+      w."webTlsValid",
+      w."webTlsNotBefore",
+      w."webTlsNotAfter",
+      w."webTlsDaysToExpiry",
+      w."webTlsIssuer",
+      w."webPrimaryCms",
+      w."webCmsWordpress",
+      w."webCmsDrupal",
+      w."webCmsJoomla",
+      w."webCmsTypo3",
+      w."webCmsShopify",
+      w."webCmsWix",
+      w."webCmsSquarespace",
+      w."webCmsWebflow",
+      w."webCmsGhost",
+      w."webCmsDuda",
+      w."webCmsCraft",
+      w."webEcomWoocommerce",
+      w."webEcomMagento",
+      w."webPayStripe",
+      w."webPayPaypal",
+      w."webPayKlarna",
+      w."webAnalyticsGa4",
+      w."webAnalyticsGtm",
+      w."webAnalyticsUa",
+      w."webAnalyticsFbPixel",
+      w."webAnalyticsLinkedin",
+      w."webAnalyticsHotjar",
+      w."webAnalyticsHubspot",
+      w."webJsReact",
+      w."webJsVue",
+      w."webJsAngular",
+      w."webJsNextjs",
+      w."webJsNuxt",
+      w."webJsSvelte",
+      w."webHasEmailText",
+      w."webHasPhoneText",
+      w."webHtmlKb",
+      w."webHtmlKbOver500",
+      w."webHeaderServer",
+      w."webHeaderXPoweredBy",
+      w."webSecurityHsts",
+      w."webSecurityCsp",
+      w."webCookiesPresent",
+      w."webCdnHint",
+      w."webServerHint",
+      w."webRiskFlags",
+      w."webErrors",
+      w."webCmsWordpressHtml",
+      w."webRiskPlaceholderKw",
+      w."webRiskParkedKw",
+      w."webRiskSuspendedKw"
 		FROM "Business" b
+    LEFT JOIN "BusinessWebMeta" w ON w."businessId" = b.id
     LEFT JOIN LATERAL (
       SELECT 
         f."fiscalYear", 
@@ -886,6 +889,36 @@ export async function GET(req: Request) {
 
   const filteredItems = itemsRes.rows as Array<Record<string, unknown>>
 
+  // Debug diagnostics when no items returned
+  let debugDiagnostics: Record<string, unknown> | undefined
+  if (debugMode) {
+    debugDiagnostics = {
+      params,
+      industries,
+      areas,
+      orgFormCodes,
+      revenueClause,
+      profitClause,
+      eventTypes,
+      eventWeights,
+      withEvents,
+      withoutEvents,
+      searchClause,
+      orgNumberParam,
+      countOnly,
+      sqlItemsEmpty: filteredItems.length === 0,
+    }
+    // If empty result and not countOnly, attempt a minimal fallback probe
+    if (!countOnly && filteredItems.length === 0) {
+      try {
+        const probe = await query<{ total: number }>('SELECT COUNT(*)::int AS total FROM "Business"')
+        debugDiagnostics.totalBusinessTable = probe.rows?.[0]?.total ?? 0
+      } catch (e) {
+        debugDiagnostics.probeError = String(e)
+      }
+    }
+  }
+
   if (countOnly) {
     const countResponse = { items: [], total, grandTotal }
 
@@ -899,7 +932,7 @@ export async function GET(req: Request) {
     })
   }
 
-  const response = { items: filteredItems, total, grandTotal }
+  const response = { items: filteredItems, total, grandTotal, ...(debugDiagnostics ? { debug: debugDiagnostics } : {}) }
 
   // Cache the response for future requests
   if (shouldCache) {

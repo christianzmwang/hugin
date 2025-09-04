@@ -254,4 +254,57 @@ a,
   .scrollbar-hide::-webkit-scrollbar {
     display: none;  /* Safari and Chrome */
   }
+
+  /* Processor dots cascade animation */
+  @keyframes dot-fade-in-up {
+    0% { opacity: 0; transform: translateY(6px) scale(0.4); }
+    60% { opacity: 1; transform: translateY(0) scale(1.05); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes dot-fade-out-down {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    40% { opacity: 0.4; transform: translateY(4px) scale(0.85); }
+    100% { opacity: 0; transform: translateY(6px) scale(0.4); }
+  }
+  .dot-cascade-enter > span {
+    opacity: 0;
+    animation: dot-fade-in-up 420ms cubic-bezier(.16,.84,.44,1) forwards;
+  }
+  .dot-cascade-exit > span {
+    opacity: 1;
+    animation: dot-fade-out-down 360ms cubic-bezier(.55,.16,.78,.22) forwards;
+  }
+  .dot-cascade-enter > span:nth-child(1) { animation-delay: 40ms; }
+  .dot-cascade-enter > span:nth-child(2) { animation-delay: 110ms; }
+  .dot-cascade-enter > span:nth-child(3) { animation-delay: 180ms; }
+  .dot-cascade-exit > span:nth-child(1) { animation-delay: 120ms; }
+  .dot-cascade-exit > span:nth-child(2) { animation-delay: 60ms; }
+  .dot-cascade-exit > span:nth-child(3) { animation-delay: 0ms; }
+
+  /* Chat button enter/exit animation */
+  @keyframes chat-btn-enter {
+    0% { opacity: 0; transform: translateY(6px) scale(.96); }
+    55% { opacity: 1; transform: translateY(0) scale(1.015); }
+    100% { opacity: 1; transform: translateY(0) scale(1); }
+  }
+  @keyframes chat-btn-exit {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-4px) scale(.97); }
+  }
+  .chat-anim-enter { animation: chat-btn-enter 380ms cubic-bezier(.16,.84,.44,1); }
+  .chat-anim-exit { animation: chat-btn-exit 260ms cubic-bezier(.55,.16,.78,.22); }
+
+  /* Typeout animation for chat label */
+  @keyframes typeout-char {
+    0% { opacity: 0; }
+    60% { opacity: 1; }
+    100% { opacity: 1; }
+  }
+  .typeout > span { opacity: 0; display: inline-block; }
+  .typeout-animate > span { animation: typeout-char 460ms cubic-bezier(.16,.84,.44,1) forwards; }
+  .typeout-animate > span:nth-child(1) { animation-delay: 20ms; }
+  .typeout-animate > span:nth-child(2) { animation-delay: 90ms; }
+  .typeout-animate > span:nth-child(3) { animation-delay: 160ms; }
+  .typeout-animate > span:nth-child(4) { animation-delay: 230ms; }
+  .typeout-animate > span:nth-child(5) { animation-delay: 300ms; }
 }

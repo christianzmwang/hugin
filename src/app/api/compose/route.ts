@@ -26,10 +26,23 @@ const MODEL_ORDER = [
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
 
+function inferLanguage(str: string): 'norwegian' | 'english' | 'unknown' {
+  const s = (str || '').toLowerCase()
+  if (!s.trim()) return 'unknown'
+  if (/[æøå]/.test(s)) return 'norwegian'
+  const noHits = (s.match(/\b(og|ikke|til|for|med|av|er|som|den|det|kan)\b/g) || []).length
+  const enHits = (s.match(/\b(the|and|for|with|from|about|company|what|who|when|where|why|how)\b/g) || []).length
+  if (noHits > enHits + 1) return 'norwegian'
+  if (enHits > 0 && enHits >= noHits) return 'english'
+  return 'unknown'
+}
+
 function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: ComposeBody): string {
   const bc = (businessContext || '').trim()
   const cb = (companyBlock || '').trim()
   const p = (processor || 'pro')
+  const lang = inferLanguage(prompt) // very lightweight heuristic
+  const langLabel = lang === 'norwegian' ? 'Norwegian' : lang === 'english' ? 'English' : 'the same language the user used'
   const processorNotes: Record<string, { inputLimit: string; brief: string }> = {
     lite: {
       inputLimit: '~100–140 words max',
@@ -53,12 +66,11 @@ function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: C
     },
   }
   const pn = processorNotes[p]
-  // Generic, flexible, English-only for Parallel; downstream translation is separate
+  // We now keep the user language; no forced English translation.
   return [
     'You design the optimal "input" and "output_schema" for a web-searching research model (Parallel).',
-    'All content sent to Parallel must be English. If the provided fields are not in English, translate/normalize them to concise English first.',
-    'Do NOT add any translation requirements to the output_schema; a separate system will translate the final English result into the target language afterward.',
-  'Use only the minimum necessary details from the provided fields; omit irrelevant information that does not help answer the prompt.',
+    `All content you generate must stay in ${langLabel}. Do NOT translate the user's intent into another language; preserve their language.`,
+    'Use only the minimum necessary details from the provided fields; omit irrelevant information that does not help answer the prompt.',
     '',
     `Processor context: ${p}. ${pn.brief}`,
     `- Match depth/length to processor. Input length budget: ${pn.inputLimit}.`,
@@ -66,7 +78,7 @@ function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: C
     'Return ONLY valid JSON with keys:',
     '{',
     '  "input": "<string to send to Parallel>",',
-    '  "output_schema": "<string describing how Parallel must structure its English answer>"',
+  '  "output_schema": "<string describing how Parallel must structure its answer in the same language>"',
     '}',
     '',
     'Data:',
@@ -74,8 +86,8 @@ function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: C
     `- Business context (about me): ${bc || '(none provided)'} `,
     `- Company block (about the target company): ${cb || '(none provided)'} `,
     '',
-    'Rules for "input":',
-    '- English only. Briefly normalize any non-English content into English while preserving meaning.',
+  'Rules for "input":',
+  `- Use ${langLabel}. If supporting fields have a different language than the prompt, prefer the prompt's language but you may include company block lines verbatim even if mixed.`,
   '- Compose clearly labeled blocks in this order:',
   '  1) Prompt: <restated, precise, one-sentence request>',
   '  2) Business context: <who the user/company is, why this matters, constraints/preferences>',
@@ -93,7 +105,7 @@ function buildMetaPrompt({ prompt, businessContext, companyBlock, processor }: C
   '- Example: Chief Financial Officer → CFO, Chief Financial Officer, VP Finance, Head of Finance, Finance Director, Director of Finance',
     '',
   'Rules for "output_schema" (flexible by question complexity & processor):',
-    '- Always require the model to answer in English and use bracketed citation IDs [n] tied to a Sources list.',
+  `- Always require the model to answer in ${langLabel} and use bracketed citation IDs [n] tied to a Sources list.`,
     '- Pick the schema that best fits the prompt; keep sections only when useful.',
   `- If processor is ${p}, prioritize: ${pn.brief}`,
     '',

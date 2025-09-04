@@ -15,6 +15,7 @@ type TranslateBody = {
 }
 
 const OPENROUTER_URL = 'https://openrouter.ai/api/v1/chat/completions'
+// Base preference order (can be dynamically reordered by observed latency later)
 const MODEL_ORDER = [
   'tngtech/deepseek-r1t2-chimera:free',
   'tngtech/deepseek-r1t-chimera:free',
@@ -23,6 +24,28 @@ const MODEL_ORDER = [
   'openai/gpt-5-mini',
   'google/gemini-2.5-flash',
 ]
+
+// Simple in-memory latency tracker to adapt model order (not persisted)
+const modelLatency: Record<string, { avg: number; count: number }> = {}
+
+function recordLatency(model: string, ms: number) {
+  const m = modelLatency[model] || { avg: ms, count: 0 }
+  // exponential moving average (weight newer more if low count)
+  const weight = m.count < 5 ? 0.5 : 0.2
+  m.avg = m.avg * (1 - weight) + ms * weight
+  m.count += 1
+  modelLatency[model] = m
+}
+
+function getAdaptiveModelOrder(): string[] {
+  // Prefer models with lower observed latency while respecting base order as tie breaker
+  return [...MODEL_ORDER].sort((a, b) => {
+    const la = modelLatency[a]?.avg ?? Infinity
+    const lb = modelLatency[b]?.avg ?? Infinity
+    if (la === lb) return MODEL_ORDER.indexOf(a) - MODEL_ORDER.indexOf(b)
+    return la - lb
+  })
+}
 
 // Tiny heuristic language detector: focuses on English, Norwegian, Swedish, Danish.
 // Returns 'en' | 'no' | 'sv' | 'da' | 'unknown'.
@@ -70,10 +93,11 @@ function normalizeTargetLang(input: string | null | undefined): 'en' | 'no' | 's
   return 'unknown'
 }
 
-async function translateViaModel(model: string, text: string, target: string, referer?: string, promptText?: string | null, matchPrompt?: boolean | null): Promise<string> {
+async function translateViaModel(model: string, text: string, target: string, referer?: string, promptText?: string | null, matchPrompt?: boolean | null, signal?: AbortSignal): Promise<string> {
   try {
     console.log('[translate] Request', { model, target, matchPrompt, promptSamplePresent: Boolean(promptText), textPreview: text.slice(0, 200) })
   } catch {}
+  const started = Date.now()
   const res = await fetch(OPENROUTER_URL, {
     method: 'POST',
     headers: {
@@ -112,6 +136,7 @@ async function translateViaModel(model: string, text: string, target: string, re
       ],
     }),
     cache: 'no-store',
+    signal,
   })
   if (!res.ok) {
     const t = await res.text().catch(() => '')
@@ -121,9 +146,41 @@ async function translateViaModel(model: string, text: string, target: string, re
   const content: string | undefined = data?.choices?.[0]?.message?.content
   if (!content) throw new Error('No translation content')
   try {
-    console.log('[translate] Response', { model, textPreview: content.slice(0, 200) })
+    const ms = Date.now() - started
+    recordLatency(model, ms)
+    console.log('[translate] Response', { model, ms, textPreview: content.slice(0, 200) })
   } catch {}
   return content
+}
+
+// Race a small set of models, return first successful translation.
+async function raceModels(models: string[], text: string, target: string, referer: string | undefined, promptSample: string | null, matchPrompt: boolean, perModelTimeoutMs: number): Promise<{ text: string; model: string }> {
+  const controllers: AbortController[] = []
+  let settled = false
+  return new Promise((resolve, reject) => {
+    const errors: unknown[] = []
+    models.forEach((model) => {
+      const controller = new AbortController()
+      controllers.push(controller)
+      const timer = setTimeout(() => controller.abort(), perModelTimeoutMs)
+      translateViaModel(model, text, target, referer, promptSample, matchPrompt, controller.signal)
+        .then((translated) => {
+          if (settled) return
+          settled = true
+          controllers.forEach((c) => { if (c !== controller) { try { c.abort() } catch {} } })
+          clearTimeout(timer)
+          resolve({ text: translated, model })
+        })
+        .catch((e) => {
+          clearTimeout(timer)
+          errors.push({ model, error: String(e) })
+          if (errors.length === models.length && !settled) {
+            settled = true
+            reject(new Error('All raced models failed'))
+          }
+        })
+    })
+  })
 }
 
 export async function POST(req: Request) {
@@ -185,11 +242,30 @@ export async function POST(req: Request) {
 
     const referer = process.env.NEXTAUTH_URL || process.env.NEXT_PUBLIC_SITE_URL || undefined
   let lastErr: unknown = null
-  for (const model of MODEL_ORDER) {
+    // Adaptive ordering based on observed latency
+    const ordered = getAdaptiveModelOrder()
+    // Race the first N (default 2) to reduce tail latency
+    const raceCount = Number(process.env.TRANSLATE_RACE_COUNT || '2')
+    const perModelTimeoutMs = Number(process.env.TRANSLATE_MODEL_TIMEOUT_MS || '12000')
+    const raceModelsList = ordered.slice(0, raceCount)
+    if (raceModelsList.length > 1) {
       try {
-    const translated = await translateViaModel(model, text, targetLanguage || 'match_prompt', referer, promptSample || null, matchPrompt)
+        const raced = await raceModels(raceModelsList, text, targetLanguage || 'match_prompt', referer, promptSample || null, matchPrompt, perModelTimeoutMs)
+        const payload = { text: raced.text, model: raced.model }
+        apiCache.set(cacheKey, payload, 10 * 60 * 1000)
+        return NextResponse.json(payload)
+      } catch (e) {
+        lastErr = e
+      }
+    }
+    // Sequential fallback for remaining / all models
+    for (const model of ordered.slice(raceModelsList.length)) {
+      try {
+        const controller = new AbortController()
+        const timer = setTimeout(() => controller.abort(), perModelTimeoutMs)
+        const translated = await translateViaModel(model, text, targetLanguage || 'match_prompt', referer, promptSample || null, matchPrompt, controller.signal)
+        clearTimeout(timer)
         const payload = { text: translated, model }
-        // Store for a reasonable TTL (10 minutes) to avoid repeated translations of same text
         apiCache.set(cacheKey, payload, 10 * 60 * 1000)
         return NextResponse.json(payload)
       } catch (e) {

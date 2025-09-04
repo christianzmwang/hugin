@@ -21,6 +21,35 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
   const [error, setError] = useState<string | null>(null)
   const abortRef = useRef<AbortController | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  // Optional user company profile (from /api/user/business-context) so AI can leverage it only when relevant
+  const [userCompanyProfile, setUserCompanyProfile] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    const loadProfile = async () => {
+      try {
+        const res = await fetch('/api/user/business-context', { cache: 'no-store' })
+        if (!res.ok) return
+        const data = await res.json().catch(() => ({})) as any
+        let block: string | null = null
+        if (data?.shape === 'object' && data?.businessContext) {
+          const bc = data.businessContext as Record<string, string>
+          const lines: string[] = []
+          if (bc.businessName) lines.push(`Business name: ${bc.businessName}`)
+          if (bc.orgNumber) lines.push(`Business org number: ${bc.orgNumber}`)
+          if (bc.delivers) lines.push(`Delivers: ${bc.delivers}`)
+          if (bc.icp) lines.push(`ICP: ${bc.icp}`)
+          if (lines.length) block = lines.join('\n')
+        } else if (data?.shape === 'string' && typeof data?.businessContext === 'string') {
+          const txt = data.businessContext.trim()
+          if (txt) block = txt.slice(0, 2000)
+        }
+        if (!cancelled) setUserCompanyProfile(block)
+      } catch {/* silent */}
+    }
+    loadProfile()
+    return () => { cancelled = true }
+  }, [])
 
   // Auto-scroll on new assistant content
   useEffect(() => {
@@ -42,14 +71,27 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
     const ctl = new AbortController()
     abortRef.current = ctl
     try {
-      const payload = {
+      // Heuristic: if the user asks a generic company-specific metric (e.g. CEO) without naming the company, explicitly anchor it.
+      const needsCompanyInjection = /\bceo\b|chief executive|revenue|profit|employees|founder|ownership|competitor/i.test(userMsg.content) && !new RegExp(companyName, 'i').test(userMsg.content)
+      const augmentedUserContent = needsCompanyInjection
+        ? `${userMsg.content}\n\n(Above question refers to the company ${companyName}${orgNumber ? ` (Org ${orgNumber})` : ''}.)`
+        : userMsg.content
+  const payload = {
         model: 'speed',
         stream: true,
         messages: [
-          // Provide lightweight system context so upstream has company context; kept minimal per docs
-          { role: 'system', content: `Answer concisely. Company context: ${companyName}${orgNumber ? ` (Org ${orgNumber})` : ''}. Cite sources if provided.` },
+          // System guidance: stress selective use of context so we don't over-condition answers.
+          { role: 'system', content: [
+            `Ground answers in the target company: ${companyName}${orgNumber ? ` (Org ${orgNumber})` : ''}.`,
+            'Never ask which company is meant unless the user explicitly names a different company; all ambiguous questions are about the target company.',
+            'Treat short or ambiguous questions (e.g. "CEO?", "revenue last year", "competitors") as referring to this company unless the user clearly switches topic.',
+            'Only use information that is directly relevant to the user\'s current question. If some provided context (like general company profile) is not needed (e.g. the user only asks for the CEO), ignore it and do NOT include unrelated details in the answer.',
+            'If you lack the information, say you do not know instead of guessing.',
+    'Do not invent sources. Cite sources only if they are explicitly given to you in the conversation; otherwise just answer plainly.',
+    userCompanyProfile ? 'User company profile (ONLY use if directly relevant to the question; ignore otherwise):\n' + userCompanyProfile : undefined
+          ].join('\n') },
           ...messages.filter(m => m.role !== 'assistant' || m.content.trim()),
-          { role: 'user', content: userMsg.content },
+          { role: 'user', content: augmentedUserContent },
         ],
       }
       const res = await fetch('/api/parallel/chat', {
@@ -106,7 +148,7 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
       setIsStreaming(false)
       abortRef.current = null
     }
-  }, [input, isStreaming, messages, companyName, orgNumber])
+  }, [input, isStreaming, messages, companyName, orgNumber, userCompanyProfile])
 
   const stop = () => {
     abortRef.current?.abort()
@@ -119,7 +161,7 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
         {messages.map(m => (
           <div key={m.id} className={m.role === 'user' ? 'text-white' : 'text-gray-200'}>
             <div className="mb-1 text-[11px] uppercase tracking-wide text-gray-500">{m.role === 'user' ? 'Du' : 'Hugin'}</div>
-            <div className="whitespace-pre-wrap leading-relaxed">{m.content || (m.role === 'assistant' && isStreaming ? <span className="opacity-60">Skriver…</span> : '')}</div>
+            <div className="whitespace-pre-wrap leading-relaxed">{m.content || (m.role === 'assistant' && isStreaming ? <span className="opacity-60">Søker…</span> : '')}</div>
           </div>
         ))}
       </div>
