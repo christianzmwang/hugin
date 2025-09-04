@@ -599,6 +599,9 @@ function CompanyPageContent() {
   const dragMovedRef = useRef(false)
   const momentumRef = useRef<{ raf: number | null; v: number; lastT: number | null } | null>(null)
   const moveSamplesRef = useRef<Array<{ t: number; pos: number }>>([])
+  
+  // Add tab state for organizing the top section
+  const [activeTab, setActiveTab] = useState<'search' | 'recent'>('search')
 
   const autoResizePrompt = useCallback(() => {
     const el = promptRef.current
@@ -1081,6 +1084,12 @@ function CompanyPageContent() {
               const company = items[0] as Business
               setTopCompany(company)
 
+              // Add to recently viewed (when loading from localStorage)
+              addToRecentlyViewed({
+                name: company.name,
+                orgNumber: company.orgNumber
+              })
+
               // Fetch events for this company
               const eventsParams = new URLSearchParams({
                 orgNumber: company.orgNumber,
@@ -1120,6 +1129,12 @@ function CompanyPageContent() {
               if (items2.length > 0) {
                 const company2 = items2[0] as Business
                 setTopCompany(company2)
+
+                // Add to recently viewed (fallback company)
+                addToRecentlyViewed({
+                  name: company2.name,
+                  orgNumber: company2.orgNumber
+                })
 
                 if (company2.orgNumber) {
                   const eventsParams2 = new URLSearchParams({
@@ -1167,6 +1182,12 @@ function CompanyPageContent() {
             if (items.length > 0) {
               const company = items[0] as Business
               setTopCompany(company)
+
+              // Add to recently viewed (final fallback)
+              addToRecentlyViewed({
+                name: company.name,
+                orgNumber: company.orgNumber
+              })
 
               // Fetch events for this company
               if (company.orgNumber) {
@@ -1686,34 +1707,6 @@ function CompanyPageContent() {
       setLoading(false)
     }
   }
-
-  const [keywordStats, setKeywordStats] = useState<{ keywords: string[]; stats: Record<string, { present?: number; count?: number; density?: number }> } | null>(null)
-  const [keywordLoading, setKeywordLoading] = useState(false)
-  const [keywordError, setKeywordError] = useState<string | null>(null)
-
-  // Fetch keyword stats for the company
-  useEffect(() => {
-    const org = topCompany?.orgNumber
-    if (!org) { setKeywordStats(null); return }
-    let cancelled = false
-    const load = async () => {
-      setKeywordLoading(true); setKeywordError(null)
-      try {
-        const res = await fetch(`/api/businesses/keywords?orgNumber=${encodeURIComponent(org)}`)
-        const json = await res.json()
-        if (cancelled) return
-        if (json && json.keywords) {
-          setKeywordStats({ keywords: json.keywords, stats: json.stats || {} })
-        } else {
-          setKeywordStats({ keywords: [], stats: {} })
-        }
-      } catch (e) {
-        if (!cancelled) { setKeywordError('Failed to load keyword stats'); setKeywordStats(null) }
-      } finally { if (!cancelled) setKeywordLoading(false) }
-    }
-    load()
-    return () => { cancelled = true }
-  }, [topCompany?.orgNumber])
 
   return (
     <div className="min-h-screen bg-black text-white">
@@ -2593,35 +2586,6 @@ function CompanyPageContent() {
                 <h3 className="text-xl font-semibold mb-4">Nettstedsanalyse</h3>
                 <p className="text-sm text-gray-400">Webanalyse-data er ikke tilgjengelig for denne bedriften ennå.</p>
                 <p className="text-sm text-gray-300 mt-2">Nettside: <a href={topCompany.website.startsWith('http') ? topCompany.website : `https://${topCompany.website}`} target="_blank" rel="noreferrer" className="text-sky-400 hover:text-sky-300 underline">{topCompany.website}</a></p>
-              </div>
-            )}
-
-            {/* Keyword Stats Section */}
-            {topCompany && (
-              <div className="mt-12">
-                <h2 className="text-xl font-semibold mb-4">Website Keyword Scan</h2>
-                {keywordLoading && <div className="text-sm text-gray-400">Loading keyword stats…</div>}
-                {keywordError && <div className="text-sm text-red-400">{keywordError}</div>}
-                {!keywordLoading && !keywordError && (!keywordStats || keywordStats.keywords.length === 0) && (
-                  <div className="text-sm text-gray-400">No keyword scan data available.</div>
-                )}
-                {keywordStats && keywordStats.keywords.length > 0 && (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {keywordStats.keywords.sort().map(kw => {
-                      const st = keywordStats.stats[kw] || {}
-                      return (
-                        <div key={kw} className="p-3 border border-white/10 bg-white/5">
-                          <div className="flex items-center justify-between mb-1">
-                            <span className="text-sm font-medium">{kw.replace(/_/g,' ')}</span>
-                            <span className={`text-xs ${st.present ? 'text-green-400' : 'text-gray-500'}`}>{st.present ? 'Yes' : 'No'}</span>
-                          </div>
-                          <div className="text-xs text-gray-400">Count: {st.count ?? 0}</div>
-                          <div className="text-xs text-gray-400">Density: {st.density != null ? st.density.toFixed(4) : '0.0000'}</div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
               </div>
             )}
 

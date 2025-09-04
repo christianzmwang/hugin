@@ -40,8 +40,8 @@ export async function GET() {
     const res = await query<{ maxRevenue: number }>(sql)
     const maxRevenue = res.rows?.[0]?.maxRevenue ?? 0
     const payload = { maxRevenue }
-    apiCache.set(cacheKey, payload, 5 * 60 * 1000) // cache 5 minutes
-  return NextResponse.json(payload, { headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' } })
+    apiCache.set(cacheKey, payload, 15 * 60 * 1000) // cache 15 minutes
+  return NextResponse.json(payload, { headers: { 'Cache-Control': 's-maxage=900, stale-while-revalidate=1800' } })
   } catch {
     return NextResponse.json({ maxRevenue: 0 }, { status: 200 })
   }

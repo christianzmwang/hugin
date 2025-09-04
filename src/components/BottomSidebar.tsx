@@ -37,6 +37,7 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
               </Link>
               <Link
                 href="/search"
+                prefetch={false}
                 className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/80`}
               >
                 <Search size={16} />

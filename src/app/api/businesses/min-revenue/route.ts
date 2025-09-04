@@ -39,8 +39,8 @@ export async function GET() {
     const res = await query<{ minRevenue: number }>(sql)
     const minRevenue = res.rows?.[0]?.minRevenue ?? 0
     const payload = { minRevenue }
-    apiCache.set(cacheKey, payload, 5 * 60 * 1000)
-  return NextResponse.json(payload, { headers: { 'Cache-Control': 's-maxage=300, stale-while-revalidate=600' } })
+    apiCache.set(cacheKey, payload, 15 * 60 * 1000)
+  return NextResponse.json(payload, { headers: { 'Cache-Control': 's-maxage=900, stale-while-revalidate=1800' } })
   } catch {
     return NextResponse.json({ minRevenue: 0 }, { status: 200 })
   }

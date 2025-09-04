@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState, memo } from 'react'
 import { createPortal } from 'react-dom'
 import { useSession } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 
 const numberFormatter: Intl.NumberFormat = (() => {
   try {
@@ -545,6 +545,7 @@ BusinessCard.displayName = 'BusinessCard'
 export default function SearchPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const pathname = usePathname()
   
   useEffect(() => {
     if (status === 'loading') return
@@ -935,7 +936,13 @@ export default function SearchPage() {
   }, [profitMin, profitMax])
 
   // Fetch all financial bounds (revenue and profit) in a single optimized call
+  // Only fetch when the component is actually mounted and visible (not just prefetched)
   useEffect(() => {
+    // Only fetch when we're actually on the search page, not when prefetched
+    if (pathname !== '/search') return
+    // Don't fetch if the page is just being prefetched by Next.js
+    if (typeof document === 'undefined') return
+    
     let cancelled = false
     
     const fetchAllBounds = async () => {
@@ -971,9 +978,13 @@ export default function SearchPage() {
       }
     }
     
-    fetchAllBounds()
-    return () => { cancelled = true }
-  }, [])
+    // Delay the fetch slightly to ensure the page is actually being viewed
+    const timeoutId = setTimeout(fetchAllBounds, 100)
+    return () => { 
+      cancelled = true
+      clearTimeout(timeoutId)
+    }
+  }, [pathname])
 
   // Back-compat: map revenueRange buckets from URL into min/max if provided and min/max are empty
   useEffect(() => {
@@ -1619,6 +1630,37 @@ export default function SearchPage() {
             </div>
             <div className="mt-6">
               <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
+                <label className="block text-sm font-medium">Registration date</label>
+              </div>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={registrationFrom}
+                  onChange={(e) => setRegistrationFrom(e.target.value)}
+                  className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  placeholder="From"
+                />
+                <span className="text-gray-500 text-xs">to</span>
+                <input
+                  type="date"
+                  value={registrationTo}
+                  onChange={(e) => setRegistrationTo(e.target.value)}
+                  className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  placeholder="To"
+                />
+                {(registrationFrom || registrationTo) && (
+                  <button
+                    type="button"
+                    onClick={() => { setRegistrationFrom(''); setRegistrationTo('') }}
+                    className="text-[10px] px-2 py-1 border border-white/20 text-gray-300 hover:text-white hover:border-red-600/60"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+            <div className="mt-6">
+              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
                 <label className="block text-sm font-medium">Event types</label>
                 <button
                   type="button"
@@ -1662,41 +1704,6 @@ export default function SearchPage() {
                 })}
               </div>
               )}
-            </div>
-          </div>
-          <div className="mt-6">
-            <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2">
-              <div className="text-[11px] text-gray-400 leading-relaxed">
-                <div className="flex flex-col gap-1">
-                  <div className="text-xs uppercase tracking-wide text-gray-500">Registration date</div>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={registrationFrom}
-                      onChange={(e) => setRegistrationFrom(e.target.value)}
-                      className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
-                      placeholder="From"
-                    />
-                    <span className="text-gray-500 text-xs">to</span>
-                    <input
-                      type="date"
-                      value={registrationTo}
-                      onChange={(e) => setRegistrationTo(e.target.value)}
-                      className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
-                      placeholder="To"
-                    />
-                    {(registrationFrom || registrationTo) && (
-                      <button
-                        type="button"
-                        onClick={() => { setRegistrationFrom(''); setRegistrationTo('') }}
-                        className="text-[10px] px-2 py-1 border border-white/20 text-gray-300 hover:text-white hover:border-red-600/60"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
             </div>
           </div>
         </div>
