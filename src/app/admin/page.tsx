@@ -29,6 +29,10 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
+  const [campaigns, setCampaigns] = useState<any[]>([])
+  const [campaignsLoading, setCampaignsLoading] = useState(false)
+  const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null)
+  const [showCampaignModal, setShowCampaignModal] = useState(false)
 
   // Redirect non-admin users
   useEffect(() => {
@@ -50,6 +54,7 @@ export default function AdminPage() {
   useEffect(() => {
     if (session?.user?.email === 'christian@allvitr.com') {
       loadUsers()
+  loadCampaigns()
     }
   }, [session])
 
@@ -71,6 +76,30 @@ export default function AdminPage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  const loadCampaigns = async () => {
+    try {
+      setCampaignsLoading(true)
+      const r = await fetch('/api/email-campaigns')
+      const j = await r.json()
+      if (Array.isArray(j.items)) setCampaigns(j.items)
+    } catch {
+      setCampaigns([])
+    } finally { setCampaignsLoading(false) }
+  }
+
+  // Close modal with escape
+  useEffect(() => {
+    if (!showCampaignModal) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { setShowCampaignModal(false); setSelectedCampaign(null) } }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showCampaignModal])
+
+  const openCampaign = (c: any) => {
+    setSelectedCampaign(c)
+    setShowCampaignModal(true)
   }
 
   const setUserActionLoading = (userId: string, loading: boolean) => {
@@ -367,6 +396,7 @@ export default function AdminPage() {
   const unverifiedUsers = users.filter(user => !user.emailVerified)
 
   return (
+    <>
     <div className="min-h-screen bg-black text-white">
       <div className="container mx-auto px-4 py-8">
         <div className="max-w-7xl mx-auto">
@@ -394,6 +424,44 @@ export default function AdminPage() {
               <h3 className="text-lg font-semibold mb-2">Unverified Users</h3>
               <p className="text-3xl font-bold text-red-400">{unverifiedUsers.length}</p>
             </div>
+          </div>
+
+          {/* Email Campaigns */}
+          <div className="bg-gray-900 p-6 rounded-lg mb-8">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-xl font-semibold">Email Campaigns</h2>
+              <button onClick={loadCampaigns} className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">Refresh</button>
+            </div>
+            {campaignsLoading ? (
+              <div className="text-sm text-gray-400">Loading…</div>
+            ) : campaigns.length === 0 ? (
+              <div className="text-sm text-gray-500">No campaigns yet.</div>
+            ) : (
+              <div className="overflow-x-auto -mx-2">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-800">
+                    <tr>
+                      <th className="text-left px-3 py-2">ID</th>
+                      <th className="text-left px-3 py-2">Created</th>
+                      <th className="text-left px-3 py-2">Subject</th>
+                      <th className="text-left px-3 py-2">User</th>
+                      <th className="text-left px-3 py-2">Companies</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-800">
+                    {campaigns.map(c => (
+                      <tr key={c.id} className="hover:bg-gray-800/60 cursor-pointer" onClick={() => openCampaign(c)}>
+                        <td className="px-3 py-2 text-xs text-gray-400">{c.id}</td>
+                        <td className="px-3 py-2 text-xs">{new Date(c.created_at).toLocaleString()}</td>
+                        <td className="px-3 py-2 max-w-xs truncate" title={c.subject}>{c.subject}</td>
+                        <td className="px-3 py-2 text-xs text-gray-300">{c.user_email}</td>
+                        <td className="px-3 py-2 text-xs">{c.company_count}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Bulk Actions */}
@@ -578,6 +646,71 @@ export default function AdminPage() {
           </div>
         </div>
       </div>
-    </div>
+  </div>
+  {showCampaignModal && selectedCampaign && (
+      <div className="fixed inset-0 z-50 flex items-start justify-center p-6 bg-black/80">
+        <div className="w-full max-w-4xl bg-gray-950 border border-gray-700 rounded-lg shadow-xl flex flex-col max-h-full">
+          <div className="flex items-center justify-between px-5 py-3 border-b border-gray-800">
+            <div>
+              <h3 className="text-lg font-semibold">Campaign #{selectedCampaign.id}</h3>
+              <div className="text-xs text-gray-400 mt-0.5">{new Date(selectedCampaign.created_at).toLocaleString()} • {selectedCampaign.user_email}</div>
+            </div>
+            <button onClick={() => { setShowCampaignModal(false); setSelectedCampaign(null) }} className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded">Close</button>
+          </div>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-0 flex-1 overflow-hidden">
+            <div className="border-b lg:border-b-0 lg:border-r border-gray-800 flex flex-col">
+              <div className="p-4 overflow-y-auto">
+                <div className="mb-4">
+                  <div className="text-xs font-semibold text-gray-400 mb-1">Subject</div>
+                  <div className="text-sm bg-gray-800/60 px-3 py-2 rounded border border-gray-700 break-words">{selectedCampaign.subject}</div>
+                </div>
+                <div className="mb-4">
+                  <div className="text-xs font-semibold text-gray-400 mb-1">Body</div>
+                  <div className="text-sm whitespace-pre-wrap leading-relaxed bg-gray-800/40 px-3 py-3 rounded border border-gray-700 max-h-[360px] overflow-auto">
+                    {selectedCampaign.body}
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div className="flex flex-col">
+              <div className="p-4 flex items-center justify-between border-b border-gray-800">
+                <div className="text-sm font-medium">Companies ({selectedCampaign.company_count})</div>
+                <button
+                  onClick={() => {
+                    if (!selectedCampaign.org_numbers || !selectedCampaign.org_numbers.length) return
+                    const header = 'orgNumber\n'
+                    const csv = header + selectedCampaign.org_numbers.join('\n')
+                    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+                    const url = URL.createObjectURL(blob)
+                    const a = document.createElement('a')
+                    a.href = url
+                    a.download = `campaign-${selectedCampaign.id}-org-numbers.csv`
+                    document.body.appendChild(a)
+                    a.click()
+                    setTimeout(() => {
+                      document.body.removeChild(a)
+                      URL.revokeObjectURL(url)
+                    }, 200)
+                  }}
+                  className="text-xs px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded"
+                >Export CSV</button>
+              </div>
+              <div className="flex-1 overflow-auto p-4">
+                {selectedCampaign.org_numbers && selectedCampaign.org_numbers.length > 0 ? (
+                  <ul className="text-xs grid grid-cols-2 md:grid-cols-3 lg:grid-cols-2 gap-1">
+                    {selectedCampaign.org_numbers.map((o: string) => (
+                      <li key={o} className="px-2 py-1 bg-gray-800/40 rounded border border-gray-800 truncate" title={o}>{o}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div className="text-xs text-gray-500">No org numbers stored.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   )
 }

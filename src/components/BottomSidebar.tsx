@@ -110,15 +110,18 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
                   }`}
                 />
               </Link>
-              <div
-                aria-disabled="true"
-                title="Not available"
-                className="group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 text-white/40 select-none"
+              <Link
+                href="/export"
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 ${isActive('/export') ? 'text-white/90' : 'text-white/80'}`}
               >
                 <Download size={16} />
                 <span>Export</span>
-                <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0" />
-              </div>
+                <span
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
+                    isActive('/export') ? 'opacity-100' : 'group-hover:opacity-100'
+                  }`}
+                />
+              </Link>
             </nav>
 
             {/* Right actions */}

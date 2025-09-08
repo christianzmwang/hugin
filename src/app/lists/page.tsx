@@ -62,6 +62,13 @@ export default function ListsPage() {
                   <div className="font-medium">{it.name}</div>
                   <div className="text-xs text-gray-400">{new Date(it.createdAt).toLocaleString()} • {it.itemCount} companies</div>
                 </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={(e) => { e.stopPropagation(); router.push(`/export?listId=${it.id}`) }}
+                    className="text-[10px] px-2 py-1 border border-sky-600/60 text-sky-300 hover:bg-sky-600/10"
+                  >
+                    Export
+                  </button>
                 <button
                   disabled={deletingId === it.id}
                   onClick={async (e) => {
@@ -89,6 +96,7 @@ export default function ListsPage() {
                 >
                   {deletingId === it.id ? 'Deleting…' : 'Delete'}
                 </button>
+                </div>
               </div>
             ))}
           </div>
