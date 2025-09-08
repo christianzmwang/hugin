@@ -78,8 +78,8 @@ export default async function ProfilePage() {
   })()
 
   return (
-    <div className="min-h-screen bg-black text-white">
-      <div className="px-6 py-8">
+    <div className="h-full overflow-hidden bg-black text-white flex flex-col">
+      <div className="px-6 py-8 flex-1 overflow-hidden">
         <h1 className="text-2xl font-bold mb-6">Profil</h1>
 
         {/* Top layout: two columns on large screens */}
@@ -145,7 +145,7 @@ export default async function ProfilePage() {
         </div>
 
         {/* Bottom: timeline */}
-        <section className="bg-white/5 border border-white/10 p-6">
+  <section className="bg-white/5 border border-white/10 p-6 overflow-hidden">
           <h2 className="text-lg font-semibold mb-4">Forbruk denne måneden</h2>
           <UsageTimeline userId={session.user.id as unknown as string} />
         </section>
@@ -167,12 +167,42 @@ async function UsageTimeline({ userId }: { userId: string }) {
     rows = []
   }
 
-  // Build day buckets (up to today)
-  const now = new Date()
-  const year = now.getUTCFullYear()
-  const month = now.getUTCMonth() // 0-based
-  const today = now.getUTCDate()
+  // Build day buckets (up to today) using Europe/Oslo timezone to avoid UTC date shifts
+  const TZ = 'Europe/Oslo'
   const pad = (n: number) => (n < 10 ? `0${n}` : String(n))
+  const fmt = (() => {
+    try {
+      return new Intl.DateTimeFormat('no-NO', {
+        timeZone: TZ,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      })
+    } catch {
+      return null as unknown as Intl.DateTimeFormat
+    }
+  })()
+  const getParts = (d: Date) => {
+    if (fmt?.formatToParts) {
+      const parts = fmt.formatToParts(d)
+      const get = (type: string) => parts.find((p) => p.type === type)?.value || ''
+      const y = parseInt(get('year') || String(d.getFullYear()), 10)
+      const m = parseInt(get('month') || String(d.getMonth() + 1), 10)
+      const da = parseInt(get('day') || String(d.getDate()), 10)
+      return { year: y, month: m, day: da }
+    }
+    // Fallback to local time if Intl not available
+    return { year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate() }
+  }
+  const formatDateKey = (d: Date) => {
+    const { year, month, day } = getParts(d)
+    return `${year}-${pad(month)}-${pad(day)}`
+  }
+  const now = new Date()
+  const nowParts = getParts(now)
+  const year = nowParts.year
+  const month = nowParts.month - 1 // 0-based for constructing keys below
+  const today = nowParts.day
 
   type DayAgg = { date: string; total: number; chat: number; research: number }
   const days: DayAgg[] = []
@@ -183,7 +213,8 @@ async function UsageTimeline({ userId }: { userId: string }) {
   const byDate: Record<string, DayAgg> = Object.fromEntries(days.map((d) => [d.date, d]))
   for (const r of rows) {
     const d = new Date(r.created_at)
-    const ds = `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+    // Bucket by Europe/Oslo calendar day
+    const ds = formatDateKey(d)
     const agg = byDate[ds]
     if (!agg) continue
     agg.total += r.amount
@@ -208,15 +239,18 @@ async function UsageTimeline({ userId }: { userId: string }) {
         style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
       >
         {days.map((d) => {
-          const totalPct = (d.total / max) * 100
+          const rawPct = (d.total / max) * 100
+          // Ensure a minimum visible bar if there was any usage that day
+          const minVisible = 6 // percent of container height
+            
+          const totalPct = d.total > 0 ? Math.max(rawPct, minVisible) : 0
           const chatPct = d.total ? (d.chat / d.total) * 100 : 0
           const researchPct = 100 - chatPct
-          const dayNum = new Date(d.date).getUTCDate()
+          const dayNum = parseInt(d.date.split('-')[2], 10)
           return (
-            <div key={d.date} className="flex flex-col items-center">
+            <div key={d.date} className="flex flex-col items-center h-48">
               <div
-                className="relative w-full bg-white/10 rounded-sm overflow-hidden"
-                style={{ height: '100%' }}
+                className="relative w-full h-full bg-white/10 rounded-sm overflow-hidden"
                 title={`${dayNum}.: Totalt ${d.total} (Chat ${d.chat} • Forskning ${d.research})`}
               >
                 <div

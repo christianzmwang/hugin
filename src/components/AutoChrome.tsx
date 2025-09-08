@@ -15,6 +15,7 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
   const path = pathname || '/'
   const isDashboard = path === '/' || path === '/dashboard'
   const isCompany = path === '/company' || path.startsWith('/company/')
+  const isProfile = path === '/profile' || path.startsWith('/profile/')
 
   const computedTitle = (() => {
     if (title) return title
@@ -36,19 +37,24 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
     return name.charAt(0).toUpperCase() + name.slice(1)
   })()
 
+  // Container should not include bottom padding to avoid forcing page scroll.
+  // Instead, apply bottom padding to the scrollable content area when needed.
   const containerClass = hideChrome
     ? 'h-[100dvh] min-h-0 overflow-hidden bg-black text-white flex flex-col'
-    : `min-h-screen bg-black text-white ${isDashboard ? '' : (isCompany ? 'pb-8 md:pb-10' : 'pb-20 md:pb-24')} flex flex-col`
+    : 'min-h-screen bg-black text-white flex flex-col'
+
+  const contentPadding = !hideChrome && !(isDashboard || isCompany || isProfile)
+    ? 'pb-20 md:pb-24'
+    : ''
 
   return (
     <div className={containerClass}>
       {!hideChrome && <TopBar title={computedTitle} />}
-      <div className="flex-1 min-h-0 overflow-hidden">{children}</div>
+      <div className={`flex-1 min-h-0 overflow-hidden ${contentPadding}`}>{children}</div>
       {!hideChrome && (
         <BottomSidebar showGoToTop={pathname === '/search' || pathname?.startsWith('/search/')} />
       )}
     </div>
   )
 }
-
 
