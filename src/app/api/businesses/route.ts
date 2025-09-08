@@ -234,6 +234,9 @@ export async function GET(req: Request) {
     orgFormCodes: orgFormCodes.sort(),
     webCmsShopify: wantsShopify,
     webEcomWoocommerce: wantsWoo,
+  // Add registration date bounds to cache key to avoid stale results when filtering by date
+  registeredFrom: searchParams.get('registeredFrom')?.trim() || '',
+  registeredTo: searchParams.get('registeredTo')?.trim() || '',
   }
 
   // Check cache first
@@ -933,7 +936,6 @@ export async function GET(req: Request) {
     ${baseWhere}
     ${revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
-    ${registrationClause}
     ${(() => {
       const conditions = []
       
@@ -1009,7 +1011,6 @@ export async function GET(req: Request) {
     ${baseWhere}
     ${needsFinancialJoin && revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${needsFinancialJoin && profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
-    ${registrationClause}
     ${(() => {
       const conditions = []
       // Event existence filtering
