@@ -61,17 +61,30 @@ export default function AuthNav() {
         className="flex items-center space-x-2 text-white hover:text-gray-300 px-3 py-2 text-sm font-medium focus:outline-none w-full"
       >
         {(() => {
+          const displayName = session.user?.name || session.user?.email || 'User'
           const imageSrc = session.user?.image || ''
           const canUseNextImage = typeof imageSrc === 'string' && /^(https?:\/\/|data:image\/)/.test(imageSrc)
-          if (!canUseNextImage) return null
+          if (canUseNextImage) {
+            return (
+              <Image
+                src={imageSrc}
+                alt={displayName}
+                width={32}
+                height={32}
+                className="w-8 h-8 rounded-full"
+              />
+            )
+          }
+          // Fallback placeholder to keep consistent height
+          const initial = String(displayName).trim().charAt(0).toUpperCase() || 'U'
           return (
-            <Image
-              src={imageSrc}
-              alt={session.user?.name || 'User'}
-              width={32}
-              height={32}
-              className="w-8 h-8 rounded-full"
-            />
+            <div
+              aria-hidden="true"
+              className="w-8 h-8 rounded-full bg-white/10 text-white/80 flex items-center justify-center text-xs font-semibold"
+              title={displayName}
+            >
+              {initial}
+            </div>
           )
         })()}
         <span>{session.user?.name || session.user?.email}</span>

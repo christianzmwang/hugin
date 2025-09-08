@@ -308,6 +308,17 @@ export default function SearchPage() {
     return new URLSearchParams(window.location.search).get('events') || ''
   })
   const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([])
+  // Website tech filters
+  const [hasWoo, setHasWoo] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    const v = new URLSearchParams(window.location.search).get('webEcomWoocommerce')
+    return ['1', 'true', 'yes'].includes(String(v).toLowerCase())
+  })
+  const [hasShopify, setHasShopify] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    const v = new URLSearchParams(window.location.search).get('webCmsShopify')
+    return ['1', 'true', 'yes'].includes(String(v).toLowerCase())
+  })
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>(() => {
     if (typeof window === 'undefined') return []
     const sp = new URLSearchParams(window.location.search)
@@ -342,6 +353,21 @@ export default function SearchPage() {
   const [isMounted, setIsMounted] = useState(false)
   const eventsRef = useRef<HTMLDivElement>(null);
   const [isEventTypesCollapsed, setIsEventTypesCollapsed] = useState<boolean>(false)
+  // Event types scroll state for fade overlays
+  const eventTypesScrollRef = useRef<HTMLDivElement | null>(null)
+  const [eventTypesScrollState, setEventTypesScrollState] = useState<{ atTop: boolean; atBottom: boolean }>({ atTop: true, atBottom: true })
+
+  const updateEventTypesScrollState = () => {
+    const el = eventTypesScrollRef.current
+    if (!el) return
+    const atTop = el.scrollTop <= 0
+    const atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 1
+    setEventTypesScrollState((prev) => (prev.atTop === atTop && prev.atBottom === atBottom ? prev : { atTop, atBottom }))
+  }
+
+  useEffect(() => {
+    updateEventTypesScrollState()
+  }, [availableEventTypes, isEventTypesCollapsed])
 
   // Watchlist state
   const [watchlist, setWatchlist] = useState<Set<string>>(new Set())
@@ -425,6 +451,8 @@ export default function SearchPage() {
       if (profitMax !== '') sp.append('profitMax', String(profitMax))
     }
     if (eventsFilter) sp.append('events', eventsFilter)
+    if (hasWoo) sp.append('webEcomWoocommerce', '1')
+    if (hasShopify) sp.append('webCmsShopify', '1')
     if (selectedEventTypes.length > 0) sp.append('eventTypes', selectedEventTypes.join(','))
     if (selectedEventTypes.length > 0) sp.append('eventWeights', JSON.stringify(eventWeights))
     sp.append('source', selectedSource)
@@ -451,6 +479,8 @@ export default function SearchPage() {
     sortBy,
     offset,
     selectedCompanyTypes,
+    hasWoo,
+    hasShopify,
     registrationFrom, // added: ensure date-from filter updates query
     registrationTo,   // added: ensure date-to filter updates query
   ])
@@ -561,7 +591,7 @@ export default function SearchPage() {
   useEffect(() => {
     setOffset(0)
     setData([])
-  }, [selectedIndustries, selectedAreas, revenueMin, revenueMax, profitMin, profitMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes])
+  }, [selectedIndustries, selectedAreas, revenueMin, revenueMax, profitMin, profitMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes, hasWoo, hasShopify])
 
   // Keep draft inputs in sync with applied values
   useEffect(() => {
@@ -1085,6 +1115,7 @@ export default function SearchPage() {
           hasRevenueFilter ||
           hasProfitFilter ||
           !!eventsFilter ||
+          hasShopify || hasWoo ||
           selectedEventTypes.length > 0
         if (!hasAnyAppliedFilter) return null
         const revenueLabel = `${revenueMin !== '' ? numberFormatter.format(Math.floor(revenueMin / 1000)) : 'Min'} - ${revenueMax !== '' ? numberFormatter.format(Math.floor(revenueMax / 1000)) : 'Max'} NOK`
@@ -1137,6 +1168,34 @@ export default function SearchPage() {
                   </button>
                 </span>
               ))}
+              {hasShopify && (
+                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
+                  <span>Shopify</span>
+                  <button
+                    type="button"
+                    title="Remove Shopify filter"
+                    aria-label="Remove Shopify filter"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setHasShopify(false)}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {hasWoo && (
+                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
+                  <span>WooCommerce</span>
+                  <button
+                    type="button"
+                    title="Remove WooCommerce filter"
+                    aria-label="Remove WooCommerce filter"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => setHasWoo(false)}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
               {hasRevenueFilter && (
                 <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
                   <span>Revenue: {revenueLabel}</span>
@@ -1210,6 +1269,8 @@ export default function SearchPage() {
                   setAreaQuery('')
                   setSelectedCompanyTypes([])
                   setCompanyTypeQuery('')
+                  setHasShopify(false)
+                  setHasWoo(false)
                   setRevenueMin('')
                   setRevenueMax('')
                   setDraftRevenueMin('')
@@ -1248,31 +1309,66 @@ export default function SearchPage() {
               <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
                 <label className="block text-sm font-medium">Registration date</label>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3 w-full">
                 <input
                   type="date"
                   value={registrationFrom}
                   onChange={(e) => setRegistrationFrom(e.target.value)}
-                  className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  className="flex-1 min-w-0 bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
                   placeholder="From"
                 />
-                <span className="text-gray-500 text-xs">to</span>
+                <span className="text-gray-500 text-xs px-1 select-none">to</span>
                 <input
                   type="date"
                   value={registrationTo}
                   onChange={(e) => setRegistrationTo(e.target.value)}
-                  className="bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  className="flex-1 min-w-0 bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
                   placeholder="To"
                 />
                 {(registrationFrom || registrationTo) && (
                   <button
                     type="button"
                     onClick={() => { setRegistrationFrom(''); setRegistrationTo('') }}
+                    className="ml-2 shrink-0 text-[10px] px-2 py-1 border border-white/20 text-gray-300 hover:text-white hover:border-red-600/60"
+                  >
+                    Clear
+                  </button>
+                )}
+              </div>
+            </div>
+            {/* Website tech: moved directly below Registration date */}
+            <div className="mt-6">
+              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
+                <label className="block text-sm font-medium">Website tech</label>
+                {(hasShopify || hasWoo) && (
+                  <button
+                    type="button"
+                    onClick={() => { setHasShopify(false); setHasWoo(false) }}
                     className="text-[10px] px-2 py-1 border border-white/20 text-gray-300 hover:text-white hover:border-red-600/60"
                   >
                     Clear
                   </button>
                 )}
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={hasShopify}
+                    onChange={(e) => setHasShopify(e.target.checked)}
+                    className="h-4 w-4 accent-red-600"
+                  />
+                  <span>Shopify</span>
+                </label>
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={hasWoo}
+                    onChange={(e) => setHasWoo(e.target.checked)}
+                    className="h-4 w-4 accent-red-600"
+                  />
+                  <span>WooCommerce</span>
+                </label>
               </div>
             </div>
             <div className="mt-6">
@@ -1288,7 +1384,13 @@ export default function SearchPage() {
                 </button>
               </div>
               {!isEventTypesCollapsed && (
-              <div className="space-y-3 pr-1">
+              <div className="relative">
+                {/* Scrollable list */}
+                <div
+                  ref={eventTypesScrollRef}
+                  onScroll={updateEventTypesScrollState}
+                  className="space-y-3 h-96 overflow-y-auto custom-scroll thin-scroll w-full"
+                >
                 {availableEventTypes.map((raw) => {
                   const t = raw
                   const selected = selectedEventTypes.includes(t)
@@ -1318,6 +1420,15 @@ export default function SearchPage() {
                     </div>
                   )
                 })}
+                </div>
+                {/* Top fade */}
+                {!eventTypesScrollState.atTop && (
+                  <div className="pointer-events-none absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-black via-black/70 to-transparent" />
+                )}
+                {/* Bottom fade */}
+                {!eventTypesScrollState.atBottom && (
+                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black via-black/70 to-transparent" />
+                )}
               </div>
               )}
             </div>
@@ -1486,7 +1597,7 @@ export default function SearchPage() {
             </div>
           ) : data.length === 0 ? (
             (() => {
-              const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0
+              const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0 || hasShopify || hasWoo
               return (
                 <div className="flex items-center justify-center py-12">
                   <div className="text-center">
@@ -1517,7 +1628,7 @@ export default function SearchPage() {
             </div>
           )}
           {(() => {
-            const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0
+            const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0 || hasShopify || hasWoo
             const totalForPaging = hasAnyFilter ? total : (grandTotal ?? total)
             return (
               <div className="mt-8">
@@ -1532,4 +1643,3 @@ export default function SearchPage() {
     </div>
   )
 }
-

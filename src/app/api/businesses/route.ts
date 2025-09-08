@@ -177,6 +177,10 @@ export async function GET(req: Request) {
     }
   }
 
+  // Website technology filters
+  const wantsShopify = ['1','true','yes'].includes((searchParams.get('webCmsShopify') || '').toLowerCase())
+  const wantsWoo = ['1','true','yes'].includes((searchParams.get('webEcomWoocommerce') || '').toLowerCase())
+
   // Sorting
   const sortBy = searchParams.get('sortBy')?.trim() || 'updatedAt'
   const allowedSorts = [
@@ -225,6 +229,8 @@ export async function GET(req: Request) {
   orgNumberParam,
     areas: areas.sort(),
     orgFormCodes: orgFormCodes.sort(),
+    webCmsShopify: wantsShopify,
+    webEcomWoocommerce: wantsWoo,
   }
 
   // Check cache first
@@ -781,6 +787,13 @@ export async function GET(req: Request) {
           conditions.push('EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber")')
         }
       }
+      // Website tech filters (from BusinessWebMeta alias w)
+      if (wantsShopify) {
+        conditions.push('COALESCE(w."webCmsShopify", false) = true')
+      }
+      if (wantsWoo) {
+        conditions.push('COALESCE(w."webEcomWoocommerce", false) = true')
+      }
       
       return conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : ''
     })()}
@@ -818,6 +831,7 @@ export async function GET(req: Request) {
 
   // For counts, avoid joining latest financials unless we actually filter by revenue/profit.
   const needsFinancialJoin = Boolean(revenueClause || profitClause)
+  const needsWebJoinForCount = Boolean(wantsShopify || wantsWoo)
   const countSql = `
     SELECT COUNT(*)::int as total
     FROM "Business" b
@@ -828,6 +842,7 @@ export async function GET(req: Request) {
       ORDER BY f."fiscalYear" DESC NULLS LAST
       LIMIT 1
     ) fLatest ON TRUE` : ''}
+    ${needsWebJoinForCount ? `LEFT JOIN "BusinessWebMeta" w ON w."businessId" = b.id` : ''}
     ${baseWhere}
     ${needsFinancialJoin && revenueClause ? revenueClause.replace(/\bf\./g, 'fLatest.') : ''}
     ${needsFinancialJoin && profitClause ? profitClause.replace(/\bf\./g, 'fLatest.') : ''}
@@ -843,6 +858,13 @@ export async function GET(req: Request) {
         } else {
           conditions.push('EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber")')
         }
+      }
+      // Website tech filters
+      if (wantsShopify) {
+        conditions.push('COALESCE(w."webCmsShopify", false) = true')
+      }
+      if (wantsWoo) {
+        conditions.push('COALESCE(w."webEcomWoocommerce", false) = true')
       }
       return conditions.length > 0 ? 'AND ' + conditions.join(' AND ') : ''
     })()}
@@ -861,8 +883,9 @@ export async function GET(req: Request) {
       const noProfit = !profitClause
       const noEvents = !withoutEvents && !withEvents && !eventTypesIdx
       const noSearch = !q && !orgNumberParam
+      const noWeb = !wantsShopify && !wantsWoo
       const noOrgForm = orgFormCodes.length === 0
-      const canUseFastCount = noIndustry && noAreas && noRevenue && noProfit && noEvents && noSearch && noOrgForm
+      const canUseFastCount = noIndustry && noAreas && noRevenue && noProfit && noEvents && noSearch && noOrgForm && noWeb
 
       if (canUseFastCount) {
         try {
@@ -926,8 +949,9 @@ export async function GET(req: Request) {
         const noProfit = !profitClause
         const noEvents = !withoutEvents && !withEvents && !eventTypesIdx
         const noSearch = !q && !orgNumberParam
+        const noWeb = !wantsShopify && !wantsWoo
         const noOrgForm = orgFormCodes.length === 0
-        const canUseFastCount = noIndustry && noAreas && noRevenue && noProfit && noEvents && noSearch && noOrgForm
+        const canUseFastCount = noIndustry && noAreas && noRevenue && noProfit && noEvents && noSearch && noOrgForm && noWeb
 
         if (canUseFastCount) {
           try {
@@ -1026,4 +1050,3 @@ export async function GET(req: Request) {
     headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=300' },
   })
 }
-
