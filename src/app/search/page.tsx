@@ -1112,6 +1112,7 @@ export default function SearchPage() {
         const hasAnyAppliedFilter =
           selectedIndustries.length > 0 ||
           selectedAreas.length > 0 ||
+          selectedCompanyTypes.length > 0 ||
           hasRevenueFilter ||
           hasProfitFilter ||
           !!eventsFilter ||
@@ -1169,7 +1170,7 @@ export default function SearchPage() {
                 </span>
               ))}
               {hasShopify && (
-                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
+                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/10 text-white/90">
                   <span>Shopify</span>
                   <button
                     type="button"
@@ -1183,7 +1184,7 @@ export default function SearchPage() {
                 </span>
               )}
               {hasWoo && (
-                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
+                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/10 text-white/90">
                   <span>WooCommerce</span>
                   <button
                     type="button"
@@ -1314,7 +1315,7 @@ export default function SearchPage() {
                   type="date"
                   value={registrationFrom}
                   onChange={(e) => setRegistrationFrom(e.target.value)}
-                  className="flex-1 min-w-0 bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  className="flex-1 min-w-0 bg-black border border-white/10 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
                   placeholder="From"
                 />
                 <span className="text-gray-500 text-xs px-1 select-none">to</span>
@@ -1322,14 +1323,14 @@ export default function SearchPage() {
                   type="date"
                   value={registrationTo}
                   onChange={(e) => setRegistrationTo(e.target.value)}
-                  className="flex-1 min-w-0 bg-black border border-white/20 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  className="flex-1 min-w-0 bg-black border border-white/10 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
                   placeholder="To"
                 />
                 {(registrationFrom || registrationTo) && (
                   <button
                     type="button"
                     onClick={() => { setRegistrationFrom(''); setRegistrationTo('') }}
-                    className="ml-2 shrink-0 text-[10px] px-2 py-1 border border-white/20 text-gray-300 hover:text-white hover:border-red-600/60"
+                    className="ml-2 shrink-0 text-[10px] px-2 py-1 border border-white/10 text-gray-300 hover:text-white hover:border-red-600/60"
                   >
                     Clear
                   </button>
@@ -1356,7 +1357,7 @@ export default function SearchPage() {
                     type="checkbox"
                     checked={hasShopify}
                     onChange={(e) => setHasShopify(e.target.checked)}
-                    className="h-4 w-4 accent-red-600"
+                    className="checkbox-tech"
                   />
                   <span>Shopify</span>
                 </label>
@@ -1365,7 +1366,7 @@ export default function SearchPage() {
                     type="checkbox"
                     checked={hasWoo}
                     onChange={(e) => setHasWoo(e.target.checked)}
-                    className="h-4 w-4 accent-red-600"
+                    className="checkbox-tech"
                   />
                   <span>WooCommerce</span>
                 </label>
@@ -1377,7 +1378,7 @@ export default function SearchPage() {
                 <button
                   type="button"
                   onClick={() => setIsEventTypesCollapsed(prev => !prev)}
-                  className="text-xs px-2 py-1 border border-white/20 text-white/70 hover:text-white hover:border-red-600/60 hover:bg-red-600/10 focus:outline-none focus:ring-1 focus:ring-red-600/40"
+                  className="text-xs px-2 py-1 border border-white/10 text-white/70 hover:text-white hover:border-red-600/60 hover:bg-red-600/10 focus:outline-none focus:ring-1 focus:ring-red-600/40"
                   aria-expanded={!isEventTypesCollapsed}
                 >
                   {isEventTypesCollapsed ? 'Show' : 'Hide'}
@@ -1448,7 +1449,7 @@ export default function SearchPage() {
                     <div className="flex items-center gap-2">
                       <button
                         type="button"
-                        className="text-xl leading-none px-3 py-0.5 border border-white/20 text-white bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
+                        className="text-xl leading-none px-3 py-0.5 border border-white/10 text-white bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
                         title={metricMode === 'revenue' ? 'Switch to Operating results' : 'Switch to Revenue'}
                         onClick={() => setMetricMode((m) => (m === 'revenue' ? 'operating' : 'revenue'))}
                       >
@@ -1456,7 +1457,7 @@ export default function SearchPage() {
                       </button>
                       <button
                         type="button"
-                        className="text-xs px-2 py-1 border border-white/20 text-white/90 bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
+                        className="text-xs px-2 py-1 border border-white/10 text-white/90 bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
                         onClick={() => {
                           if (metricMode === 'revenue') {
                             const minVal = draftRevenueMin.trim() === '' ? '' : Number(draftRevenueMin.replace(/[^-\d]/g, '')) * 1000

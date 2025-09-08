@@ -212,6 +212,28 @@ a,
     @apply text-white transition-colors duration-200 hover:text-red-600 md:group-data-[glass=dark]:hover:text-sky-400;
   }
 
+  /* Black checkbox with subtle border; turns red-600/90 when checked */
+  .checkbox-tech {
+    appearance: none;
+    -webkit-appearance: none;
+    width: 1rem; /* 16px */
+    height: 1rem; /* 16px */
+    background-color: #000; /* black */
+    border: 1px solid rgba(255, 255, 255, 0.1); /* border-white/10 */
+    display: inline-grid;
+    place-content: center;
+    border-radius: 2px; /* subtle rounding */
+    cursor: pointer;
+  }
+  .checkbox-tech:focus {
+    outline: none;
+    box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.4); /* focus ring red-600/40 */
+  }
+  .checkbox-tech:checked {
+    background-color: rgba(220, 38, 38, 0.45); /* more transparent red */
+    border-color: rgba(220, 38, 38, 0.5);
+  }
+
   /* Context-aware button hover borders based on section background theme */
   [data-nav-theme='light'] .btn:hover {
     @apply border-gray-900; /* dark border on light backgrounds */

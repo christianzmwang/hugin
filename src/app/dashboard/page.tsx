@@ -4,6 +4,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useWatchlist } from '@/app/watchlist/useWatchlist'
+import { apiCache } from '@/lib/api-cache'
  
 
 export default function DashboardPage() {
@@ -42,14 +43,32 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!session) return
     let cancelled = false
+
+    // Use a small client cache to avoid refetching when returning
+    const cacheKey = { k: 'dashboardNews', limit: 50 }
+    const cached = apiCache.get<{
+      orgNumber: string
+      businessName: string
+      latestEventTitle: string | null
+      latestEventDate: string | null
+      url: string | null
+    }[]>(cacheKey)
+    if (cached) {
+      setRecentBusinesses(cached)
+      setNewsLoading(false)
+    } else {
+      setNewsLoading(true)
+    }
+    setNewsError(null)
+
+    if (cached && cached.length > 0) return () => { /* no fetch needed */ }
+
     ;(async () => {
       try {
-        setNewsLoading(true)
-        setNewsError(null)
-        const res = await fetch(`/api/events?limit=60`, { cache: 'no-store' })
+        const res = await fetch(`/api/events?limit=50`, { cache: 'no-store' })
         if (!res.ok) throw new Error('Failed to load events')
         const json: unknown = await res.json()
-  const rows: unknown[] = Array.isArray(json)
+        const rows: unknown[] = Array.isArray(json)
           ? json
           : (typeof json === 'object' && json !== null && Array.isArray((json as Record<string, unknown>)['items'])
             ? ((json as Record<string, unknown>)['items'] as unknown[])
@@ -93,7 +112,10 @@ export default function DashboardPage() {
           const t = Date.parse(String(raw))
           return Number.isFinite(t) && t <= now
         })
-        if (!cancelled) setRecentBusinesses(filtered)
+        if (!cancelled) {
+          setRecentBusinesses(filtered)
+          apiCache.set(cacheKey, filtered, 2 * 60 * 1000) // cache for 2 minutes
+        }
       } catch (e: unknown) {
         if (!cancelled) {
           const message = e instanceof Error ? e.message : 'Failed to load news'
@@ -363,5 +385,3 @@ export default function DashboardPage() {
       </div>
   )
 }
-
-

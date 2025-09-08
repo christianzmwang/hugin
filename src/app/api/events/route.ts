@@ -107,7 +107,10 @@ export async function GET(req: Request) {
       const rows = result.rows
 
       const items: EventItem[] = (rows || []).map(mapToClientItem)
-      return NextResponse.json({ items })
+      return NextResponse.json(
+        { items },
+        { headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' } },
+      )
     }
 
     // Without orgNumber: latest events overall from the view
@@ -125,7 +128,10 @@ export async function GET(req: Request) {
       rows = rows.filter((r) => !!r.event_type && eventTypes.includes(r.event_type))
     }
     const items: EventItem[] = (rows || []).map(mapToClientItem)
-    return NextResponse.json({ items })
+    return NextResponse.json(
+      { items },
+      { headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' } },
+    )
   } catch {
     // On any error, return empty list to preserve stability
     return NextResponse.json({ items: [] })

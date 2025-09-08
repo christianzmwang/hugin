@@ -79,9 +79,7 @@ export default async function ProfilePage() {
 
   return (
     <div className="h-full overflow-hidden bg-black text-white flex flex-col">
-      <div className="px-6 py-8 flex-1 overflow-hidden">
-        <h1 className="text-2xl font-bold mb-6">Profil</h1>
-
+  <div className="p-6 flex-1 overflow-hidden">
         {/* Top layout: two columns on large screens */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Left: Account + Login methods */}
@@ -242,7 +240,7 @@ async function UsageTimeline({ userId }: { userId: string }) {
   return (
     <div className="w-full">
       <div
-        className="grid items-end gap-1 h-48 pb-2 pr-2"
+  className="grid items-end gap-1 h-64 pb-2 pr-2"
         style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
       >
         {days.map((d) => {
@@ -255,7 +253,7 @@ async function UsageTimeline({ userId }: { userId: string }) {
           const researchPct = 100 - chatPct
           const dayNum = parseInt(d.date.split('-')[2], 10)
           return (
-            <div key={d.date} className="flex flex-col items-center h-48">
+            <div key={d.date} className="flex flex-col items-center h-64">
               <div
                 className="relative w-full h-full bg-white/10 rounded-sm overflow-hidden"
                 title={`${dayNum}.: Totalt ${d.total} (Chat ${d.chat} • Forskning ${d.research})`}
