@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { checkApiAccess } from '@/lib/access-control'
+import { getServerSession } from 'next-auth/next'
+import type { Session } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { addUsage, getRemainingCredits } from '@/lib/credits'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,6 +32,11 @@ export async function POST(req: Request) {
   try {
   const accessError = await checkApiAccess()
   if (accessError) return accessError
+  const session = (await getServerSession(authOptions)) as Session | null
+  const userId = session?.user?.id as unknown as string | undefined
+  if (!userId) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
 
     if (!process.env.PARALLEL_API_KEY) {
       return NextResponse.json({ error: 'Parallel API key not configured' }, { status: 500 })
@@ -84,6 +93,24 @@ export async function POST(req: Request) {
 
   // Output schema responsibility is external (DeepSeek compose). Use if provided; otherwise omit.
   const outputSchema = providedOutputSchema || undefined
+
+  // Credits: charge per research request, varies by processor.
+  // Mapping aligned with UI: dollars → points * 1000 * 1.2 → rounded.
+  const researchCost = (() => {
+    const map: Record<string, number> = {
+      lite: 6,   // ~$0.005 → 5 → 6
+      base: 12,  // ~$0.01 → 10 → 12
+      core: 60,  // ~$0.05 → 50 → 60
+      pro: 120,  // ~$0.10 → 100 → 120
+      ultra: 360 // ~$0.30 → 300 → 360
+    }
+    return map[processor] ?? 120
+  })()
+  const remaining = await getRemainingCredits(userId)
+  if (remaining < researchCost) {
+    return NextResponse.json({ error: 'Insufficient credits', code: 'insufficient_credits', remaining }, { status: 402 })
+  }
+  await addUsage(userId, researchCost, 'research', { processor })
 
     type TaskRunPayload = {
       input: string

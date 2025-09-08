@@ -23,6 +23,8 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // Optional user company profile (from /api/user/business-context) so AI can leverage it only when relevant
   const [userCompanyProfile, setUserCompanyProfile] = useState<string | null>(null)
+  // Track whether we've already sent the first user prompt (so we only include extended context once)
+  const firstPromptSentRef = useRef(false)
 
   useEffect(() => {
     let cancelled = false
@@ -73,29 +75,37 @@ export default function ParallelChat({ companyName, orgNumber }: ParallelChatPro
     const ctl = new AbortController()
     abortRef.current = ctl
     try {
-      // Heuristic: if the user asks a generic company-specific metric (e.g. CEO) without naming the company, explicitly anchor it.
-      const needsCompanyInjection = /\bceo\b|chief executive|revenue|profit|employees|founder|ownership|competitor/i.test(userMsg.content) && !new RegExp(companyName, 'i').test(userMsg.content)
+      // Only on the very first user prompt do we optionally inject explicit company anchoring & profile context.
+      const needsCompanyInjection = !firstPromptSentRef.current && /\bceo\b|chief executive|revenue|profit|employees|founder|ownership|competitor/i.test(userMsg.content) && !new RegExp(companyName, 'i').test(userMsg.content)
       const augmentedUserContent = needsCompanyInjection
         ? `${userMsg.content}\n\n(Above question refers to the company ${companyName}${orgNumber ? ` (Org ${orgNumber})` : ''}.)`
         : userMsg.content
-  const payload = {
+
+      // Build system prompt; include userCompanyProfile only for first prompt
+      const systemBaseLines = [
+        'You are a concise business information assistant.',
+        'Do not assume or state which company the conversation is about unless the user explicitly provides identifying details (name, org number, etc.).',
+        'If a question is ambiguous (e.g. "CEO?", "revenue last year"), ask the user to clarify which company they mean instead of guessing.',
+        'Only use information the user has explicitly supplied in this chat. Do not fabricate or infer hidden context.',
+        'If you cannot answer with the provided information, say you do not know and optionally suggest what additional detail (e.g. company name, year, metric) would help.',
+        'Keep answers direct. Mirror the user\'s language (Norwegian vs. English).'
+      ]
+      if (!firstPromptSentRef.current && userCompanyProfile) {
+        systemBaseLines.push('\nUser-supplied business profile (ONLY use if user clearly indicates it refers to the company in question; ignore otherwise):\n' + userCompanyProfile)
+      }
+
+      const payload = {
         model: 'speed',
         stream: true,
         messages: [
           // System guidance: provide comprehensive, well-sourced responses
-          { role: 'system', content: [
-            'You are a concise business information assistant.',
-            'Do not assume or state which company the conversation is about unless the user explicitly provides identifying details (name, org number, etc.).',
-            'If a question is ambiguous (e.g. "CEO?", "revenue last year"), ask the user to clarify which company they mean instead of guessing.',
-            'Only use information the user has explicitly supplied in this chat. Do not fabricate or infer hidden context.',
-            'If you cannot answer with the provided information, say you do not know and optionally suggest what additional detail (e.g. company name, year, metric) would help.',
-            'Keep answers direct. Mirror the user\'s language (Norwegian vs. English).',
-            userCompanyProfile ? '\nUser-supplied business profile (ONLY use if user clearly indicates it refers to the company in question; ignore otherwise):\n' + userCompanyProfile : undefined
-          ].filter(Boolean).join('\n') },
+          { role: 'system', content: systemBaseLines.join('\n') },
           ...messages.filter(m => m.role !== 'assistant' || m.content.trim()),
           { role: 'user', content: augmentedUserContent },
         ],
       }
+      // Mark that the first prompt (with any extra context) has been sent
+      if (!firstPromptSentRef.current) firstPromptSentRef.current = true
       const res = await fetch('/api/parallel/chat', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

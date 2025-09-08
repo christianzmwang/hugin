@@ -99,23 +99,21 @@ export default function AuthNav() {
       </button>
 
       {dropdownOpen && (
-        <div className="absolute right-0 mt-2 w-48 bg-black shadow-lg ring-1 ring-white ring-opacity-20 z-50">
-          <div className="py-1">
-            <button
-              onClick={() => {
-                setDropdownOpen(false)
-                // Add profile navigation here if needed
-              }}
+        <div className="absolute right-0 mt-2 w-48 bg-black shadow-lg border border-red-600/90 z-50">
+          <div>
+            <Link
+              href="/profile"
+              onClick={() => setDropdownOpen(false)}
               className="flex items-center px-4 py-2 text-sm text-white hover:bg-gray-800 w-full text-left"
             >
               <svg className="w-4 h-4 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
               </svg>
               Profile
-            </button>
+            </Link>
             {session.user?.email === 'christian@allvitr.com' && (
               <>
-                <hr className="border-gray-600" />
+                <hr className="border-red-600/90" />
                 <Link
                   href="/admin"
                   onClick={() => setDropdownOpen(false)}
@@ -129,7 +127,7 @@ export default function AuthNav() {
                 </Link>
               </>
             )}
-            <hr className="border-gray-600" />
+            <hr className="border-red-600/90" />
             <button
               onClick={() => {
                 setDropdownOpen(false)

@@ -1,5 +1,9 @@
 import { NextResponse } from 'next/server'
 import { checkApiAccess } from '@/lib/access-control'
+import { getServerSession } from 'next-auth/next'
+import type { Session } from 'next-auth'
+import { authOptions } from '@/lib/auth'
+import { addUsage, getRemainingCredits } from '@/lib/credits'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -19,6 +23,11 @@ export async function POST(req: Request) {
   try {
     const accessError = await checkApiAccess()
     if (accessError) return accessError
+    const session = (await getServerSession(authOptions)) as Session | null
+    const userId = session?.user?.id as unknown as string | undefined
+    if (!userId) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
     if (!process.env.PARALLEL_API_KEY) {
       return NextResponse.json({ error: 'Parallel API key not configured' }, { status: 500 })
     }
@@ -29,6 +38,15 @@ export async function POST(req: Request) {
     }
     const model = (body?.model && typeof body.model === 'string') ? body.model : 'speed'
     const stream = body?.stream !== false // default true for interactive chat
+
+    // Credits: charge 6 credits per chat prompt
+    const chatCost = 6
+    const remaining = await getRemainingCredits(userId)
+    if (remaining < chatCost) {
+      return NextResponse.json({ error: 'Insufficient credits', code: 'insufficient_credits', remaining }, { status: 402 })
+    }
+    // Record usage (charge at send time)
+    await addUsage(userId, chatCost, 'chat', { model })
 
     // Helper to perform request with automatic fallback if we see the "No products found" signature.
     const attemptRequest = async (streaming: boolean) => {
