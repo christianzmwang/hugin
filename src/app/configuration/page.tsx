@@ -43,15 +43,66 @@ function BusinessContextEditor() {
     delivers: string
     icp: string
   }
-  const [form, setForm] = useState<Bc>({ businessName: '', orgNumber: '', delivers: '', icp: '' })
-  const [legacyText, setLegacyText] = useState<string>('')
+  // Local cache keys
+  const CACHE_KEY = 'businessContext'
+  const CACHE_TS_KEY = 'businessContextTs'
+  const CACHE_TTL_MS = 10 * 60 * 1000 // 10 minutes
+
+  // Seed state from localStorage synchronously to avoid reload flash on revisit
+  const [form, setForm] = useState<Bc>(() => {
+    if (typeof window === 'undefined') return { businessName: '', orgNumber: '', delivers: '', icp: '' }
+    try {
+      const raw = localStorage.getItem(CACHE_KEY) || ''
+      if (raw && raw.startsWith('{')) {
+        const v = JSON.parse(raw) as Partial<Bc>
+        return {
+          businessName: v.businessName ?? '',
+          orgNumber: v.orgNumber ?? '',
+          delivers: v.delivers ?? '',
+          icp: v.icp ?? '',
+        }
+      }
+    } catch {}
+    return { businessName: '', orgNumber: '', delivers: '', icp: '' }
+  })
+  const [legacyText, setLegacyText] = useState<string>(() => {
+    if (typeof window === 'undefined') return ''
+    try {
+      const raw = localStorage.getItem(CACHE_KEY) || ''
+      return raw && !raw.startsWith('{') ? raw : ''
+    } catch {
+      return ''
+    }
+  })
   const [saved, setSaved] = useState<boolean>(false)
-  const [loading, setLoading] = useState<boolean>(true)
+  const [loading, setLoading] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    try {
+      const tsRaw = localStorage.getItem(CACHE_TS_KEY)
+      if (!tsRaw) return true
+      const ts = Number(tsRaw)
+      return !(Number.isFinite(ts) && Date.now() - ts < CACHE_TTL_MS)
+    } catch {
+      return true
+    }
+  })
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
     const fetchBc = async () => {
+      // If we have fresh cache, skip network
+      try {
+        const tsRaw = typeof window !== 'undefined' ? localStorage.getItem(CACHE_TS_KEY) : null
+        const ts = tsRaw ? Number(tsRaw) : NaN
+        const hasFreshCache = Number.isFinite(ts) && Date.now() - ts < CACHE_TTL_MS
+        if (hasFreshCache) {
+          setLoading(false)
+          return
+        }
+      } catch {}
+
+      setLoading(true)
       try {
         const res = await fetch('/api/user/business-context', { cache: 'no-store' })
         if (!res.ok) throw new Error('Kunne ikke laste forretningskontekst')
@@ -66,15 +117,21 @@ function BusinessContextEditor() {
               delivers: v.delivers ?? '',
               icp: v.icp ?? '',
             })
-            try { localStorage.setItem('businessContext', JSON.stringify(v)) } catch {}
+            try {
+              localStorage.setItem(CACHE_KEY, JSON.stringify(v))
+              localStorage.setItem(CACHE_TS_KEY, String(Date.now()))
+            } catch {}
           } else if (shape === 'string' && typeof data?.businessContext === 'string') {
             const v = data.businessContext as string
             setLegacyText(v)
-            try { localStorage.setItem('businessContext', v || '') } catch {}
+            try {
+              localStorage.setItem(CACHE_KEY, v || '')
+              localStorage.setItem(CACHE_TS_KEY, String(Date.now()))
+            } catch {}
           } else {
             // null/unknown: try localStorage
             try {
-              const raw = localStorage.getItem('businessContext') || ''
+              const raw = localStorage.getItem(CACHE_KEY) || ''
               if (raw.startsWith('{')) {
                 const v = JSON.parse(raw) as Partial<Bc>
                 setForm({
@@ -89,11 +146,11 @@ function BusinessContextEditor() {
             } catch {}
           }
         }
-  } catch {
+      } catch {
         if (!cancelled) {
           // Fallback to localStorage if API fails
           try {
-            const raw = localStorage.getItem('businessContext') || ''
+            const raw = localStorage.getItem(CACHE_KEY) || ''
             if (raw.startsWith('{')) {
               const v = JSON.parse(raw) as Partial<Bc>
               setForm({
@@ -126,10 +183,13 @@ function BusinessContextEditor() {
         body: JSON.stringify(payload)
       })
       if (!res.ok) throw new Error('Lagring feilet')
-      try { localStorage.setItem('businessContext', JSON.stringify(form)) } catch {}
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(form))
+        localStorage.setItem(CACHE_TS_KEY, String(Date.now()))
+      } catch {}
       setSaved(true)
       setTimeout(() => setSaved(false), 1500)
-  } catch {
+    } catch {
       setError('Kunne ikke lagre til server. Prøv igjen.')
     }
   }
@@ -200,5 +260,4 @@ function BusinessContextEditor() {
     </div>
   )
 }
-
 

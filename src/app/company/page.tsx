@@ -877,59 +877,34 @@ function CompanyPageContent() {
     el.scrollBy({ left: delta, behavior: 'smooth' })
   }
 
-  // Load recently viewed companies from server (account-linked), fallback to localStorage
+  // Load recently viewed companies (local only; DB integration removed)
   useEffect(() => {
-    let cancelled = false
-    const load = async () => {
-      try {
-        const res = await fetch('/api/user/recently-viewed?limit=20', { cache: 'no-store' })
-        if (res.ok) {
-          const data = await res.json().catch(() => ({})) as { items?: Array<{ name?: string; orgNumber?: string }> }
-          const items = Array.isArray(data?.items)
-            ? (data.items as Array<{ name?: string; orgNumber?: string }> ).filter(it => it?.orgNumber)
-                .map(it => ({ name: String(it.name || ''), orgNumber: String(it.orgNumber) }))
-            : []
-          if (!cancelled && items.length) {
-            setRecentlyViewed(items)
-            try { localStorage.setItem('recentlyViewedCompanies', JSON.stringify(items)) } catch {}
-            return
-          }
+    try {
+      const stored = localStorage.getItem('recentlyViewedCompanies')
+      if (stored) {
+        const parsed = JSON.parse(stored)
+        if (Array.isArray(parsed)) {
+          // Basic validation + trim to 20
+          const items = parsed
+            .filter((c: any) => c && typeof c.orgNumber === 'string')
+            .map((c: any) => ({ name: String(c.name || ''), orgNumber: String(c.orgNumber) }))
+            .slice(0, 20)
+          setRecentlyViewed(items)
         }
-      } catch {}
-      // Fallback to localStorage when API not available
-      try {
-        const stored = localStorage.getItem('recentlyViewedCompanies')
-        if (stored) {
-          const parsed = JSON.parse(stored)
-          if (!cancelled && Array.isArray(parsed)) {
-            setRecentlyViewed(parsed.slice(0, 20))
-          }
-        }
-      } catch {}
+      }
+    } catch {
+      // ignore localStorage errors
     }
-    load()
-    return () => { cancelled = true }
   }, [])
 
-  // Add company to recently viewed
+  // Add company to recently viewed (localStorage only now)
   const addToRecentlyViewed = (company: { name: string; orgNumber: string }) => {
     setRecentlyViewed(prev => {
       const filtered = prev.filter(c => c.orgNumber !== company.orgNumber)
       const updated = [company, ...filtered].slice(0, 20)
-      // Save locally to keep snappy UX
       try { localStorage.setItem('recentlyViewedCompanies', JSON.stringify(updated)) } catch {}
       return updated
     })
-    // Fire-and-forget save to server (account-linked)
-    ;(async () => {
-      try {
-        await fetch('/api/user/recently-viewed', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ orgNumber: company.orgNumber, name: company.name, max: 20 }),
-        })
-      } catch {}
-    })()
   }
 
   useEffect(() => {

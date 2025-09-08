@@ -475,6 +475,16 @@ export default function AuthForm({ mode }: AuthFormProps) {
     }
   }
 
+  const handleMicrosoftSignIn = async () => {
+    setIsLoading(true)
+    try {
+      await signIn('azure-ad', { callbackUrl: '/post-login' })
+    } catch {
+      setError('Microsoft sign-in failed')
+      setIsLoading(false)
+    }
+  }
+
 
 
   return (
@@ -718,8 +728,9 @@ export default function AuthForm({ mode }: AuthFormProps) {
             </div>
           </div>
 
-          {/* Google button */}
-          <div>
+          {/* OAuth buttons */}
+          <div className="space-y-4">
+            {/* Google button */}
             <button
               type="button"
               onClick={handleGoogleSignIn}
@@ -745,6 +756,23 @@ export default function AuthForm({ mode }: AuthFormProps) {
                 />
               </svg>
               <span className="ml-2">Google</span>
+            </button>
+
+            {/* Microsoft button */}
+            <button
+              type="button"
+              onClick={handleMicrosoftSignIn}
+              disabled={isLoading}
+              className="w-full flex items-center justify-center py-2.5 px-3 border border-gray-600 bg-gray-900 text-gray-300 hover:bg-gray-800 shadow-sm text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {/* Simple Microsoft logo (4 squares) - matched viewBox to 24 for consistent scaling */}
+              <svg className="w-4 h-4" viewBox="0 0 24 24" aria-hidden="true">
+                <rect width="10" height="10" x="1" y="1" fill="#F25022" />
+                <rect width="10" height="10" x="12" y="1" fill="#7FBA00" />
+                <rect width="10" height="10" x="1" y="12" fill="#00A4EF" />
+                <rect width="10" height="10" x="12" y="12" fill="#FFB900" />
+              </svg>
+              <span className="ml-2">Microsoft</span>
             </button>
           </div>
         </form>

@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import CredentialsProvider from 'next-auth/providers/credentials'
 import GoogleProvider from 'next-auth/providers/google'
+import AzureADProvider from 'next-auth/providers/azure-ad'
 import PostgresAdapter from '@auth/pg-adapter'
 import { Pool } from 'pg'
 import bcrypt from 'bcryptjs'
@@ -34,6 +35,13 @@ export const authOptions: any = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    }),
+
+    // Microsoft (Azure AD / Entra ID) OAuth Provider
+    AzureADProvider({
+      clientId: process.env.AZURE_AD_CLIENT_ID!,
+      clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+      tenantId: process.env.AZURE_AD_TENANT_ID || 'common',
     }),
     
     // Email/Password Provider
@@ -112,8 +120,8 @@ export const authOptions: any = {
     },
 
     async signIn({ user, account }: { user: any; account: any; profile?: any }) {
-      // Auto-verify email for Google OAuth users
-      if (account?.provider === 'google' && user?.email) {
+      // Auto-verify email for OAuth users (Google/Microsoft)
+      if (account?.provider && ['google', 'azure-ad'].includes(account.provider) && user?.email) {
         try {
           // First, try to update existing user
           const updateResult = await query(
@@ -133,25 +141,25 @@ export const authOptions: any = {
             }
           }
           
-          console.log('Auto-verified Google OAuth user:', user.email)
+          console.log(`Auto-verified ${account.provider} OAuth user:`, user.email)
         } catch (error) {
-          console.error('Error auto-verifying Google OAuth user:', error)
+          console.error(`Error auto-verifying ${account.provider} OAuth user:`, error)
         }
       }
       return true
     },
 
     async linkAccount({ user, account }: { user: any; account: any }) {
-      // Also verify when linking Google account to existing user
-      if (account?.provider === 'google' && user?.email) {
+      // Also verify when linking Google/Microsoft account to existing user
+      if (account?.provider && ['google', 'azure-ad'].includes(account.provider) && user?.email) {
         try {
           await query(
             'UPDATE users SET "emailVerified" = NOW() WHERE email = $1 AND "emailVerified" IS NULL',
             [user.email]
           )
-          console.log('Auto-verified user during Google account linking:', user.email)
+          console.log(`Auto-verified user during ${account.provider} account linking:`, user.email)
         } catch (error) {
-          console.error('Error auto-verifying during account linking:', error)
+          console.error(`Error auto-verifying during ${account.provider} account linking:`, error)
         }
       }
       return true
@@ -174,8 +182,8 @@ export const authOptions: any = {
           token.businessContext = null
         }
         
-        // For Google OAuth users, ensure emailVerified is set
-        if (account?.provider === 'google' && user.email && !user.emailVerified) {
+        // For OAuth users, ensure emailVerified is set
+        if (account?.provider && ['google', 'azure-ad'].includes(account.provider) && user.email && !user.emailVerified) {
           token.emailVerified = new Date()
         }
       }
@@ -203,26 +211,26 @@ export const authOptions: any = {
           session.user.businessContext = (token.businessContext ?? null) as string | null
         }
 
-        // Double-check: If this is a Google user without verified email, fix it
+        // Double-check: If this is an OAuth user without verified email, fix it
         if (!session.user.emailVerified && session.user.email) {
           try {
-            // Check if user has Google account linked
-            const hasGoogleAccount = await query(
-              'SELECT 1 FROM accounts WHERE "userId" = $1 AND provider = $2',
-              [token.id, 'google']
+            // Check if user has Google or Microsoft account linked
+            const hasOauthAccount = await query(
+              'SELECT 1 FROM accounts WHERE "userId" = $1 AND provider IN ($2, $3) LIMIT 1',
+              [token.id, 'google', 'azure-ad']
             )
-            
-            if (hasGoogleAccount.rows.length > 0) {
-              // User has Google account but email not verified - fix it
+
+            if (hasOauthAccount.rows.length > 0) {
+              // User has OAuth account but email not verified - fix it
               await query(
                 'UPDATE users SET "emailVerified" = NOW() WHERE id = $1',
                 [token.id]
               )
               session.user.emailVerified = new Date()
-              console.log('Fixed verification status for Google user:', session.user.email)
+              console.log('Fixed verification status for OAuth user:', session.user.email)
             }
           } catch (error) {
-            console.error('Error checking/fixing Google user verification:', error)
+            console.error('Error checking/fixing OAuth user verification:', error)
           }
         }
       }

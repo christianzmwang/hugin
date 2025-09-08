@@ -1,9 +1,13 @@
 'use client'
 
-import { useEffect, useMemo, useRef, useState, memo } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
+import type { CSSProperties } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
+import dynamic from 'next/dynamic'
+// NOTE: Virtualized list (react-window) temporarily removed due to import export mismatch under Next 15 / React 19.
+// If needed, reintroduce with a guarded dynamic import.
 
 const numberFormatter: Intl.NumberFormat = (() => {
   try {
@@ -160,387 +164,18 @@ const COMPANY_TYPES: string[] = [
   'A/S/ASA',
 ]
 
-const BusinessCard = memo(
-  ({
-    business,
-    numberFormatter,
-    selectedEventTypes,
-    eventWeights,
-    isWatched,
-    onToggle,
-    router,
-  }: {
-    business: Business
-    numberFormatter: Intl.NumberFormat
-    selectedEventTypes: string[]
-    eventWeights: Record<string, number>
-    isWatched: boolean
-    onToggle: () => void
-    router: ReturnType<typeof useRouter>
-  }) => {
-    const fmt = (v: number | string | null | undefined) =>
-      v === null || v === undefined ? '—' : numberFormatter.format(Number(v))
-
-    const [events, setEvents] = useState<EventItem[] | null>(null)
-    const [eventsLoading, setEventsLoading] = useState(false)
-    const [eventsError, setEventsError] = useState<unknown>(null)
-    const [showAllEvents, setShowAllEvents] = useState(false)
-    const [expandedTitleKeys, setExpandedTitleKeys] = useState<Set<string>>(new Set())
-    const [expandedDescKeys, setExpandedDescKeys] = useState<Set<string>>(new Set())
-    const cardRef = useRef<HTMLDivElement | null>(null)
-    const [isInView, setIsInView] = useState(false)
-
-    useEffect(() => {
-      const el = cardRef.current
-      if (!el) return
-      const obs = new IntersectionObserver(
-        (entries) => {
-          for (const entry of entries) {
-            if (entry.isIntersecting) {
-              setIsInView(true)
-              obs.unobserve(entry.target)
-            }
-          }
-        },
-        { root: null, rootMargin: '200px', threshold: 0.01 },
-      )
-      obs.observe(el)
-      return () => {
-        try {
-          obs.disconnect()
-        } catch {}
-      }
-    }, [])
-
-    const getEventKey = (ev: EventItem, idx: number) =>
-      String((ev.id ?? `${business.orgNumber}-${idx}`) as string | number)
-    
-    useEffect(() => {
-      if (!business.hasEvents) return
-      if (!isInView) return
-      let cancelled = false
-      const load = async () => {
-        setEventsLoading(true)
-        setEventsError(null)
-        try {
-          const params = new URLSearchParams()
-          params.set('orgNumber', business.orgNumber)
-          params.set('limit', '50')
-          if (selectedEventTypes && selectedEventTypes.length > 0) {
-            params.set('eventTypes', selectedEventTypes.join(','))
-          }
-          const res = await fetch('/api/events?' + params.toString())
-          const json = (await res.json()) as { items?: EventItem[] } | EventItem[]
-          const items = Array.isArray(json) ? json : json.items || []
-          const filtered =
-            selectedEventTypes && selectedEventTypes.length > 0
-              ? (items || []).filter((it) => {
-                  if (!it) return false
-                  const src =
-                    typeof it.source === 'string'
-                      ? it.source
-                      : it?.source == null
-                        ? ''
-                        : String(it.source)
-                  return !!src && selectedEventTypes.includes(src)
-                })
-              : items
-          if (!cancelled) setEvents(filtered)
-        } catch {
-          if (!cancelled) {
-            setEventsError(null)
-            setEvents([])
-          }
-        } finally {
-          if (!cancelled) setEventsLoading(false)
-        }
-      }
-      load()
-      return () => {
-        cancelled = true
-      }
-    }, [business.orgNumber, business.hasEvents, selectedEventTypes, isInView])
-
-    const companyScore = useMemo(() => {
-      // Score is purely derived from this card's loaded events and the current weights.
-      if (!selectedEventTypes || selectedEventTypes.length === 0) return 0
-      if (!Array.isArray(events) || events.length === 0) return 0
-      return events.reduce((acc, ev) => {
-        if (!ev) return acc
-        const src = typeof ev.source === 'string' ? ev.source : ev?.source == null ? '' : String(ev.source)
-        if (!src || !selectedEventTypes.includes(src)) return acc
-        const weight = eventWeights[src] ?? 0
-        if (weight === 0) return acc
-        // Each matching event contributes its weight (ignoring any backend-provided event.score)
-        return acc + weight
-      }, 0)
-    }, [events, eventWeights, selectedEventTypes])
-
-    return (
-      <div 
-        ref={cardRef} 
-        className="py-6 hover:bg-red-600/10 transition-colors duration-200 -mx-4 px-4 cursor-pointer first:border-t first:border-white/10"
-        onClick={(e) => {
-          // If the click originated from an interactive element (e.g., link/button),
-          // don't trigger navigation to the company page.
-          if (e.defaultPrevented) return
-          const el = e.target as Element | null
-          const isInteractive = el?.closest?.(
-            'a, button, input, textarea, select, [role="button"], [role="link"]'
-          )
-          if (isInteractive) return
-          // Only handle primary-click without modifier keys
-          if (e.button !== 0) return
-          if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return
-          router.push(`/company?orgNumber=${encodeURIComponent(business.orgNumber)}`)
-        }}
-      >
-        <div className="flex justify-between items-start mb-4">
-          <div className="flex-1">
-            <h3 className="text-xl font-semibold mb-2">{business.name}</h3>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
-              <div>
-                <div className="mb-2">
-                  <span className="font-medium">Org:</span> {business.orgNumber}
-                </div>
-                {business.registeredAtBrreg && (
-                  <div className="mb-2">
-                    <span className="font-medium">Registreringsdato:</span> {formatDateEU(business.registeredAtBrreg)}
-                  </div>
-                )}
-                <div className="mb-2">
-                  <span className="font-medium">CEO:</span> {business.ceo || '—'}
-                </div>
-                <div className="mb-2">
-                  <span className="font-medium">Employees:</span> {business.employees ?? '—'}
-                </div>
-                <div className="mb-2">
-                  <span className="font-medium">Revenue:</span> {business.revenue == null ? '—' : `${fmt(business.revenue)}${business.fiscalYear ? ` (FY ${business.fiscalYear})` : ''}`}
-                </div>
-              </div>
-              <div>
-                <div className="mb-2">
-                  <span className="font-medium">Address:</span> {[
-                    business.addressStreet,
-                    business.addressPostalCode,
-                    business.addressCity,
-                  ].filter(Boolean).join(', ') || '—'}
-                </div>
-                <div className="mb-2">
-                  <span className="font-medium">Website:</span>{' '}
-                  {business.website ? (
-                    <a
-                      className="text-sky-400 underline hover:text-sky-300"
-                      href={business.website.startsWith('http') ? business.website : `https://${business.website}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {business.website}
-                    </a>
-                  ) : (
-                    '—'
-                  )}
-                </div>
-                <div className="mb-2">
-                  <span className="font-medium">Industry:</span>{' '}
-                  {business.industryCode1 ? `${business.industryCode1} ${business.industryText1 || ''}`.trim() : '—'}
-                </div>
-                <div className="mb-2">
-                  <span className="font-medium">Sector:</span>{' '}
-                  {business.sectorCode ? `${business.sectorCode} ${business.sectorText || ''}`.trim() : '—'}
-                </div>
-              </div>
-            </div>
-          </div>
-          <div className="ml-6 flex flex-col items-end gap-3">
-            {(() => {
-              if (!business.hasEvents) {
-                return <div className="h-px w-12 bg-white/20" aria-hidden="true" />
-              }
-              const hasSelected = selectedEventTypes && selectedEventTypes.length > 0
-              const hasAnyEvents = Array.isArray(events) && events.length > 0
-              const canShowNumber = hasSelected && hasAnyEvents && !eventsLoading
-              if (!canShowNumber) {
-                return <div className="h-px w-12 bg-white/20" aria-hidden="true" />
-              }
-              const color = companyScore > 0 ? 'text-green-400' : companyScore < 0 ? 'text-red-400' : 'text-gray-300'
-              return (
-                <span className={`${color} text-sm font-medium`} title="Weighted score from selected event types">
-                  {numberFormatter.format(companyScore)}
-                </span>
-              )
-            })()}
-            <button
-              type="button"
-              onClick={(e) => {
-                e.preventDefault()
-                e.stopPropagation()
-                onToggle()
-              }}
-              className={`w-24 inline-flex justify-center text-xs px-2 py-1 border border-white/20 text-white/90 bg-black hover:bg-black hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40`}
-              aria-pressed={isWatched}
-              title={isWatched ? 'Remove from watchlist' : 'Add to watchlist'}
-            >
-              {isWatched ? 'Watching' : 'Watch'}
-            </button>
-          </div>
-        </div>
-
-  <div className="mt-4">
-          <h4 className="text-lg font-semibold mb-3">Latest events</h4>
-          {!business.hasEvents ? (
-            <div className="text-sm text-gray-400">No events available</div>
-          ) : (
-            <>
-              {eventsLoading && (
-                <div className="text-sm text-gray-400">Loading events…</div>
-              )}
-              {!eventsLoading && !!eventsError && (
-                <div className="text-sm text-red-400">Failed to load events</div>
-              )}
-              {!eventsLoading && (events?.length ?? 0) === 0 && (
-                <div className="text-sm text-gray-400">No recent events</div>
-              )}
-              <ul className="space-y-2">
-                {(showAllEvents ? events : events?.slice(0, 1))?.map((ev, idx) => (
-                  <li key={(ev.id ?? idx) as React.Key} className="text-sm text-gray-200">
-                    <div className="flex items-start gap-3">
-                      <div className="flex-1">
-                        <div className="font-medium" style={{ whiteSpace: 'pre-wrap' }}>
-                          {(() => {
-                            const fullTitle = ev.title || 'Untitled event'
-                            const key = getEventKey(ev, idx)
-                            const isExpanded = expandedTitleKeys.has(key)
-                            const limit = 80
-                            const needsTruncate = fullTitle.length > limit
-                            if (!needsTruncate) return fullTitle
-                            if (isExpanded) {
-                              return (
-                                <>
-                                  {fullTitle}{' '}
-                                  <button className="text-sky-400 hover:text-sky-300 underline text-xs" style={{ display: 'inline-block' }} onClick={() => setExpandedTitleKeys((prev) => {
-                                    const next = new Set(prev)
-                                    next.delete(key)
-                                    return next
-                                  })}>
-                                    Less
-                                  </button>
-                                </>
-                              )
-                            }
-                            return (
-                              <>
-                                {fullTitle.slice(0, limit)}…{' '}
-                                <button className="text-sky-400 hover:text-sky-300 underline text-xs" style={{ display: 'inline-block' }} onClick={() => setExpandedTitleKeys((prev) => new Set(prev).add(key))}>
-                                  More
-                                </button>
-                              </>
-                            )
-                          })()}
-                        </div>
-                        {ev.description && (
-                          <div className="text-gray-400 mt-1" style={{ whiteSpace: 'pre-wrap' }}>
-                            {(() => {
-                              const full = ev.description as string
-                              const key = getEventKey(ev, idx)
-                              const isExpanded = expandedDescKeys.has(key)
-                              const limit = 160
-                              const needsTruncate = full.length > limit
-                              if (!needsTruncate) return full
-                              if (isExpanded) {
-                                return (
-                                  <>
-                                    {full}{' '}
-                                    <button className="text-sky-400 hover:text-sky-300 underline" style={{ display: 'inline-block' }} onClick={() => {
-                                      setExpandedDescKeys((prev) => {
-                                        const next = new Set(prev)
-                                        next.delete(key)
-                                        return next
-                                      })
-                                    }}>
-                                      Less
-                                    </button>
-                                  </>
-                                )
-                              }
-                              return (
-                                <>
-                                  {full.slice(0, limit)}…{' '}
-                                  <button className="text-sky-400 hover:text-sky-300 underline" style={{ display: 'inline-block' }} onClick={() => {
-                                    setExpandedDescKeys((prev) => new Set(prev).add(key))
-                                  }}>
-                                    More
-                                  </button>
-                                </>
-                              )
-                            })()}
-                          </div>
-                        )}
-                      </div>
-                      <div className="text-right ml-auto">
-                        <div className="text-xs text-gray-400 whitespace-nowrap">
-                          {formatEventDate(ev.date)}
-                        </div>
-                        {ev.source ? (
-                          <div className="mt-1 flex justify-end">
-                            {(() => {
-                              const s = typeof ev.source === 'string' ? ev.source : ev?.source == null ? '' : String(ev.source)
-                              const t = s.replace(/_/g, ' ')
-                              const label = t.charAt(0).toUpperCase() + t.slice(1)
-                              const weight = eventWeights[s] ?? 0
-                              const badgeColor = weight > 0 
-                                ? 'border-green-500 bg-green-500/20 text-green-200 hover:bg-green-500/30'
-                                : weight < 0 
-                                  ? 'border-red-500 bg-red-500/20 text-red-200 hover:bg-red-500/30'
-                                  : 'border-white/30 bg-white/5 text-gray-200 hover:bg-white/10'
-                              return (
-                                <span className={`inline-block px-2 py-1 text-[11px] leading-none border ${badgeColor}`} title={label} aria-label={label}>
-                                  {label}
-                                </span>
-                              )
-                            })()}
-                          </div>
-                        ) : null}
-                      </div>
-                    </div>
-                    {(() => {
-                      const href = typeof ev.url === 'string' ? ev.url : String(ev.url ?? '')
-                      if (!href || !/^https?:\/\//i.test(href)) return null
-                      return (
-                        <a href={href} target="_blank" rel="noreferrer" className="text-xs text-sky-400 hover:text-sky-300 underline">
-                          Source
-                        </a>
-                      )
-                    })()}
-                  </li>
-                ))}
-              </ul>
-              {!!events && events.length > 1 && (
-                <div className="mt-2">
-                  {!showAllEvents ? (
-                    <button className="text-xs text-sky-400 hover:text-sky-300 underline" onClick={() => setShowAllEvents(true)}>
-                      Show {events.length - 1} more
-                    </button>
-                  ) : (
-                    <button className="text-xs text-sky-400 hover:text-sky-300 underline" onClick={() => {
-                      setShowAllEvents(false)
-                      setExpandedTitleKeys(new Set())
-                      setExpandedDescKeys(new Set())
-                    }}>
-                      Show less
-                    </button>
-                  )}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    )
-  },
+interface BusinessCardProps {
+  business: any
+  numberFormatter: Intl.NumberFormat
+  selectedEventTypes: string[]
+  eventWeights: Record<string, number>
+  isWatched: boolean
+  onToggle: () => void
+}
+const BusinessCard = dynamic<BusinessCardProps>(
+  () => import('@/components/search/BusinessCard').then(m => (m as any).BusinessCard || (m as any).default),
+  { ssr: false, loading: () => <div className="py-6 -mx-4 px-4 first:border-t first:border-white/10"><div className="animate-pulse h-6 w-40 bg-white/10 mb-4" /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm"><div className="space-y-2"><div className="h-3 bg-white/10 w-24" /><div className="h-3 bg-white/10 w-36" /><div className="h-3 bg-white/10 w-28" /></div><div className="space-y-2"><div className="h-3 bg-white/10 w-24 ml-auto" /><div className="h-3 bg-white/10 w-20 ml-auto" /></div></div></div> }
 )
-
-BusinessCard.displayName = 'BusinessCard'
 
 export default function SearchPage() {
   const { data: session, status } = useSession()
@@ -938,52 +573,29 @@ export default function SearchPage() {
   // Fetch all financial bounds (revenue and profit) in a single optimized call
   // Only fetch when the component is actually mounted and visible (not just prefetched)
   useEffect(() => {
-    // Only fetch when we're actually on the search page, not when prefetched
     if (pathname !== '/search') return
-    // Don't fetch if the page is just being prefetched by Next.js
     if (typeof document === 'undefined') return
-    
     let cancelled = false
-    
     const fetchAllBounds = async () => {
       try {
-        const [maxRevenueRes, minRevenueRes, maxProfitRes, minProfitRes] = await Promise.all([
-          fetch('/api/businesses/max-revenue').then((r) => r.json()),
-          fetch('/api/businesses/min-revenue').then((r) => r.json()),
-          fetch('/api/businesses/max-profit').then((r) => r.json()),
-          fetch('/api/businesses/min-profit').then((r) => r.json())
-        ])
-        
+        const res = await fetch('/api/businesses/bounds', { next: { revalidate: 900 } })
+        const json = await res.json()
         if (cancelled) return
-        
-        const maxRevenueVal = Number(maxRevenueRes?.maxRevenue)
-        const minRevenueVal = Number(minRevenueRes?.minRevenue)
-        const maxProfitVal = Number(maxProfitRes?.maxProfit)
-        const minProfitVal = Number(minProfitRes?.minProfit)
-        
-        setMaxRevenue(Number.isFinite(maxRevenueVal) ? Math.floor(maxRevenueVal) : 0)
-        setMinRevenue(Number.isFinite(minRevenueVal) ? Math.floor(minRevenueVal) : 0)
-        setMaxProfit(Number.isFinite(maxProfitVal) ? Math.floor(maxProfitVal) : 0)
-        setMinProfit(Number.isFinite(minProfitVal) ? Math.floor(minProfitVal) : 0)
+        const { maxRevenue: mxR, minRevenue: mnR, maxProfit: mxP, minProfit: mnP } = json || {}
+        setMaxRevenue(Number.isFinite(mxR) ? Math.floor(mxR) : 0)
+        setMinRevenue(Number.isFinite(mnR) ? Math.floor(mnR) : 0)
+        setMaxProfit(Number.isFinite(mxP) ? Math.floor(mxP) : 0)
+        setMinProfit(Number.isFinite(mnP) ? Math.floor(mnP) : 0)
         setApiLoaded(true)
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to fetch financial bounds:', error)
-          setMaxRevenue(0)
-          setMinRevenue(0)
-          setMaxProfit(0)
-          setMinProfit(0)
-          setApiLoaded(true) // Mark as loaded even on error to prevent infinite loading
+          setMaxRevenue(0); setMinRevenue(0); setMaxProfit(0); setMinProfit(0); setApiLoaded(true)
         }
       }
     }
-    
-    // Delay the fetch slightly to ensure the page is actually being viewed
-    const timeoutId = setTimeout(fetchAllBounds, 100)
-    return () => { 
-      cancelled = true
-      clearTimeout(timeoutId)
-    }
+    const timeoutId = setTimeout(fetchAllBounds, 80)
+    return () => { cancelled = true; clearTimeout(timeoutId) }
   }, [pathname])
 
   // Back-compat: map revenueRange buckets from URL into min/max if provided and min/max are empty
@@ -1894,7 +1506,6 @@ export default function SearchPage() {
                       eventWeights={eventWeights}
                       isWatched={isWatched}
                       onToggle={() => (isWatched ? removeWatch(org) : addWatch(org))}
-                      router={router}
                     />
                   </div>
                 )
