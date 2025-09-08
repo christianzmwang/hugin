@@ -1,8 +1,8 @@
 'use client'
 
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Loader2 } from 'lucide-react'
 
 type ListSummary = { id: number; name: string; itemCount: number }
@@ -42,7 +42,7 @@ const FIELD_OPTIONS: { key: string; label: string; default?: boolean }[] = [
   { key: 'ceo', label: 'CEO' },
 ]
 
-export default function ExportPage() {
+function ExportPageInner() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const sp = useSearchParams()
@@ -366,6 +366,15 @@ export default function ExportPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+// Wrap in Suspense to satisfy Next.js requirement for hooks like useSearchParams during prerender.
+export default function ExportPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400">Loading…</div>}>
+      <ExportPageInner />
+    </Suspense>
   )
 }
 
