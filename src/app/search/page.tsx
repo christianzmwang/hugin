@@ -208,7 +208,7 @@ export default function SearchPage() {
   const [total, setTotal] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [grandTotal, setGrandTotal] = useState<number | null>(null)
-  const [, setCountPending] = useState<boolean>(false)
+  const [countPending, setCountPending] = useState<boolean>(false)
   const [industryQuery, setIndustryQuery] = useState('')
   const [selectedIndustries, setSelectedIndustries] = useState<SelectedIndustry[]>(() => {
     if (typeof window === 'undefined') return []
@@ -346,6 +346,8 @@ export default function SearchPage() {
     return allowed.has(v) ? v : 'updatedAt'
   })
   const [offset, setOffset] = useState<number>(0)
+  // Standard page size for search results
+  const PAGE_SIZE = 50
   const debouncedIndustry = useDebounce(industryQuery, 100)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const dropdownRef = useRef<HTMLDivElement | null>(null)
@@ -462,6 +464,8 @@ export default function SearchPage() {
     sp.append('source', selectedSource)
   if (sortBy) sp.append('sortBy', sortBy)
     selectedCompanyTypes.forEach((t) => sp.append('orgFormCode', t))
+    // Always request a fixed page size
+    sp.append('limit', String(PAGE_SIZE))
     if (offset) sp.append('offset', String(offset))
     if (offset === 0) sp.append('skipCount', '1')
     if (registrationFrom) sp.append('registeredFrom', registrationFrom)
@@ -573,40 +577,66 @@ export default function SearchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const handleSaveList = async () => {
+  const [isSavingList, setIsSavingList] = useState(false)
+  const [saveProgress, setSaveProgress] = useState<number>(0)
+  const [saveSuccessFlash, setSaveSuccessFlash] = useState<boolean>(false)
+
+  const handleSaveList = () => {
+    if (isSavingList) return
+    const name = (listName || '').trim()
+    if (!name) { alert('Please enter a list name'); return }
+    setIsSavingList(true)
+    setSaveProgress(0)
+    setSaveSuccessFlash(false)
+    // Remove pagination/count params so re-opening starts from first page with proper filters
+    const cleanedQueryNoQ = (() => {
+      const raw = (queryParam || '').replace(/^\?/, '')
+      const sp = new URLSearchParams(raw)
+      sp.delete('offset')
+      sp.delete('skipCount')
+      sp.delete('countOnly')
+      return sp.toString()
+    })()
+    const url = `/api/lists/save/stream?name=${encodeURIComponent(name)}&fq=${encodeURIComponent(cleanedQueryNoQ)}`
     try {
-      const name = (listName || '').trim()
-      if (!name) {
-        alert('Please enter a list name')
-        return
-      }
-      // Remove pagination/count params so re-opening starts from first page with proper filters
-      const cleanedQuery = (() => {
-        const raw = (queryParam || '').replace(/^\?/, '')
-        const sp = new URLSearchParams(raw)
-        sp.delete('offset')
-        sp.delete('skipCount')
-        sp.delete('countOnly')
-        return sp.toString() ? `?${sp.toString()}` : ''
-      })()
-      const orgNumbers = (data || []).map((b) => String(b.orgNumber || '').trim()).filter(Boolean)
-      const res = await fetch('/api/lists', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, filterQuery: cleanedQuery, orgNumbers })
+      const es = new EventSource(url)
+      const cleanup = () => { try { es.close() } catch {} }
+      es.addEventListener('progress', (ev: MessageEvent) => {
+        try {
+          const d = JSON.parse(ev.data)
+          const total = Number(d?.total || 0)
+          const inserted = Number(d?.inserted || 0)
+          if (total > 0) {
+            const pct = Math.min(98, Math.max(5, Math.floor((inserted / total) * 100)))
+            setSaveProgress(pct)
+          } else {
+            setSaveProgress((p) => (p < 90 ? p + 1 : p))
+          }
+        } catch {}
       })
-      const json = await res.json().catch(() => ({} as any))
-      if (res.ok && json?.id) {
-        alert('Saved list successfully')
-        setListName('')
-      } else if (res.status === 503) {
-        alert('Database not configured for saved lists')
-      } else if (json?.error) {
-        alert('Failed to save list: ' + json.error)
-      } else {
+      es.addEventListener('done', (ev: MessageEvent) => {
+        setSaveProgress(100)
+        setTimeout(() => {
+          setIsSavingList(false)
+          setSaveSuccessFlash(true)
+          setListName('')
+          setTimeout(() => setSaveSuccessFlash(false), 1000)
+          setSaveProgress(0)
+        }, 200)
+        cleanup()
+      })
+      es.addEventListener('error', (_ev: MessageEvent) => {
+        cleanup()
+        setIsSavingList(false)
+        setSaveProgress(0)
         alert('Failed to save list')
-      }
+      })
+      es.addEventListener('created', (_ev: MessageEvent) => {
+        // could read id if needed in future
+      })
     } catch {
+      setIsSavingList(false)
+      setSaveProgress(0)
       alert('Failed to save list')
     }
   }
@@ -717,7 +747,24 @@ export default function SearchPage() {
   useEffect(() => {
     setOffset(0)
     setData([])
-  }, [selectedIndustries, selectedAreas, revenueMin, revenueMax, profitMin, profitMax, eventsFilter, selectedEventTypes, eventWeights, sortBy, selectedCompanyTypes, hasWoo, hasShopify])
+  }, [
+    selectedIndustries,
+    selectedAreas,
+    revenueMin,
+    revenueMax,
+    profitMin,
+    profitMax,
+    eventsFilter,
+    selectedEventTypes,
+    eventWeights,
+    sortBy,
+    selectedCompanyTypes,
+    hasWoo,
+    hasShopify,
+    registrationFrom,
+    registrationTo,
+    committedGlobalSearch,
+  ])
 
   // Keep draft inputs in sync with applied values
   useEffect(() => {
@@ -1295,6 +1342,22 @@ export default function SearchPage() {
                   </button>
                 </span>
               ))}
+              {(registrationFrom || registrationTo) && (
+                <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/20 text-white/90">
+                  <span>
+                    Reg: {registrationFrom ? formatDateEU(registrationFrom) : '…'} → {registrationTo ? formatDateEU(registrationTo) : '…'}
+                  </span>
+                  <button
+                    type="button"
+                    title="Clear registration date filter"
+                    aria-label="Clear registration date filter"
+                    className="opacity-0 group-hover:opacity-100 transition-opacity"
+                    onClick={() => { setRegistrationFrom(''); setRegistrationTo('') }}
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
               {hasShopify && (
                 <span className="group inline-flex items-center gap-1 text-xs px-2 py-1 border border-white/10 text-white/90">
                   <span>Shopify</span>
@@ -1423,7 +1486,37 @@ export default function SearchPage() {
       <div className="flex">
         <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6 sticky top-0 self-start overflow-y-auto">
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-4">
+            {(() => {
+              const hasAnyFilter =
+                selectedIndustries.length > 0 ||
+                selectedAreas.length > 0 ||
+                selectedCompanyTypes.length > 0 ||
+                hasRevenueFilter ||
+                hasProfitFilter ||
+                !!eventsFilter ||
+                hasShopify || hasWoo ||
+                selectedEventTypes.length > 0 ||
+                (committedGlobalSearch?.trim().length ?? 0) > 0 ||
+                !!registrationFrom ||
+                !!registrationTo
+              if (countPending) {
+                return (
+                  <div className="mb-3 text-sm text-gray-300">Matched: counting...</div>
+                )
+              }
+              const totalLabel = numberFormatter.format(total)
+              const grandLabel = grandTotal != null ? numberFormatter.format(grandTotal) : null
+              return (
+                <div className="mb-3 text-sm text-gray-300">
+                  {hasAnyFilter
+                    ? `Matched: ${totalLabel}`
+                    : grandLabel
+                      ? `Matched: ${totalLabel} of ${grandLabel}`
+                      : `Matched: ${totalLabel}`}
+                </div>
+              )
+            })()}
+            <div className="flex items-center gap-2 mb-2">
               <input
                 type="text"
                 value={listName}
@@ -1434,12 +1527,29 @@ export default function SearchPage() {
               <button
                 type="button"
                 onClick={handleSaveList}
-                className="text-xs px-2 py-1 border border-white/10 hover:border-red-600/60 hover:bg-red-600/10"
+                disabled={isSavingList}
+                className={`text-xs px-2 py-1 border ${
+                  isSavingList
+                    ? 'border-white/10 text-gray-400 opacity-70'
+                    : saveSuccessFlash
+                      ? 'border-green-500 text-green-400'
+                      : 'border-white/10 hover:border-red-600/60 hover:bg-red-600/10'
+                }`}
                 title="Save current results as a named list"
               >
-                Save List
+                {isSavingList ? 'Saving…' : saveSuccessFlash ? 'Saved ✓' : 'Save List'}
               </button>
             </div>
+            {isSavingList && (
+              <div className="mb-4">
+                <div className="w-full h-1 bg-white/10 overflow-hidden">
+                  <div
+                    className="h-full bg-red-500 transition-[width] duration-150 ease-linear"
+                    style={{ width: `${saveProgress}%` }}
+                  />
+                </div>
+              </div>
+            )}
             <div className="sticky top-0 z-20 bg-black pb-2" ref={eventsRef}>
               <label className="block text-sm font-medium mb-2">Events</label>
               <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
@@ -1778,7 +1888,7 @@ export default function SearchPage() {
               <div className="mt-8">
         {/* Hide Load more if list filter active and we've already loaded all list companies present in current batch */}
                 {data.length < totalForPaging && (
-                  <button onClick={() => setOffset((prev) => prev + 100)} className="w-full px-4 py-2 border border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 text-sm transition-colors duration-200">Load more</button>
+                  <button onClick={() => setOffset((prev) => prev + PAGE_SIZE)} className="w-full px-4 py-2 border border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 text-sm transition-colors duration-200">Load more</button>
                 )}
               </div>
             )

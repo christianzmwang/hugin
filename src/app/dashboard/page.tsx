@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWatchlist } from '@/app/watchlist/useWatchlist'
 import { apiCache } from '@/lib/api-cache'
  
@@ -133,18 +133,7 @@ export default function DashboardPage() {
 
   // watchlist handled by useWatchlist
 
-  const weeks = useMemo(() => {
-    return Array.from({ length: 12 }, (_, i) => `W${i + 1}`)
-  }, [])
-
-  const mockStats = useMemo(() => {
-    // Static mock data to avoid React hook issues
-    const highIntent = [80, 85, 78, 82, 89, 91, 87, 93, 88, 95, 92, 97]
-    const newHighIntent = [8, 12, 6, 9, 15, 11, 7, 13, 10, 14, 9, 16]
-    const closeRate = [0.32, 0.28, 0.35, 0.31, 0.29, 0.33, 0.36, 0.30, 0.34, 0.32, 0.37, 0.35]
-
-    return { highIntent, newHighIntent, closeRate }
-  }, [])
+  // Stats section intentionally simplified; graphs removed pending setup
 
   if (status === 'loading') {
     return (
@@ -164,131 +153,31 @@ export default function DashboardPage() {
     return null
   }
 
-  function Sparkline({
-    data,
-    color,
-    xLabels,
-    yFormatter,
-    height = 100,
-  }: {
-    data: number[]
-    color: string
-    xLabels?: string[]
-    yFormatter?: (v: number) => string
-    height?: number
-  }) {
-    const width = 100
-    const margin = { top: 8, right: -30, bottom: 10, left: -35 }
-    const innerWidth = width - margin.left - margin.right
-    const innerHeight = height - margin.top - margin.bottom
-    const tickFontSize = 6
-    const max = Math.max(...data)
-    const min = Math.min(...data)
-    const xStep = innerWidth / Math.max(1, data.length - 1)
-    const toY = (v: number) => {
-      if (max === min) return margin.top + innerHeight / 2
-      const t = (v - min) / (max - min)
-      return margin.top + (1 - t) * innerHeight
-    }
-    const toX = (i: number) => margin.left + i * xStep
-    const path = data.map((v, i) => `${i === 0 ? 'M' : 'L'} ${toX(i)} ${toY(v)}`).join(' ')
-
-    const yTicks = [min, (min + max) / 2, max]
-    const xTickIdx = [0, Math.floor((data.length - 1) / 2), data.length - 1]
-
-    const formatY = (v: number) => (yFormatter ? yFormatter(v) : `${Math.round(v)}`)
-
-    return (
-      <svg width="100%" height="100%" viewBox={`0 0 ${width} ${height}`} className="overflow-visible">
-        <line x1={margin.left} y1={margin.top + innerHeight} x2={width - margin.right} y2={margin.top + innerHeight} stroke="#374151" strokeWidth={1} />
-        <line x1={margin.left} y1={margin.top} x2={margin.left} y2={margin.top + innerHeight} stroke="#374151" strokeWidth={1} />
-
-        {yTicks.map((t, i) => (
-          <g key={`y-${i}`}>
-            <line x1={margin.left - 4} y1={toY(t)} x2={margin.left} y2={toY(t)} stroke="#4b5563" strokeWidth={1} />
-            <text x={margin.left - 6} y={toY(t)} textAnchor="end" dominantBaseline="middle" className="fill-gray-400" style={{ fontSize: tickFontSize }}>{formatY(t)}</text>
-          </g>
-        ))}
-
-        {xLabels && xLabels.length === data.length && xTickIdx.map((idx, i) => (
-          <g key={`x-${i}`}>
-            <line x1={toX(idx)} y1={margin.top + innerHeight} x2={toX(idx)} y2={margin.top + innerHeight + 4} stroke="#4b5563" strokeWidth={1} />
-            <text x={toX(idx)} y={margin.top + innerHeight + 10} textAnchor="middle" className="fill-gray-400" style={{ fontSize: tickFontSize }}>{xLabels[idx]}</text>
-          </g>
-        ))}
-
-        {/* axis titles removed per design */}
-
-        <path d={path} fill="none" stroke={color} strokeWidth={2} />
-      </svg>
-    )
-  }
-
-  const delta = (arr: number[]) => (arr.length >= 2 ? arr[arr.length - 1] - arr[arr.length - 2] : 0)
-  const formatPct = (v: number) => `${Math.round(v * 100)}%`
+  // Graph helpers removed
 
   return (
-      <div className="p-4 md:p-6 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
-        <div className="md:col-span-2 flex flex-col">
+      <div
+        className="p-4 md:p-6 flex flex-col overflow-hidden"
+        style={{
+          // Approx: reserve ~44px top bar + ~48px bottom bar (dynamic), adjust if chrome changes
+          height: 'calc(100dvh - 92px)'
+        }}
+      >
+        {/* Upper half (exact 50%) */}
+  <div className="basis-1/2 grow-0 shrink-0 min-h-0 flex flex-col overflow-hidden relative">
           <h2 className="text-lg font-semibold mb-2">Stats</h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            <div className="p-3 h-full flex flex-col overflow-hidden">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <div className="text-sm text-gray-400">High Intent Companies</div>
-                  <div className="text-xl font-semibold">{mockStats.highIntent.at(-1)}</div>
-                </div>
-                <div className={
-                  `text-xs ${delta(mockStats.highIntent) >= 0 ? 'text-green-400' : 'text-red-400'}`
-                }>
-                  {delta(mockStats.highIntent) >= 0 ? '+' : ''}{delta(mockStats.highIntent)} WoW
-                </div>
-              </div>
-              <div className="mt-2 min-h-0 h-[10rem] md:h-[13rem] overflow-hidden w-full">
-                <Sparkline data={mockStats.highIntent} color="#22c55e" xLabels={weeks} />
-              </div>
-            </div>
-
-            <div className="p-3 h-full flex flex-col overflow-hidden">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <div className="text-sm text-gray-400">Close Rate</div>
-                  <div className="text-xl font-semibold">{formatPct(mockStats.closeRate.at(-1) || 0)}</div>
-                </div>
-                <div className={
-                  `text-xs ${delta(mockStats.closeRate.map(v => v * 100)) >= 0 ? 'text-green-400' : 'text-red-400'}`
-                }>
-                  {delta(mockStats.closeRate.map(v => v * 100)) >= 0 ? '+' : ''}
-                  {Math.round(delta(mockStats.closeRate))}% WoW
-                </div>
-              </div>
-              <div className="mt-2 min-h-0 h-[10rem] md:h-[13rem] overflow-hidden w-full">
-                <Sparkline data={mockStats.closeRate.map(v => v * 100)} color="#60a5fa" xLabels={weeks} yFormatter={(v) => `${Math.round(v)}%`} />
-              </div>
-            </div>
-
-            <div className="p-3 h-full flex flex-col overflow-hidden">
-              <div className="flex items-baseline justify-between">
-                <div>
-                  <div className="text-sm text-gray-400">New High Intent</div>
-                  <div className="text-xl font-semibold">{mockStats.newHighIntent.at(-1)}</div>
-                </div>
-                <div className={
-                  `text-xs ${delta(mockStats.newHighIntent) >= 0 ? 'text-green-400' : 'text-red-400'}`
-                }>
-                  {delta(mockStats.newHighIntent) >= 0 ? '+' : ''}{delta(mockStats.newHighIntent)} WoW
-                </div>
-              </div>
-              <div className="mt-2 min-h-0 h-[10rem] md:h-[13rem] overflow-hidden w-full">
-                <Sparkline data={mockStats.newHighIntent} color="#f59e0b" xLabels={weeks} />
-              </div>
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-5xl md:text-7xl font-extrabold tracking-tight text-white/80 select-none">
+              Needs Setup
             </div>
           </div>
         </div>
 
-        <div className="min-h-0 flex flex-col">
-          <h2 className="text-lg font-semibold mb-2">News</h2>
-          <div className="mt-2 max-h-[34vh] overflow-y-auto overflow-x-hidden pr-1">
+        {/* Lower half (exact 50%) */}
+  <div className="basis-1/2 grow-0 shrink-0 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 relative -translate-y-2 md:-translate-y-3">
+          <div className="flex flex-col min-h-0 h-full">
+            <h2 className="text-lg font-semibold mb-2">News</h2>
+      <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden pr-1 rounded border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
 
               {newsLoading && (
                 <div className="text-sm text-gray-400">Loading latest company events…</div>
@@ -330,11 +219,10 @@ export default function DashboardPage() {
                 </ul>
               )}
           </div>
-        </div>
-
-        <div className="min-h-0 flex flex-col">
-          <h2 className="text-lg font-semibold mb-2">Watchlist</h2>
-          <div className="mt-2 max-h-[34vh] overflow-y-auto overflow-x-hidden pr-1">
+          </div>
+          <div className="flex flex-col min-h-0 h-full">
+            <h2 className="text-lg font-semibold mb-2">Watchlist</h2>
+            <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden pr-1 rounded border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
             {watchlistLoading && (
               <div className="text-sm text-gray-400">Loading watchlist…</div>
             )}
@@ -380,6 +268,7 @@ export default function DashboardPage() {
                 ))}
               </ul>
             )}
+            </div>
           </div>
         </div>
       </div>

@@ -29,10 +29,10 @@ export async function GET(req: Request) {
     0,
     parseInt(searchParams.get('offset') || '0', 10) || 0,
   )
-  // Optional page size (default 100, max 100)
+  // Optional page size (default 50, max 100)
   const limit = Math.max(
     1,
-    Math.min(100, parseInt(searchParams.get('limit') || '100', 10) || 100),
+    Math.min(100, parseInt(searchParams.get('limit') || '50', 10) || 50),
   )
   const skipCount = ['1', 'true'].includes(
     (searchParams.get('skipCount') || '').toLowerCase(),
@@ -606,6 +606,153 @@ export async function GET(req: Request) {
   const weightsIdx = hasWeights ? params.length + 1 : null
   if (weightsIdx) params.push(JSON.stringify(eventWeights))
 
+  // C) Fast-path via business_filter_matrix for revenue-range queries without profit filters
+  // Conditions: revenue filter present, no profit filter, not sorting by score
+  const canUseBfmFastPath = (revenueClause && !profitClause) && !(['scoreAsc','scoreDesc'].includes(sortByParam))
+  if (canUseBfmFastPath) {
+    try {
+      const bfmWhereParts: string[] = []
+      // Base eligibility + existing where that uses Business columns (industry/area/orgForm/search/orgNumber/registration)
+      bfmWhereParts.push(`(b."registeredInForetaksregisteret" = true OR b."orgFormCode" IN ('AS','ASA','ENK','ANS','DA','NUF','SA','SAS','A/S','A/S/ASA'))`)
+      if (industryClause.trim()) bfmWhereParts.push(industryClause.replace(/^AND\s+/, ''))
+      if (areaClause.trim()) bfmWhereParts.push(areaClause.replace(/^AND\s+/, ''))
+      if (orgFormIdx) bfmWhereParts.push(`b."orgFormCode" = ANY($${orgFormIdx}::text[])`)
+      if (searchClause.trim()) bfmWhereParts.push(searchClause.replace(/^AND\s+/, ''))
+      if (orgNumberClause.trim()) bfmWhereParts.push(orgNumberClause.replace(/^AND\s+/, ''))
+      if (registrationClause.trim()) bfmWhereParts.push(registrationClause.replace(/^AND\s+/, ''))
+      // Revenue bounds from matrix alias m
+      if (revenueMinIdx) bfmWhereParts.push(`m.revenue >= $${revenueMinIdx}`)
+      if (revenueMaxIdx) bfmWhereParts.push(`m.revenue <= $${revenueMaxIdx}`)
+      // Events filter: use matrix has_events when no specific types
+      if (withoutEvents) {
+        bfmWhereParts.push('m.has_events = false')
+      } else if (withEvents && !eventTypesIdx) {
+        bfmWhereParts.push('m.has_events = true')
+      } else if (eventTypesIdx) {
+        bfmWhereParts.push(`EXISTS (SELECT 1 FROM public.events_public e WHERE e.org_number = b."orgNumber" AND e.event_type = ANY($${eventTypesIdx}::text[]))`)
+      }
+
+      const orderSqlBfm = (() => {
+        switch (sortByParam) {
+          case 'name':
+            return 'ORDER BY b.name ASC'
+          case 'revenue':
+            return 'ORDER BY m.revenue DESC NULLS LAST'
+          case 'revenueAsc':
+            return 'ORDER BY m.revenue ASC NULLS LAST'
+          case 'employees':
+            return 'ORDER BY b.employees DESC NULLS LAST'
+          case 'employeesAsc':
+            return 'ORDER BY b.employees ASC NULLS LAST'
+          case 'registreringsdato':
+            return 'ORDER BY b."registeredAtBrreg" DESC NULLS LAST'
+          default:
+            return 'ORDER BY b."updatedAt" DESC'
+        }
+      })()
+
+      const itemsSqlBfm = `
+        SELECT
+          b."orgNumber",
+          b.name,
+          b.website,
+          b."summary" as "summary",
+          b.employees,
+          b."addressStreet",
+          b."addressPostalCode",
+          b."addressCity",
+          ${
+            isCsvSource
+              ? 'NULL'
+              : `(SELECT c."fullName" FROM "CEO" c WHERE c."businessId" = b.id ORDER BY c."fromDate" DESC NULLS LAST LIMIT 1)`
+          } as "ceo",
+          b."industryCode1",
+          b."industryText1",
+          b."industryCode2",
+          b."industryText2",
+          b."industryCode3",
+          b."industryText3",
+          b."vatRegistered",
+          b."vatRegisteredDate",
+          b."sectorCode",
+          b."sectorText",
+          b."orgFormCode",
+          b."orgFormText",
+          b."registeredInForetaksregisteret",
+          b."isBankrupt",
+          b."isUnderLiquidation",
+          b."isUnderCompulsory",
+          b."createdAt",
+          b."updatedAt",
+          b."registeredAtBrreg",
+          NULL::int as "fiscalYear",
+          m.revenue as revenue,
+          NULL::bigint as profit,
+          NULL::bigint as "totalAssets",
+          NULL::bigint as equity,
+          NULL::int as "employeesAvg",
+          NULL::bigint as "operatingIncome",
+          NULL::bigint as "operatingResult",
+          NULL::bigint as "profitBeforeTax",
+          NULL::text as valuta,
+          NULL::timestamptz as "fraDato",
+          NULL::timestamptz as "tilDato",
+          NULL::bigint as "sumDriftsinntekter",
+          NULL::bigint as driftsresultat,
+          NULL::bigint as aarsresultat,
+          NULL::bigint as "sumEiendeler",
+          NULL::bigint as "sumEgenkapital",
+          NULL::bigint as "sumGjeld",
+          NULL::int as "eventScore",
+          NULL::int as "eventWeightedScore",
+          m.has_events as "hasEvents"
+        FROM "Business" b
+        JOIN public.business_filter_matrix m ON m.org_number = b."orgNumber"
+        WHERE ${bfmWhereParts.join(' AND ')}
+        ${orderSqlBfm}
+        LIMIT ${limit} OFFSET ${offset}
+      `
+
+      const countSqlBfm = `
+        SELECT COUNT(*)::int as total
+        FROM "Business" b
+        JOIN public.business_filter_matrix m ON m.org_number = b."orgNumber"
+        WHERE ${bfmWhereParts.join(' AND ')}
+      `
+
+      const startItems = Date.now()
+      const itemsResBfm = await query(itemsSqlBfm, params)
+      console.log(`[businesses] BFM items query took ${Date.now() - startItems}ms -> ${itemsResBfm.rows.length} rows`)
+
+      let totalBfm = 0
+      if (!skipCount) {
+        const startCount = Date.now()
+        const countResBfm = await query<{ total: number }>(countSqlBfm, params)
+        totalBfm = countResBfm.rows?.[0]?.total ?? 0
+        console.log(`[businesses] BFM count query took ${Date.now() - startCount}ms`)
+      }
+
+      // Grand total (unfiltered) remains the same path
+      let grandTotalBfm = 0
+      try {
+        const gtCacheKey = { metric: 'grandTotalBusinesses' }
+        const cachedGT = apiCache.get<{ total: number }>(gtCacheKey)
+        if (cachedGT) {
+          grandTotalBfm = cachedGT.total
+        } else {
+          const gtRes = await query<{ total: number }>('SELECT COUNT(*)::int as total FROM "Business"')
+          grandTotalBfm = gtRes.rows?.[0]?.total ?? 0
+          apiCache.set(gtCacheKey, { total: grandTotalBfm }, 2 * 60 * 1000)
+        }
+      } catch {}
+
+      return NextResponse.json({ items: itemsResBfm.rows, total: totalBfm, grandTotal: grandTotalBfm })
+    } catch (e) {
+      console.error('[businesses] BFM fast-path failed, falling back', e)
+      // fall through to regular path
+    }
+  }
+
   // Always join the latest financials so revenue is available for display and sorting
   const itemsSql = `
     SELECT
@@ -873,6 +1020,14 @@ export async function GET(req: Request) {
   let total = 0
   let grandTotal = 0
 
+  // D) Prefer materialized view for latest financials if available; fallback to LATERAL join
+  const itemsSqlMV = itemsSql
+    .replace(/LEFT JOIN LATERAL \([\s\S]*?\) fLatest ON TRUE/, 'LEFT JOIN public.business_financial_latest bfl ON bfl."businessId" = b.id')
+    .replace(/fLatest\./g, 'bfl.')
+  const countSqlMV = countSql
+    .replace(/LEFT JOIN LATERAL \([\s\S]*?\) fLatest ON TRUE/, 'LEFT JOIN public.business_financial_latest bfl ON bfl."businessId" = b.id')
+    .replace(/fLatest\./g, 'bfl.')
+
   if (countOnly) {
     const start = Date.now()
     try {
@@ -893,14 +1048,27 @@ export async function GET(req: Request) {
           total = fast.rows?.[0]?.total ?? 0
           console.log(`[businesses] Fast count function used in ${Date.now() - start}ms`)
         } catch {
-          const countRes = await query<{ total: number }>(countSql, params)
-          console.log(`[businesses] Count query (fallback) took ${Date.now() - start}ms`)
-          total = countRes.rows?.[0]?.total ?? 0
+          // Try MV-based count first
+          try {
+            const countResMV = await query<{ total: number }>(countSqlMV, params)
+            total = countResMV.rows?.[0]?.total ?? 0
+            console.log(`[businesses] Count query (MV) took ${Date.now() - start}ms`)
+          } catch {
+            const countRes = await query<{ total: number }>(countSql, params)
+            console.log(`[businesses] Count query (fallback) took ${Date.now() - start}ms`)
+            total = countRes.rows?.[0]?.total ?? 0
+          }
         }
       } else {
-        const countRes = await query<{ total: number }>(countSql, params)
-        console.log(`[businesses] Count query took ${Date.now() - start}ms`)
-        total = countRes.rows?.[0]?.total ?? 0
+        try {
+          const countResMV = await query<{ total: number }>(countSqlMV, params)
+          total = countResMV.rows?.[0]?.total ?? 0
+          console.log(`[businesses] Count query (MV) took ${Date.now() - start}ms`)
+        } catch {
+          const countRes = await query<{ total: number }>(countSql, params)
+          console.log(`[businesses] Count query took ${Date.now() - start}ms`)
+          total = countRes.rows?.[0]?.total ?? 0
+        }
       }
     } catch (error) {
       console.error(`[businesses] Count query failed:`, error)
@@ -929,15 +1097,23 @@ export async function GET(req: Request) {
     const start = Date.now()
 
     try {
-      itemsRes = await query(itemsSql, params)
+      itemsRes = await query(itemsSqlMV, params)
       console.log(
-        `[businesses] Items query took ${Date.now() - start}ms (revenue: ${!!revenueClause}) - ${itemsRes.rows.length} rows returned for sortBy=${validSortBy}, source=${source}`,
+        `[businesses] Items query (MV) took ${Date.now() - start}ms (revenue: ${!!revenueClause}) - ${itemsRes.rows.length} rows returned for sortBy=${validSortBy}, source=${source}`,
       )
-    } catch (error) {
-      console.error(`[businesses] Items query failed:`, error)
-      console.error(`[businesses] Query was:`, itemsSql)
-      console.error(`[businesses] Params:`, params)
-      throw error
+    } catch (errorMV) {
+      console.warn(`[businesses] MV not available or failed, falling back to LATERAL`) 
+      try {
+        itemsRes = await query(itemsSql, params)
+        console.log(
+          `[businesses] Items query took ${Date.now() - start}ms (revenue: ${!!revenueClause}) - ${itemsRes.rows.length} rows returned for sortBy=${validSortBy}, source=${source}`,
+        )
+      } catch (error) {
+        console.error(`[businesses] Items query failed:`, error)
+        console.error(`[businesses] Query was:`, itemsSql)
+        console.error(`[businesses] Params:`, params)
+        throw error
+      }
     }
     if (!skipCount) {
       const countStart = Date.now()
@@ -959,14 +1135,26 @@ export async function GET(req: Request) {
             total = fast.rows?.[0]?.total ?? 0
             console.log(`[businesses] Fast count function used in ${Date.now() - countStart}ms`)
           } catch {
-            const countRes = await query<{ total: number }>(countSql, params)
-            console.log(`[businesses] Count query (fallback) took ${Date.now() - countStart}ms`)
-            total = countRes.rows?.[0]?.total ?? 0
+            try {
+              const countResMV = await query<{ total: number }>(countSqlMV, params)
+              total = countResMV.rows?.[0]?.total ?? 0
+              console.log(`[businesses] Count query (MV) took ${Date.now() - countStart}ms`)
+            } catch {
+              const countRes = await query<{ total: number }>(countSql, params)
+              console.log(`[businesses] Count query (fallback) took ${Date.now() - countStart}ms`)
+              total = countRes.rows?.[0]?.total ?? 0
+            }
           }
         } else {
-          const countRes = await query<{ total: number }>(countSql, params)
-          console.log(`[businesses] Count query took ${Date.now() - countStart}ms`)
-          total = countRes.rows?.[0]?.total ?? 0
+          try {
+            const countResMV = await query<{ total: number }>(countSqlMV, params)
+            total = countResMV.rows?.[0]?.total ?? 0
+            console.log(`[businesses] Count query (MV) took ${Date.now() - countStart}ms`)
+          } catch {
+            const countRes = await query<{ total: number }>(countSql, params)
+            console.log(`[businesses] Count query took ${Date.now() - countStart}ms`)
+            total = countRes.rows?.[0]?.total ?? 0
+          }
         }
       } catch (error) {
         console.error(`[businesses] Count query failed:`, error)

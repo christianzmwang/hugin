@@ -22,6 +22,7 @@ export default function ListDetailPage() {
   const [loading, setLoading] = useState(true)
   const [deleting, setDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [visibleCount, setVisibleCount] = useState<number>(50)
 
   useEffect(() => {
     if (status === 'loading') return
@@ -48,6 +49,11 @@ export default function ListDetailPage() {
     load()
     return () => { cancelled = true }
   }, [params.id])
+
+  // Reset visible items when a new list is loaded
+  useEffect(() => {
+    setVisibleCount(50)
+  }, [item?.id])
 
   // (Search link removed) previously used normalizeQuery helper not needed anymore
 
@@ -96,29 +102,41 @@ export default function ListDetailPage() {
             {item.items.length === 0 ? (
               <div className="text-gray-400">No companies saved in this list.</div>
             ) : (
-              <div className="divide-y divide-white/10 border border-white/10">
-                {item.items.map((c) => (
-                  <div
-                    key={c.orgNumber}
-                    className="px-4 py-3 hover:bg-red-600/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-red-600/40"
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(c.orgNumber)}`)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault()
-                        router.push(`/company?orgNumber=${encodeURIComponent(c.orgNumber)}`)
-                      }
-                    }}
-                    title={`View ${c.name || c.orgNumber}`}
-                  >
-                    <div>
-                      <div className="font-medium">{c.name || c.orgNumber}</div>
-                      {c.name && <div className="text-xs text-gray-400">{c.orgNumber}</div>}
+              <>
+                <div className="divide-y divide-white/10 border border-white/10">
+                  {item.items.slice(0, Math.max(0, visibleCount)).map((c) => (
+                    <div
+                      key={c.orgNumber}
+                      className="px-4 py-3 hover:bg-red-600/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-red-600/40"
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(c.orgNumber)}`)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault()
+                          router.push(`/company?orgNumber=${encodeURIComponent(c.orgNumber)}`)
+                        }
+                      }}
+                      title={`View ${c.name || c.orgNumber}`}
+                    >
+                      <div>
+                        <div className="font-medium">{c.name || c.orgNumber}</div>
+                        {c.name && <div className="text-xs text-gray-400">{c.orgNumber}</div>}
+                      </div>
                     </div>
+                  ))}
+                </div>
+                {visibleCount < item.items.length && (
+                  <div className="mt-6">
+                    <button
+                      onClick={() => setVisibleCount((prev) => Math.min(prev + 50, item.items.length))}
+                      className="w-full px-4 py-2 border border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 text-sm transition-colors duration-200"
+                    >
+                      Load more
+                    </button>
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </div>
         )}
