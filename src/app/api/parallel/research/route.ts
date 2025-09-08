@@ -218,7 +218,7 @@ export async function GET(req: Request) {
   const resultTimeoutMs = waitSec * 1000
     const resultCtl = new AbortController()
     const resultTimer = setTimeout(() => resultCtl.abort('timeout'), resultTimeoutMs)
-    let resultFetched = false
+  // resultFetched removed (was unused)
     try {
       const res = await fetch(`${PARALLEL_BASE}/v1/tasks/runs/${encodeURIComponent(runId)}/result`, {
         headers: { 'x-api-key': process.env.PARALLEL_API_KEY },
@@ -256,7 +256,6 @@ export async function GET(req: Request) {
           }
         }
         const result = normalize(raw)
-        resultFetched = true
         try { console.log('[parallel] result ready', { runId }) } catch {}
         return NextResponse.json({ runId, status: 'completed', result })
       }

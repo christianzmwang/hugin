@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { CSSProperties, ComponentType } from 'react'
+import type { ComponentType } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -30,36 +30,7 @@ function useDebounce<T>(value: T, delay = 100) {
   return debounced
 }
 
-function formatEventDate(dateValue: unknown): string {
-  if (dateValue == null) return ''
-
-  try {
-    if (typeof dateValue === 'string') {
-      const trimmed = dateValue.trim()
-      if (/^\d{4}$/.test(trimmed)) return trimmed
-      const date = new Date(trimmed)
-      return isNaN(date.getTime()) ? trimmed : date.toLocaleDateString()
-    }
-
-    if (typeof dateValue === 'number') {
-      const yearCandidate = String(dateValue)
-      if (/^\d{4}$/.test(yearCandidate)) return yearCandidate
-      const date = new Date(dateValue)
-      return isNaN(date.getTime()) ? yearCandidate : date.toLocaleDateString()
-    }
-
-    if (dateValue instanceof Date) {
-      return isNaN(dateValue.getTime()) ? '' : dateValue.toLocaleDateString()
-    }
-
-    const asString = String(dateValue)
-    if (/^\d{4}$/.test(asString)) return asString
-    const date = new Date(asString)
-    return isNaN(date.getTime()) ? asString : date.toLocaleDateString()
-  } catch {
-    return String(dateValue)
-  }
-}
+// formatEventDate removed (unused)
 
 function formatDateEU(dateValue: unknown): string {
   if (dateValue == null) return ''
@@ -131,15 +102,7 @@ type RawBusinessData = Partial<Business & {
   org_number?: string
 }>
 
-type EventItem = {
-  id?: string | number
-  title?: string | null
-  description?: string | null
-  date?: string | null
-  url?: string | null
-  source?: string | null
-  score?: number | null
-}
+// EventItem type removed (unused)
 
 type IndustryOpt = { code: string | null; text: string | null; count: number }
 
@@ -601,7 +564,7 @@ export default function SearchPage() {
     try {
       const es = new EventSource(url)
       const cleanup = () => { try { es.close() } catch {} }
-      es.addEventListener('progress', (ev: MessageEvent) => {
+  es.addEventListener('progress', (ev: MessageEvent) => {
         try {
           const d = JSON.parse(ev.data)
           const total = Number(d?.total || 0)
@@ -614,7 +577,7 @@ export default function SearchPage() {
           }
         } catch {}
       })
-      es.addEventListener('done', (ev: MessageEvent) => {
+  es.addEventListener('done', () => {
         setSaveProgress(100)
         setTimeout(() => {
           setIsSavingList(false)
@@ -625,13 +588,13 @@ export default function SearchPage() {
         }, 200)
         cleanup()
       })
-      es.addEventListener('error', (_ev: MessageEvent) => {
+  es.addEventListener('error', () => {
         cleanup()
         setIsSavingList(false)
         setSaveProgress(0)
         alert('Failed to save list')
       })
-      es.addEventListener('created', (_ev: MessageEvent) => {
+  es.addEventListener('created', () => {
         // could read id if needed in future
       })
     } catch {

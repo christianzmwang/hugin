@@ -74,7 +74,7 @@ export async function GET() {
       itemCount: r.item_count,
     }))
     return NextResponse.json({ items }, { headers: { 'Cache-Control': 's-maxage=30, stale-while-revalidate=120' } })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ items: [] })
   }
 }
@@ -275,7 +275,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json({ ok: true, id: listId })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ ok: false }, { status: 500 })
   }
 }

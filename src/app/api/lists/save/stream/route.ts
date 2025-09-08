@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { checkApiAccess, getAuthorizedSession } from '@/lib/access-control'
-import { dbConfigured, query } from '@/lib/db'
+import { dbConfigured, query, type SqlParam } from '@/lib/db'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -44,7 +44,8 @@ export async function GET(req: Request) {
 
         // Build query conditions (similar to POST /api/lists)
         const sp = new URLSearchParams(fqRaw)
-        const params: Array<string | number | boolean | string[]> = []
+  // Collect SQL parameters (supports text, numbers, booleans, arrays) using shared SqlParam type
+  const params: SqlParam[] = []
         let joins = ''
         let where = 'WHERE (b."registeredInForetaksregisteret" = true OR b."orgFormCode" IN (\'AS\',\'ASA\',\'ENK\',\'ANS\',\'DA\',\'NUF\',\'SA\',\'SAS\',\'A/S\',\'A/S/ASA\'))'
 
@@ -173,7 +174,7 @@ export async function GET(req: Request) {
 
         // Fetch candidate org numbers
         const selectSql = `SELECT b."orgNumber" AS org_number FROM "Business" b ${joins} ${where}`
-        const rows = await query<{ org_number: string }>(selectSql, params as any[])
+  const rows = await query<{ org_number: string }>(selectSql, params)
         const orgs = rows.rows.map(r => String(r.org_number || '').trim()).filter(Boolean)
         const total = orgs.length
         controller.enqueue(ssePayload('progress', { total, inserted: 0 }))
@@ -190,8 +191,8 @@ export async function GET(req: Request) {
         for (let i = 0; i < orgs.length; i += batchSize) {
           const slice = orgs.slice(i, i + batchSize)
           const values = slice.map((_, idx) => `($1, $${idx + 2})`).join(',')
-          const paramsIns = [listId, ...slice]
-          await query(`INSERT INTO saved_list_items (list_id, org_number) VALUES ${values} ON CONFLICT DO NOTHING`, paramsIns as any[])
+          const paramsIns: SqlParam[] = [listId, ...slice]
+          await query(`INSERT INTO saved_list_items (list_id, org_number) VALUES ${values} ON CONFLICT DO NOTHING`, paramsIns)
           inserted += slice.length
           controller.enqueue(ssePayload('progress', { total, inserted }))
         }

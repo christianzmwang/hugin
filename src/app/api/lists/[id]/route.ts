@@ -32,7 +32,9 @@ async function ensureTables() {
   }
 }
 
-export async function GET(_req: Request, ctx: { params: { id: string } }) {
+// Note: leave second arg untyped to avoid Next.js analyzer type rejection.
+export async function GET(_req: Request, ctx: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { params } = (ctx || {}) as { params: { id: string } }
   const accessError = await checkApiAccess()
   if (accessError) return accessError
 
@@ -43,7 +45,7 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
   const session = await getAuthorizedSession()
   if (!session?.user?.id) return NextResponse.json({ item: null }, { status: 401 })
   const userId = session.user.id
-  const id = Number(ctx.params.id)
+  const id = Number(params.id)
   if (!Number.isFinite(id)) return NextResponse.json({ item: null }, { status: 400 })
 
   try {
@@ -72,12 +74,13 @@ export async function GET(_req: Request, ctx: { params: { id: string } }) {
         items: itemsRes.rows.map(r => ({ orgNumber: r.org_number, name: r.name || null })),
       },
     })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ item: null }, { status: 500 })
   }
 }
 
-export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
+export async function DELETE(_req: Request, ctx: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { params } = (ctx || {}) as { params: { id: string } }
   const accessError = await checkApiAccess()
   if (accessError) return accessError
 
@@ -88,14 +91,12 @@ export async function DELETE(_req: Request, ctx: { params: { id: string } }) {
   const session = await getAuthorizedSession()
   if (!session?.user?.id) return NextResponse.json({ ok: false }, { status: 401 })
   const userId = session.user.id
-  const id = Number(ctx.params.id)
+  const id = Number(params.id)
   if (!Number.isFinite(id)) return NextResponse.json({ ok: false }, { status: 400 })
 
   try {
   const delRes = await query<{ id: number }>(`DELETE FROM saved_lists WHERE id = $1 AND user_id = $2 RETURNING id`, [id, userId])
   if (delRes.rows.length === 0) return NextResponse.json({ ok: false }, { status: 404 })
     return NextResponse.json({ ok: true })
-  } catch {
-    return NextResponse.json({ ok: false }, { status: 500 })
-  }
+  } catch { return NextResponse.json({ ok: false }, { status: 500 }) }
 }

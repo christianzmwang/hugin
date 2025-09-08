@@ -1101,7 +1101,7 @@ export async function GET(req: Request) {
       console.log(
         `[businesses] Items query (MV) took ${Date.now() - start}ms (revenue: ${!!revenueClause}) - ${itemsRes.rows.length} rows returned for sortBy=${validSortBy}, source=${source}`,
       )
-    } catch (errorMV) {
+    } catch {
       console.warn(`[businesses] MV not available or failed, falling back to LATERAL`) 
       try {
         itemsRes = await query(itemsSql, params)

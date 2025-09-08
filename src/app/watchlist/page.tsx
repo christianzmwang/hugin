@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useWatchlist } from '@/app/watchlist/useWatchlist'
 import dynamic from 'next/dynamic'
 import type { ComponentType } from 'react'

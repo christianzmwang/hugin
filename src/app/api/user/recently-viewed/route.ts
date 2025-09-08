@@ -29,7 +29,7 @@ export async function GET(req: Request) {
         SELECT 1 FROM pg_class WHERE relname = 'recently_viewed_companies'
       ) as exists`)
       useNewTable = Boolean(existsRes.rows?.[0]?.exists)
-    } catch (e) {
+  } catch {
       // Ignore detection errors; will fallback to legacy table
     }
 
@@ -45,11 +45,9 @@ export async function GET(req: Request) {
         )
         const items = (res.rows || []).map(r => ({ orgNumber: r.org_number, name: r.name || '' }))
         return NextResponse.json({ items }, { headers: { 'Cache-Control': 'no-store' } })
-      } catch (e) {
+      } catch {
         // Fall through to legacy table logic
-        if (hasErrorCode(e)) {
-          // continue
-        }
+        // continue on error
       }
     }
 
@@ -68,7 +66,7 @@ export async function GET(req: Request) {
       const res = await query<{ org_number: string; name: string | null }>(sql, [userId, limit])
       const items = (res.rows || []).map(r => ({ orgNumber: r.org_number, name: r.name || '' }))
       return NextResponse.json({ items }, { headers: { 'Cache-Control': 'no-store' } })
-    } catch (e) {
+  } catch {
       return NextResponse.json({ items: [] }, { status: 200 })
     }
   } catch {
