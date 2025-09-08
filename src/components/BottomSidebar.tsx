@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Search, Eye, Building2, Settings, Download, FlaskConical } from 'lucide-react'
+import { LayoutDashboard, Search, Eye, Building2, Settings, Download, FlaskConical, List as ListIcon } from 'lucide-react'
 
 type BottomSidebarProps = {
   onClearFilters?: () => void
@@ -57,6 +57,19 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
                 <span
                   className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
                     isActive('/company') ? 'opacity-100' : 'group-hover:opacity-100'
+                  }`}
+                />
+              </Link>
+              {/* Lists placed to the left of Watchlist */}
+              <Link
+                href="/lists"
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 ${isActive('/lists') ? 'text-white/90' : 'text-white/80'}`}
+              >
+                <ListIcon size={16} />
+                <span>Lists</span>
+                <span
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
+                    isActive('/lists') ? 'opacity-100' : 'group-hover:opacity-100'
                   }`}
                 />
               </Link>
@@ -127,5 +140,3 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
     </div>
   )
 }
-
-

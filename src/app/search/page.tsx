@@ -204,6 +204,7 @@ export default function SearchPage() {
   }, [])
 
   const [data, setData] = useState<Business[]>([])
+  // Saved list integration removed: we only rely on query params for filters now.
   const [total, setTotal] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [grandTotal, setGrandTotal] = useState<number | null>(null)
@@ -353,6 +354,8 @@ export default function SearchPage() {
   const [isMounted, setIsMounted] = useState(false)
   const eventsRef = useRef<HTMLDivElement>(null);
   const [isEventTypesCollapsed, setIsEventTypesCollapsed] = useState<boolean>(false)
+  const [listName, setListName] = useState<string>('')
+  // listId no longer used; filters are encoded directly in query params when link created.
   // Event types scroll state for fade overlays
   const eventTypesScrollRef = useRef<HTMLDivElement | null>(null)
   const [eventTypesScrollState, setEventTypesScrollState] = useState<{ atTop: boolean; atBottom: boolean }>({ atTop: true, atBottom: true })
@@ -365,6 +368,7 @@ export default function SearchPage() {
     setEventTypesScrollState((prev) => (prev.atTop === atTop && prev.atBottom === atBottom ? prev : { atTop, atBottom }))
   }
 
+  // Removed list fetch & filtering.
   useEffect(() => {
     updateEventTypesScrollState()
   }, [availableEventTypes, isEventTypesCollapsed])
@@ -462,6 +466,7 @@ export default function SearchPage() {
     if (offset === 0) sp.append('skipCount', '1')
     if (registrationFrom) sp.append('registeredFrom', registrationFrom)
     if (registrationTo) sp.append('registeredTo', registrationTo)
+  // listId not appended; filters alone reproduce list.
     return sp.toString() ? `?${sp.toString()}` : ''
   }, [
     selectedIndustries,
@@ -483,7 +488,128 @@ export default function SearchPage() {
     hasShopify,
     registrationFrom, // added: ensure date-from filter updates query
     registrationTo,   // added: ensure date-to filter updates query
+  // listId removed
   ])
+
+  // Keep browser URL in sync with active filters (without full reload)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const newUrl = queryParam ? `${window.location.pathname}${queryParam}` : window.location.pathname
+    if (newUrl !== window.location.pathname + window.location.search) {
+      window.history.replaceState({}, '', newUrl)
+    }
+  }, [queryParam])
+
+  // One-time hydration of filter state from existing URL params (for SSR-safe guards that returned defaults).
+  const [hydratedFromUrl, setHydratedFromUrl] = useState(false)
+  useEffect(() => {
+    if (hydratedFromUrl) return
+    if (typeof window === 'undefined') return
+    const sp = new URLSearchParams(window.location.search)
+    let changed = false
+    // Industries
+    if (selectedIndustries.length === 0) {
+      const inds = sp.getAll('industries').filter(Boolean)
+      if (inds.length > 0) {
+        setSelectedIndustries(inds.map(v => ({ value: v, label: v })))
+        changed = true
+      }
+    }
+    // Areas
+    if (selectedAreas.length === 0) {
+      const areas = sp.getAll('areas').filter(Boolean)
+      if (areas.length > 0) { setSelectedAreas(areas); changed = true }
+    }
+    // Company types
+    if (selectedCompanyTypes.length === 0) {
+      const forms = sp.getAll('orgFormCode').filter(Boolean)
+      if (forms.length > 0) { setSelectedCompanyTypes(forms); changed = true }
+    }
+    // Event types & weights
+    if (selectedEventTypes.length === 0) {
+      const evCsv = sp.get('eventTypes') || ''
+      if (evCsv) {
+        const evs = evCsv.split(',').map(s => s.trim()).filter(Boolean)
+        if (evs.length > 0) { setSelectedEventTypes(evs); changed = true }
+      }
+    }
+    if (Object.keys(eventWeights).length === 0) {
+      const ew = sp.get('eventWeights')
+      if (ew) {
+        try { const parsed = JSON.parse(ew); if (parsed && typeof parsed === 'object') { setEventWeights(parsed); changed = true } } catch {}
+      }
+    }
+    // Sort
+    const sortParam = sp.get('sortBy')
+    if (sortParam) {
+      const allowed = new Set(['updatedAt', 'name', 'revenue', 'revenueAsc', 'employees', 'employeesAsc', 'scoreDesc', 'scoreAsc', 'registreringsdato'])
+      if (allowed.has(sortParam) && sortParam !== sortBy) { setSortBy(sortParam); changed = true }
+    }
+    // Revenue / profit bounds
+    const rMin = sp.get('revenueMin'); const rMax = sp.get('revenueMax')
+    if (rMin && revenueMin === '') { const n = Number(rMin); if (Number.isFinite(n)) { setRevenueMin(Math.floor(n)); changed = true } }
+    if (rMax && revenueMax === '') { const n = Number(rMax); if (Number.isFinite(n)) { setRevenueMax(Math.floor(n)); changed = true } }
+    const pMin = sp.get('profitMin'); const pMax = sp.get('profitMax')
+    if (pMin && profitMin === '') { const n = Number(pMin); if (Number.isFinite(n)) { setProfitMin(Math.floor(n)); changed = true } }
+    if (pMax && profitMax === '') { const n = Number(pMax); if (Number.isFinite(n)) { setProfitMax(Math.floor(n)); changed = true } }
+    // Registration dates
+    const regFromP = sp.get('registeredFrom'); const regToP = sp.get('registeredTo')
+    if (regFromP && !registrationFrom) { setRegistrationFrom(regFromP); changed = true }
+    if (regToP && !registrationTo) { setRegistrationTo(regToP); changed = true }
+    // Global search
+    const qParam = sp.get('q')
+    if (qParam && !committedGlobalSearch) { setGlobalSearch(qParam); setCommittedGlobalSearch(qParam); changed = true }
+    // Events filter
+    const evF = sp.get('events')
+    if (evF && !eventsFilter) { setEventsFilter(evF); changed = true }
+    // Tech flags
+    if (sp.has('webEcomWoocommerce') && !hasWoo) { setHasWoo(true); changed = true }
+    if (sp.has('webCmsShopify') && !hasShopify) { setHasShopify(true); changed = true }
+    setHydratedFromUrl(true)
+    if (changed) {
+      // Reset offset so first fetch matches hydrated filters
+      setOffset(0)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const handleSaveList = async () => {
+    try {
+      const name = (listName || '').trim()
+      if (!name) {
+        alert('Please enter a list name')
+        return
+      }
+      // Remove pagination/count params so re-opening starts from first page with proper filters
+      const cleanedQuery = (() => {
+        const raw = (queryParam || '').replace(/^\?/, '')
+        const sp = new URLSearchParams(raw)
+        sp.delete('offset')
+        sp.delete('skipCount')
+        sp.delete('countOnly')
+        return sp.toString() ? `?${sp.toString()}` : ''
+      })()
+      const orgNumbers = (data || []).map((b) => String(b.orgNumber || '').trim()).filter(Boolean)
+      const res = await fetch('/api/lists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, filterQuery: cleanedQuery, orgNumbers })
+      })
+      const json = await res.json().catch(() => ({} as any))
+      if (res.ok && json?.id) {
+        alert('Saved list successfully')
+        setListName('')
+      } else if (res.status === 503) {
+        alert('Database not configured for saved lists')
+      } else if (json?.error) {
+        alert('Failed to save list: ' + json.error)
+      } else {
+        alert('Failed to save list')
+      }
+    } catch {
+      alert('Failed to save list')
+    }
+  }
 
   const addSelectedIndustry = (value: string, label?: string) => {
     const v = value.trim()
@@ -1297,6 +1423,23 @@ export default function SearchPage() {
       <div className="flex">
         <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6 sticky top-0 self-start overflow-y-auto">
           <div className="mb-6">
+            <div className="flex items-center gap-2 mb-4">
+              <input
+                type="text"
+                value={listName}
+                onChange={(e) => setListName(e.target.value)}
+                placeholder="List name"
+                className="flex-1 min-w-0 bg-transparent text-white placeholder-gray-500 px-2 py-1 border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90 text-xs"
+              />
+              <button
+                type="button"
+                onClick={handleSaveList}
+                className="text-xs px-2 py-1 border border-white/10 hover:border-red-600/60 hover:bg-red-600/10"
+                title="Save current results as a named list"
+              >
+                Save List
+              </button>
+            </div>
             <div className="sticky top-0 z-20 bg-black pb-2" ref={eventsRef}>
               <label className="block text-sm font-medium mb-2">Events</label>
               <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
@@ -1628,11 +1771,12 @@ export default function SearchPage() {
               })}
             </div>
           )}
-          {(() => {
+      {(() => {
             const hasAnyFilter = selectedIndustries.length > 0 || !!selectedRevenueRange || !!eventsFilter || selectedEventTypes.length > 0 || hasShopify || hasWoo
             const totalForPaging = hasAnyFilter ? total : (grandTotal ?? total)
             return (
               <div className="mt-8">
+        {/* Hide Load more if list filter active and we've already loaded all list companies present in current batch */}
                 {data.length < totalForPaging && (
                   <button onClick={() => setOffset((prev) => prev + 100)} className="w-full px-4 py-2 border border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 text-sm transition-colors duration-200">Load more</button>
                 )}
