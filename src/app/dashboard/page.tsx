@@ -177,7 +177,7 @@ export default function DashboardPage() {
   <div className="basis-1/2 grow-0 shrink-0 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 relative -translate-y-2 md:-translate-y-3">
       <div className="flex flex-col min-h-0 h-full">
             <h2 className="text-lg font-semibold mb-2">News</h2>
-    <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden px-2 rounded border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
+  <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
 
               {newsLoading && (
                 <div className="text-sm text-gray-400">Loading latest company events…</div>
@@ -222,7 +222,7 @@ export default function DashboardPage() {
           </div>
           <div className="flex flex-col min-h-0 h-full">
             <h2 className="text-lg font-semibold mb-2">Watchlist</h2>
-            <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden px-2 rounded border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
+            <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
             {watchlistLoading && (
               <div className="text-sm text-gray-400">Loading watchlist…</div>
             )}
@@ -237,7 +237,7 @@ export default function DashboardPage() {
                 {watchlistItems.map((it) => (
                   <li
                     key={it.orgNumber}
-        className="py-2 px-2 flex items-start justify-between gap-4 hover:bg-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/30"
+  className="py-2 px-2 flex items-center justify-between gap-4 hover:bg-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/30"
                     role="button"
                     tabIndex={0}
                     onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(it.orgNumber)}`)}

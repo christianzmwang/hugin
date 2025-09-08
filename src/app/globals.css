@@ -329,6 +329,23 @@ a,
   .typeout-animate > span:nth-child(3) { animation-delay: 160ms; }
   .typeout-animate > span:nth-child(4) { animation-delay: 230ms; }
   .typeout-animate > span:nth-child(5) { animation-delay: 300ms; }
+
+  /* Consistent dark themed select (fixes Windows default white background + white text issue) */
+  .select-dark {
+    @apply bg-black text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90;
+    color-scheme: dark; /* Hint for OS/theming engines */
+  }
+  .select-dark:hover {
+    @apply border-red-600/60 bg-black;
+  }
+  .select-dark:disabled {
+    @apply opacity-60 cursor-not-allowed;
+  }
+  /* Option styling (supported in Chromium / Firefox; ignored silently where unsupported) */
+  .select-dark option {
+    background-color: #000;
+    color: #fff;
+  }
 }
 
 /* Thin scrollbar utility for scrollable filter sections */

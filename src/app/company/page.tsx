@@ -1875,7 +1875,7 @@ function CompanyPageContent() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white">
+  <div className="min-h-screen bg-black text-white pb-8 md:pb-12">
       {/* Search Bar and Recently Viewed */}
       <div className="p-2 px-6 border-b border-white/10">
         <div className="flex items-center gap-8">
@@ -1984,8 +1984,8 @@ function CompanyPageContent() {
         </div>
       </div>
 
-    <div className="p-6">
-        {/* Parallel Deep Research */}
+  <div className="p-6">
+    {/* Parallel Deep Research */}
         {topCompany && (
           <div className="border border-white/10 p-4 mb-6 bg-white/5">
             <div className="flex items-start gap-3">

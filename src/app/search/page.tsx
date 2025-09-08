@@ -1515,7 +1515,7 @@ export default function SearchPage() {
             )}
             <div className="sticky top-0 z-20 bg-black pb-2" ref={eventsRef}>
               <label className="block text-sm font-medium mb-2">Events</label>
-              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="w-full px-3 py-2 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
+              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="select-dark w-full px-3 py-2">
                 <option value="">All companies</option>
                 <option value="with">With events</option>
                 <option value="without">Without events</option>
@@ -1784,7 +1784,7 @@ export default function SearchPage() {
                       } else {
                         setSortBy(newValue)
                       }
-                    }} className="w-full px-4 py-3 bg-transparent text-white border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90">
+                    }} className="select-dark w-full px-4 py-3">
                       <option value="updatedAt">Last Updated (New → Old)</option>
                       <option value="name">Company Name (A → Z)</option>
                       <option value="revenue">Revenue (High → Low)</option>

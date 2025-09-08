@@ -219,7 +219,7 @@ export default function WatchlistPage() {
   if (!session) return null
 
   return (
-    <div className="min-h-screen bg-black text-white pb-20 md:pb-24">
+  <div className="min-h-screen bg-black text-white pb-0">
       <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
         <h1 className="text-xl font-semibold">Watchlist</h1>
         <div className="text-xs text-gray-400">{businesses.length} companies</div>
