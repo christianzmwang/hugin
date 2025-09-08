@@ -29,9 +29,20 @@ export default function AdminPage() {
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
   const [selectedUsers, setSelectedUsers] = useState<Set<string>>(new Set())
   const [bulkActionLoading, setBulkActionLoading] = useState(false)
-  const [campaigns, setCampaigns] = useState<any[]>([])
+  interface EmailCampaign {
+    id: number
+    user_id?: string
+    user_email: string
+    subject: string
+    body: string
+    list_id?: number | null
+    company_count: number
+    org_numbers?: string[]
+    created_at: string
+  }
+  const [campaigns, setCampaigns] = useState<EmailCampaign[]>([])
   const [campaignsLoading, setCampaignsLoading] = useState(false)
-  const [selectedCampaign, setSelectedCampaign] = useState<any | null>(null)
+  const [selectedCampaign, setSelectedCampaign] = useState<EmailCampaign | null>(null)
   const [showCampaignModal, setShowCampaignModal] = useState(false)
 
   // Redirect non-admin users
@@ -97,7 +108,7 @@ export default function AdminPage() {
     return () => window.removeEventListener('keydown', onKey)
   }, [showCampaignModal])
 
-  const openCampaign = (c: any) => {
+  const openCampaign = (c: EmailCampaign) => {
     setSelectedCampaign(c)
     setShowCampaignModal(true)
   }

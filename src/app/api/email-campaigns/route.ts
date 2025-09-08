@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { dbConfigured, query } from '@/lib/db'
+import type { Session } from 'next-auth'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -28,7 +29,7 @@ async function ensureTables() {
 }
 
 export async function GET() {
-  const session: any = await getServerSession(authOptions)
+  const session = (await getServerSession(authOptions)) as Session | null
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (session.user.email !== 'christian@allvitr.com') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
@@ -38,13 +39,13 @@ export async function GET() {
   try {
     const res = await query<{ id: number; user_id: string; user_email: string; subject: string; body: string; list_id: number | null; company_count: number; org_numbers: string[]; created_at: string }>(`SELECT id,user_id,user_email,subject,body,list_id,company_count,org_numbers,created_at FROM email_campaigns ORDER BY created_at DESC LIMIT 200`)
     return NextResponse.json({ items: res.rows })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ items: [] }, { status: 500 })
   }
 }
 
 export async function POST(req: Request) {
-  const session: any = await getServerSession(authOptions)
+  const session = (await getServerSession(authOptions)) as Session | null
   if (!session?.user?.id || !session.user.email) return NextResponse.json({ ok: false, error: 'Unauthorized' }, { status: 401 })
   if (!dbConfigured) return NextResponse.json({ ok: false, error: 'DB unavailable' }, { status: 503 })
   await ensureTables()
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
     const listId = (body.listId != null && Number.isFinite(Number(body.listId))) ? Number(body.listId) : null
   const ins = await query<{ id: number }>(`INSERT INTO email_campaigns (user_id,user_email,subject,body,list_id,company_count,org_numbers) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING id`, [session.user.id, session.user.email, subject, content, listId, companyCount, orgNumbers])
     return NextResponse.json({ ok: true, id: ins.rows[0]?.id })
-  } catch (e) {
+  } catch {
     return NextResponse.json({ ok: false, error: 'Failed to create' }, { status: 500 })
   }
 }

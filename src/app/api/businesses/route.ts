@@ -256,19 +256,32 @@ export async function GET(req: Request) {
   const industryTextParams: string[] = []
   
   industries.forEach((v) => {
-    // More precise NACE code detection: 
-    // - Starts with 2+ digits (with optional decimal places)
-    // - OR starts with a single uppercase letter followed by digits/dot
-    // - OR is a single uppercase letter (for section codes like A, B, C, etc.)
-    const looksLikeCode = /^(\d{2}(\.\d{1,2})?|[A-Z](\d|\.)|[A-Z])$/.test(v.trim())
+    const trimmed = v.trim()
+    // Expanded industry (NACE/SN) code detection to support deeper levels & trailing zeros users may select:
+    //  - 2-4 digits (62, 4711)
+    //  - 2-4 digits + . + 1-3 digits (10.8, 10.89, 10.890)
+    //  - Optional second dotted segment for some national variants (e.g. 10.89.0)
+    //  - Leading section letter + patterns above (C10, C10.1, C10.12, C10.120)
+    //  - Single section letter (A, B, C ...)
+    // We treat anything matching this as a structured code and apply a starts-with search on code columns.
+    const looksLikeCode = /^([0-9]{2,4}(\.[0-9]{1,3}){0,2}|[A-Z]([0-9]{2,4}(\.[0-9]{1,3}){0,2})?|[A-Z])$/.test(trimmed)
     if (looksLikeCode) {
-      // For NACE codes, use "starts with" pattern
-      industryCodeParams.push(`${v}%`)
-      // Still search text fields with full wildcard for fallback
-      industryTextParams.push(`%${v}%`)
+      // Normalize a common case: patterns like 25.730 should also match 25.73 stored variant.
+      // If last segment is a single trailing 0 after a two-digit group (xx.yy0), drop the 0 for an alternate pattern.
+      // Example: 25.730 => base 25.73
+      const normalized = trimmed.replace(/(\.[0-9]{2})0$/, '$1')
+      // Primary starts-with pattern (original user selection)
+      industryCodeParams.push(`${trimmed}%`)
+      // If normalization changed the value, include an additional pattern to widen match.
+      if (normalized !== trimmed) {
+        industryCodeParams.push(`${normalized}%`)
+      }
+      // Always also search text columns with wildcard for resilience.
+      industryTextParams.push(`%${trimmed}%`)
+      if (normalized !== trimmed) industryTextParams.push(`%${normalized}%`)
     } else {
-      // For text searches, use full wildcard
-      industryTextParams.push(`%${v}%`)
+      // Plain text search
+      industryTextParams.push(`%${trimmed}%`)
     }
   })
   

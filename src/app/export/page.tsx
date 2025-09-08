@@ -9,6 +9,25 @@ type ListSummary = { id: number; name: string; itemCount: number }
 type ListItem = { orgNumber: string; name: string | null }
 type FullList = { id: number; name: string; items: ListItem[] }
 
+// Shape of a business detail object we read minimal fields from. Extra dynamic keys allowed.
+interface BusinessDetail {
+  orgNumber: string
+  name?: string | null
+  website?: string | null
+  employees?: number | null
+  revenue?: number | null
+  profit?: number | null
+  addressStreet?: string | null
+  addressPostalCode?: string | null
+  addressCity?: string | null
+  industryCode1?: string | null
+  industryText1?: string | null
+  sectorCode?: string | null
+  sectorText?: string | null
+  ceo?: string | null
+  [k: string]: unknown
+}
+
 // Basic fields we allow user to pick for CSV export (UI only)
 const FIELD_OPTIONS: { key: string; label: string; default?: boolean }[] = [
   { key: 'orgNumber', label: 'Org number', default: true },
@@ -41,7 +60,7 @@ export default function ExportPage() {
   const [emailBody, setEmailBody] = useState('')
   const [emailSending, setEmailSending] = useState(false)
   const [emailPhase, setEmailPhase] = useState<'idle' | 'processing' | 'fetching' | 'done'>('idle')
-  const businessCacheRef = useRef<Record<string, Record<string, any>>>({})
+  const businessCacheRef = useRef<Record<string, BusinessDetail>>({})
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [progressTotal, setProgressTotal] = useState(0)
   const [progressDone, setProgressDone] = useState(0)
@@ -61,8 +80,8 @@ export default function ExportPage() {
       try {
         const res = await fetch('/api/lists', { cache: 'no-store' })
         const json = await res.json()
-        const arr = Array.isArray(json) ? json : json.items || []
-        const mapped: ListSummary[] = arr.map((r: any) => ({ id: r.id, name: r.name, itemCount: r.itemCount }))
+  const arr = Array.isArray(json) ? json : json.items || []
+  const mapped: ListSummary[] = arr.map((r: Partial<ListSummary>) => ({ id: Number(r.id), name: String(r.name), itemCount: Number(r.itemCount) }))
         if (!cancelled) setLists(mapped)
         if (listId && !cancelled) {
           const found = mapped.find(l => l.id === listId)
@@ -94,7 +113,7 @@ export default function ExportPage() {
 
   const neededExtraFields = useMemo(() => selectedFields.filter(f => !['orgNumber','name'].includes(f)), [selectedFields])
 
-  const fetchBusinessDetail = async (org: string): Promise<Record<string, any> | null> => {
+  const fetchBusinessDetail = async (org: string): Promise<BusinessDetail | null> => {
     // If already cached return
     if (businessCacheRef.current[org]) return businessCacheRef.current[org]
     try {
@@ -134,7 +153,7 @@ export default function ExportPage() {
     return s
   }
 
-  const getFieldValue = (field: string, base: ListItem, detail: Record<string, any> | undefined): string => {
+  const getFieldValue = (field: string, base: ListItem, detail: BusinessDetail | undefined): string => {
     if (field === 'orgNumber') return base.orgNumber
     if (field === 'name') return base.name || (detail?.name ?? '') || ''
     if (!detail) return ''
