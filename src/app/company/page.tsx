@@ -943,37 +943,32 @@ function CompanyPageContent() {
     const ctl = new AbortController()
     chatAbortRef.current = ctl
     try {
-      const businessCtx = customInput.trim() ? `Business context:\n${customInput.trim()}` : 'Business context: (none provided)'
-      const companyBlock = (() => {
-        const override = companyInput.trim()
-        if (override) return override
-        const lines: string[] = []
-        lines.push(`Company: ${topCompany?.name || 'Unknown'}`)
-        if (topCompany?.orgNumber) lines.push(`Org number: ${topCompany.orgNumber}`)
-  if (topCompany?.website) lines.push(`Website: ${topCompany.website}`)
-  if (topCompany?.ceo) lines.push(`CEO: ${topCompany.ceo}`)
-        return lines.join('\n')
-      })()
       const systemPrompt = [
-        'Answer concisely (Norwegian if the user writes Norwegian; otherwise mirror their language). Assume questions relate to the target company unless the user clearly changes topic.',
-        'Interpret terse or ambiguous queries (e.g. "CEO?", "daglig leder", "hva med gjeld", "revenue last year") as being about this company.',
-        'If the user asks who the CEO / daglig leder / administrerende direktør is, answer ONLY with the name (optionally with year if part of stored value). Do NOT define what the role is unless explicitly asked.',
-        'Use only the parts of the provided context blocks that are necessary to answer the current question. If a detail is irrelevant (e.g. company profile lines when only the CEO is requested) ignore it and do not repeat it.',
-        "If the needed information isn't available, say you don't know instead of guessing.",
-        'Do not fabricate or over-elaborate. Be direct.',
-        'Context blocks (use selectively):',
-        businessCtx,
-        companyBlock,
+        'Answer concisely (Norwegian if the user writes Norwegian; otherwise mirror their language).',
+        'Do not include or infer any specific company identifying details unless the user explicitly provides them in their own message.',
+        'Interpret terse or ambiguous queries generically. If the user later specifies a company or additional context, adapt accordingly.',
+        'If the user asks for something you cannot answer from their explicit input, say you do not know rather than guessing.',
+        'Do not fabricate or over‑elaborate. Be direct and only rely on what the user has supplied.',
       ].join('\n\n')
-      const needsCompanyInjection = /\bceo\b|daglig\s*leder|administrerende\s+direktør|adm\.?\s*dir|chief executive|revenue|omsetning|profit|resultat|employees|ansatte|founder|grunnlegger|ownership|competitor|konkurrent/i.test(userMsg.content) && !new RegExp(topCompany?.name || '', 'i').test(userMsg.content)
-      const augmentedUserContent = needsCompanyInjection && topCompany?.name
-        ? `${userMsg.content}\n\n(Above question refers to the company ${topCompany.name}${topCompany.orgNumber ? ` (Org ${topCompany.orgNumber})` : ''}.)`
-        : userMsg.content
+      // Build contextual prefix describing the visible company and the user's organization (from configuration/business context)
+      const contextLines: string[] = []
+      if (topCompany?.name) {
+        contextLines.push(`Target company: ${topCompany.name}${topCompany.orgNumber ? ` (Org ${topCompany.orgNumber})` : ''}`)
+        if (topCompany.website) contextLines.push(`Company website: ${topCompany.website}`)
+      }
+      if (customInput.trim()) {
+        // Derive a compact single-line representation from customInput (company profile)
+        const rawProfile = customInput.trim().split(/\n+/).map(l => l.trim()).filter(Boolean)
+        const profileSummary = rawProfile.slice(0, 3).join(' | ').slice(0, 300)
+        contextLines.push(`User represents: ${profileSummary}`)
+      }
+      const contextualPrefix = contextLines.length ? contextLines.join('\n') + '\n\n' : ''
+      const augmentedUserContent = contextualPrefix + userMsg.content
       const payload = {
         model: 'speed',
         stream: true,
         messages: [
-          { role: 'system', content: systemPrompt + (topCompany?.ceo ? `\n\nKnown CEO (daglig leder): ${topCompany.ceo}` : '') + '\n\nNever ask which company the user means; all ambiguous questions refer to the target company unless another company name is explicitly provided.' },
+          { role: 'system', content: systemPrompt + '\n\nAvoid assuming any specific company; only use identifiers the user provides explicitly.' },
           ...chatMessages.filter(m => m.content.trim()),
           { role: 'user', content: augmentedUserContent },
         ],
@@ -1538,11 +1533,25 @@ function CompanyPageContent() {
       const effectiveCompanyBlock = (companyInput && companyInput.trim())
         ? enforceCurrentHeader(topCompany, companyInput)
         : defaultBlock
+      // Augment the user's free-form research prompt with concise context (company + user org) without polluting system prompt rules.
+      let effectivePrompt = prompt || ''
+      const composePrefixParts: string[] = []
+      if (topCompany.name) {
+        composePrefixParts.push(`Target company: ${topCompany.name}${topCompany.orgNumber ? ` (Org ${topCompany.orgNumber})` : ''}`)
+        if (topCompany.website) composePrefixParts.push(`Company website: ${topCompany.website}`)
+      }
+      if (customInput.trim()) {
+        const profileSummary = customInput.trim().split(/\n+/).map(l => l.trim()).filter(Boolean).slice(0, 4).join(' | ').slice(0, 400)
+        composePrefixParts.push(`User represents: ${profileSummary}`)
+      }
+      if (composePrefixParts.length) {
+        effectivePrompt = composePrefixParts.join('\n') + '\n\n' + effectivePrompt
+      }
       const composeResp = await fetch('/api/compose', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
-          prompt,
+          prompt: effectivePrompt,
           businessContext: customInput || undefined,
           companyBlock: effectiveCompanyBlock || undefined,
           processor,
@@ -1573,6 +1582,7 @@ function CompanyPageContent() {
           orgNumber: topCompany.orgNumber,
           processor,
           input: inputStr,
+          customInput: customInput || undefined,
           outputSchema: outputSchemaStr,
         }),
       })

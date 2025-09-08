@@ -48,23 +48,39 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'companyName is required' }, { status: 400 })
     }
 
-  const input = directInput
+  // Build base input (without legacy automatic Company/Org/Website block)
+  const baseInput = directInput
     ? directInput
     : (() => {
         const inputParts: string[] = []
         if (prompt) inputParts.push(prompt)
         if (customInput) inputParts.push(customInput)
-        if (companyInput) {
-          inputParts.push(companyInput)
-        } else {
-          const companyLines: string[] = []
-          companyLines.push(`Company: ${companyName}`)
-          if (orgNumber) companyLines.push(`Org number: ${orgNumber}`)
-          if (website) companyLines.push(`Website: ${website}`)
-          inputParts.push(companyLines.join('\n'))
-        }
-        return inputParts.join('\n')
+        if (companyInput) inputParts.push(companyInput)
+        return inputParts.join('\n').trim()
       })()
+
+  // New unified contextual prefix (mirrors chat/client compose augmentation)
+  const ctxLines: string[] = []
+  if (companyName) {
+    ctxLines.push(`Target company: ${companyName}${orgNumber ? ` (Org ${orgNumber})` : ''}`)
+    if (website) ctxLines.push(`Company website: ${website}`)
+  }
+  if (customInput) {
+    const profileLines = customInput.split(/\n+/).map(l => l.trim()).filter(Boolean)
+    if (profileLines.length) {
+      const profileSummary = profileLines.slice(0, 4).join(' | ').slice(0, 400)
+      ctxLines.push(`User represents: ${profileSummary}`)
+    }
+  }
+  const prefix = ctxLines.join('\n')
+  let input = baseInput
+  if (prefix) {
+    // Avoid duplicating if already starts with first ctx line
+    const first = ctxLines[0]
+    if (!baseInput.startsWith(first)) {
+      input = prefix + (baseInput ? '\n\n' + baseInput : '')
+    }
+  }
 
   // Output schema responsibility is external (DeepSeek compose). Use if provided; otherwise omit.
   const outputSchema = providedOutputSchema || undefined
