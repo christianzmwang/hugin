@@ -219,6 +219,9 @@ export async function GET(req: Request) {
     countOnly,
     industries: industries.sort(), // Sort for consistent cache keys
     revenueRange,
+  // IMPORTANT: include flexible revenue bounds in cache key so filtered queries don't reuse unfiltered cache
+  revenueMin: revenueMinRaw,
+  revenueMax: revenueMaxRaw,
     profitMin: profitMinRaw,
     profitMax: profitMaxRaw,
     eventsFilter: eventsFilter || '',
