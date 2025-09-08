@@ -5,10 +5,25 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { useWatchlist } from '@/app/watchlist/useWatchlist'
 import dynamic from 'next/dynamic'
+import type { ComponentType } from 'react'
 
 // Dynamic import to mirror Search page behaviour (avoids SSR mismatch, heavy code split)
-const BusinessCard = dynamic(
-  () => import('@/components/search/BusinessCard').then(m => m.BusinessCard || (m as any).default),
+type BusinessCardProps = {
+  business: BusinessCardBusiness
+  numberFormatter: Intl.NumberFormat
+  selectedEventTypes: string[]
+  eventWeights: Record<string, number>
+  isWatched: boolean
+  onToggle: () => void
+  hideScore?: boolean
+  actionLabel?: string
+}
+type BusinessCardModule = {
+  BusinessCard?: ComponentType<BusinessCardProps>
+  default: ComponentType<BusinessCardProps>
+}
+const BusinessCard = dynamic<BusinessCardProps>(
+  () => import('@/components/search/BusinessCard').then((m: BusinessCardModule) => m.BusinessCard ?? m.default),
   { ssr: false }
 )
 
@@ -221,7 +236,7 @@ export default function WatchlistPage() {
             {businesses.map(b => (
               <div key={b.orgNumber} className="relative">
                 <BusinessCard
-                  business={b as any}
+                  business={b}
                   numberFormatter={numberFormatter}
                   selectedEventTypes={[]} // no filtering UI on watchlist yet
                   eventWeights={{}} // neutral weights

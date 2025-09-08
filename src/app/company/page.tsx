@@ -385,6 +385,16 @@ type StructuredResearch = {
 }
 
 // Attempt to flatten various Parallel output.content shapes into a string
+function extractStringFrom(obj: unknown, keys: string[]): string | null {
+  if (!obj || typeof obj !== 'object') return null
+  const rec = obj as Record<string, unknown>
+  for (const k of keys) {
+    const v = rec[k]
+    if (typeof v === 'string') return v
+  }
+  return null
+}
+
 function flattenParallelContent(val: unknown): string | null {
   if (val == null) return null
   if (typeof val === 'string') return val
@@ -393,7 +403,7 @@ function flattenParallelContent(val: unknown): string | null {
     const parts = val.map(seg => {
       if (typeof seg === 'string') return seg
       if (seg && typeof seg === 'object') {
-        const s = (seg as any).text || (seg as any).content || (seg as any).value
+        const s = extractStringFrom(seg, ['text', 'content', 'value'])
         return typeof s === 'string' ? s : ''
       }
       return ''
@@ -401,16 +411,16 @@ function flattenParallelContent(val: unknown): string | null {
     return parts.length ? parts.join('\n').trim() : null
   }
   if (typeof val === 'object') {
-    const anyObj = val as any
+    const rec = val as Record<string, unknown>
     // Common shapes: { text }, { content: '...' }, { content: { text: '...' } }, { content: [ ...segments ] }
-    if (typeof anyObj.text === 'string') return anyObj.text
-    if (typeof anyObj.content === 'string') return anyObj.content
-    if (Array.isArray(anyObj.content)) {
-      const arr = flattenParallelContent(anyObj.content)
+    if (typeof rec.text === 'string') return rec.text
+    if (typeof rec.content === 'string') return rec.content
+    if (Array.isArray(rec.content)) {
+      const arr = flattenParallelContent(rec.content)
       if (arr) return arr
     }
-    if (anyObj.content && typeof anyObj.content === 'object') {
-      const nested = flattenParallelContent(anyObj.content)
+    if (rec.content && typeof rec.content === 'object') {
+      const nested = flattenParallelContent(rec.content)
       if (nested) return nested
     }
   }
@@ -886,8 +896,9 @@ function CompanyPageContent() {
         if (Array.isArray(parsed)) {
           // Basic validation + trim to 20
           const items = parsed
-            .filter((c: any) => c && typeof c.orgNumber === 'string')
-            .map((c: any) => ({ name: String(c.name || ''), orgNumber: String(c.orgNumber) }))
+            .filter((c: unknown): c is Record<string, unknown> => !!c && typeof c === 'object')
+            .filter((c) => typeof c.orgNumber === 'string')
+            .map((c) => ({ name: String((c.name as unknown) || ''), orgNumber: String(c.orgNumber as string) }))
             .slice(0, 20)
           setRecentlyViewed(items)
         }

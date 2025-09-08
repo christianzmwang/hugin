@@ -93,9 +93,10 @@ export const BusinessCard = memo(function BusinessCard({
         if (selectedEventTypes.length > 0) params.set('eventTypes', selectedEventTypes.join(','))
         const res = await fetch('/api/events?' + params.toString())
         const json = await res.json()
-        const items = Array.isArray(json) ? json : json.items || []
+        const itemsUnknown = Array.isArray(json) ? json : json.items || []
+        const items = itemsUnknown as EventItem[]
         const filtered = selectedEventTypes.length > 0
-          ? items.filter((it: any) => !!it?.source && selectedEventTypes.includes(String(it.source)))
+          ? items.filter((it) => !!(it && it.source) && selectedEventTypes.includes(String(it.source)))
           : items
         if (!cancelled) setEvents(filtered)
       } catch (e) {
@@ -183,7 +184,7 @@ export const BusinessCard = memo(function BusinessCard({
             {!eventsLoading && (events?.length ?? 0) === 0 && <div className="text-sm text-gray-400">No recent events</div>}
             <ul className="space-y-2">
               {(showAllEvents ? events : events?.slice(0, 1))?.map((ev, idx) => (
-                <li key={(ev?.id ?? idx) as any} className="text-sm text-gray-200">
+                <li key={String(ev?.id ?? idx)} className="text-sm text-gray-200">
                   <div className="flex items-start gap-3">
                     <div className="flex-1">
                       <div className="font-medium" style={{ whiteSpace: 'pre-wrap' }}>

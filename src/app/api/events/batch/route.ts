@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { dbConfigured, query } from '@/lib/db'
+import { dbConfigured, query, type SqlParam } from '@/lib/db'
 import { checkApiAccess } from '@/lib/access-control'
 
 export const runtime = 'nodejs'
@@ -46,14 +46,26 @@ export async function GET(req: Request) {
     SELECT * FROM ranked WHERE rnk <= $3
   `
 
-  const params: any[] = [orgNumbers]
+  const params: SqlParam[] = [orgNumbers]
   if (eventTypes.length > 0) params.push(eventTypes)
   params.push(limitPerOrg)
 
   try {
-    const res = await query<any>(sql, params)
+    type EventRow = {
+      id: string | number
+      source_title: string | null
+      explanation: string | null
+      source_url: string | null
+      event_type: string | null
+      date: string | null
+      created_at: string | null
+      score: number | null
+      org_number: string
+      business_name: string | null
+    }
+    const res = await query<EventRow>(sql, params)
     const rows = res.rows || []
-    const items = rows.map(r => ({
+    const items = rows.map((r) => ({
       id: r.id,
       title: r.source_title || r.event_type || null,
       description: r.explanation,

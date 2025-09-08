@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import type { CSSProperties } from 'react'
+import type { CSSProperties, ComponentType } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import dynamic from 'next/dynamic'
@@ -165,15 +165,19 @@ const COMPANY_TYPES: string[] = [
 ]
 
 interface BusinessCardProps {
-  business: any
+  business: Business
   numberFormatter: Intl.NumberFormat
   selectedEventTypes: string[]
   eventWeights: Record<string, number>
   isWatched: boolean
   onToggle: () => void
 }
+type BusinessCardModule = {
+  BusinessCard?: ComponentType<BusinessCardProps>
+  default: ComponentType<BusinessCardProps>
+}
 const BusinessCard = dynamic<BusinessCardProps>(
-  () => import('@/components/search/BusinessCard').then(m => (m as any).BusinessCard || (m as any).default),
+  () => import('@/components/search/BusinessCard').then((m: BusinessCardModule) => m.BusinessCard ?? m.default),
   { ssr: false, loading: () => <div className="py-6 -mx-4 px-4 first:border-t first:border-white/10"><div className="animate-pulse h-6 w-40 bg-white/10 mb-4" /><div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm"><div className="space-y-2"><div className="h-3 bg-white/10 w-24" /><div className="h-3 bg-white/10 w-36" /><div className="h-3 bg-white/10 w-28" /></div><div className="space-y-2"><div className="h-3 bg-white/10 w-24 ml-auto" /><div className="h-3 bg-white/10 w-20 ml-auto" /></div></div></div> }
 )
 
@@ -1528,5 +1532,4 @@ export default function SearchPage() {
     </div>
   )
 }
-
 
