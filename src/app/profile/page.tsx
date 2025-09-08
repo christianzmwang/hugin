@@ -154,11 +154,18 @@ export default async function ProfilePage() {
   )
 }
 
+type UsageRow = {
+  amount: number
+  type: 'chat' | 'research' | string // keep string fallback in case of future types
+  meta: Record<string, unknown> | null
+  created_at: Date
+}
+
 async function UsageTimeline({ userId }: { userId: string }) {
   // Fetch all usage for current month
-  let rows: { amount: number; type: string; meta: any; created_at: Date }[] = []
+  let rows: UsageRow[] = []
   try {
-    const res = await query<{ amount: number; type: string; meta: any; created_at: Date }>(
+    const res = await query<UsageRow>(
       'SELECT amount, type, meta, created_at FROM credits_usage WHERE user_id = $1 AND created_at >= date_trunc(' + "'month'" + ', NOW()) ORDER BY created_at ASC',
       [userId]
     )
