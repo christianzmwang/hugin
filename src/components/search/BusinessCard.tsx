@@ -2,6 +2,7 @@
 import { memo, useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatEventDate, formatDateEU } from './dateFormats'
+import { useDashboardMode } from '@/components/DashboardThemeProvider'
 
 export interface BusinessCardBusiness {
   orgNumber: string
@@ -53,6 +54,8 @@ export const BusinessCard = memo(function BusinessCard({
   actionLabel?: string
 }) {
   const router = useRouter()
+  const { mode } = useDashboardMode()
+  const light = mode === 'light'
   const fmt = (v: number | string | null | undefined) => (v == null ? '—' : numberFormatter.format(Number(v)))
   const [events, setEvents] = useState<EventItem[] | null>(null)
   const [eventsLoading, setEventsLoading] = useState(false)
@@ -118,9 +121,9 @@ export const BusinessCard = memo(function BusinessCard({
   }, [events, eventWeights, selectedEventTypes])
 
   return (
-    <div
-      ref={cardRef}
-      className="py-6 hover:bg-red-600/10 transition-colors duration-200 -mx-4 px-4 cursor-pointer first:border-t first:border-white/10"
+  <div
+    ref={cardRef}
+    className={`py-6 transition-colors duration-200 -mx-4 px-4 cursor-pointer first:border-t ${light ? 'hover:bg-red-50 first:border-gray-200' : 'hover:bg-red-600/10 first:border-white/10'}`}
       onClick={(e) => {
         const el = e.target as Element | null
         if (el?.closest('a,button,input,textarea,select,[role="button"],[role="link"]')) return
@@ -132,8 +135,8 @@ export const BusinessCard = memo(function BusinessCard({
     >
       <div className="flex justify-between items-start mb-4">
         <div className="flex-1">
-          <h3 className="text-xl font-semibold mb-2">{business.name}</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-300">
+      <h3 className={`text-xl font-semibold mb-2 ${light ? 'text-gray-900' : ''}`}>{business.name}</h3>
+      <div className={`grid grid-cols-1 md:grid-cols-2 gap-4 text-sm ${light ? 'text-gray-700' : 'text-gray-300'}`}>    
             <div>
               <div className="mb-2"><span className="font-medium">Org:</span> {business.orgNumber}</div>
               {business.registeredAtBrreg && (
@@ -145,7 +148,7 @@ export const BusinessCard = memo(function BusinessCard({
             </div>
             <div>
               <div className="mb-2"><span className="font-medium">Address:</span> {[business.addressStreet, business.addressPostalCode, business.addressCity].filter(Boolean).join(', ') || '—'}</div>
-              <div className="mb-2"><span className="font-medium">Website:</span> {business.website ? (<a className="text-sky-400 underline hover:text-sky-300" href={business.website.startsWith('http') ? business.website : `https://${business.website}`} target="_blank" rel="noreferrer">{business.website}</a>) : '—'}</div>
+        <div className="mb-2"><span className="font-medium">Website:</span> {business.website ? (<a className={`${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'} underline`} href={business.website.startsWith('http') ? business.website : `https://${business.website}`} target="_blank" rel="noreferrer">{business.website}</a>) : '—'}</div>
               <div className="mb-2"><span className="font-medium">Industry:</span> {business.industryCode1 ? `${business.industryCode1} ${business.industryText1 || ''}`.trim() : '—'}</div>
               <div className="mb-2"><span className="font-medium">Sector:</span> {business.sectorCode ? `${business.sectorCode} ${business.sectorText || ''}`.trim() : '—'}</div>
             </div>
@@ -164,7 +167,14 @@ export const BusinessCard = memo(function BusinessCard({
           <button
             type="button"
             onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle() }}
-            className={`w-24 inline-flex justify-center text-xs px-2 py-1 border ${actionLabel === 'Remove' ? 'border-white/20 hover:bg-red-600/20 hover:border-red-600/60' : 'border-white/20 hover:border-red-600/60 hover:bg-black'} text-white/90 bg-black focus:outline-none focus:ring-1 focus:ring-red-600/40 transition-colors`}
+            className={`w-24 inline-flex justify-center text-xs px-2 py-1 border focus:outline-none focus:ring-1 transition-colors
+              ${actionLabel === 'Remove'
+                ? (light
+                  ? 'border-red-300 text-red-700 bg-red-50 hover:bg-red-100 hover:border-red-400 focus:ring-red-400/40'
+                  : 'border-white/20 text-white/90 bg-black hover:bg-red-600/20 hover:border-red-600/60 focus:ring-red-600/40')
+                : (light
+                  ? 'border-gray-300 text-gray-800 bg-white hover:border-red-400 hover:bg-red-50 focus:ring-red-400/40'
+                  : 'border-white/20 text-white/90 bg-black hover:border-red-600/60 hover:bg-black focus:ring-red-600/40')}`}
             aria-pressed={isWatched}
             title={actionLabel ? actionLabel : (isWatched ? 'Remove from watchlist' : 'Add to watchlist')}
           >
@@ -174,17 +184,17 @@ export const BusinessCard = memo(function BusinessCard({
       </div>
 
       <div className="mt-4">
-        <h4 className="text-lg font-semibold mb-3">Latest events</h4>
+        <h4 className={`text-lg font-semibold mb-3 ${light ? 'text-gray-900' : ''}`}>Latest events</h4>
         {!business.hasEvents ? (
-          <div className="text-sm text-gray-400">No events available</div>
+          <div className={`text-sm ${light ? 'text-gray-500' : 'text-gray-400'}`}>No events available</div>
         ) : (
           <>
-            {eventsLoading && <div className="text-sm text-gray-400">Loading events…</div>}
-            {!eventsLoading && !!eventsError && <div className="text-sm text-red-400">Failed to load events</div>}
-            {!eventsLoading && (events?.length ?? 0) === 0 && <div className="text-sm text-gray-400">No recent events</div>}
+            {eventsLoading && <div className={`text-sm ${light ? 'text-gray-500' : 'text-gray-400'}`}>Loading events…</div>}
+            {!eventsLoading && !!eventsError && <div className={`text-sm ${light ? 'text-red-600' : 'text-red-400'}`}>Failed to load events</div>}
+            {!eventsLoading && (events?.length ?? 0) === 0 && <div className={`text-sm ${light ? 'text-gray-500' : 'text-gray-400'}`}>No recent events</div>}
             <ul className="space-y-2">
               {(showAllEvents ? events : events?.slice(0, 1))?.map((ev, idx) => (
-                <li key={String(ev?.id ?? idx)} className="text-sm text-gray-200">
+                <li key={String(ev?.id ?? idx)} className={`text-sm ${light ? 'text-gray-700' : 'text-gray-200'}`}>
                   <div className="flex items-start gap-3">
                     <div className="flex-1">
                       <div className="font-medium" style={{ whiteSpace: 'pre-wrap' }}>
@@ -196,13 +206,13 @@ export const BusinessCard = memo(function BusinessCard({
                           const needs = fullTitle.length > limit
                           if (!needs) return fullTitle
                           if (isExpanded) {
-                            return <>{fullTitle} <button className="text-sky-400 hover:text-sky-300 underline text-xs" onClick={() => setExpandedTitleKeys(prev => { const next = new Set(prev); next.delete(key); return next })}>Less</button></>
+                            return <>{fullTitle} <button className={`${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'} underline text-xs`} onClick={() => setExpandedTitleKeys(prev => { const next = new Set(prev); next.delete(key); return next })}>Less</button></>
                           }
-                          return <>{fullTitle.slice(0, limit)}… <button className="text-sky-400 hover:text-sky-300 underline text-xs" onClick={() => setExpandedTitleKeys(prev => new Set(prev).add(key))}>More</button></>
+                          return <>{fullTitle.slice(0, limit)}… <button className={`${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'} underline text-xs`} onClick={() => setExpandedTitleKeys(prev => new Set(prev).add(key))}>More</button></>
                         })()}
                       </div>
                       {ev?.description && (
-                        <div className="text-gray-400 mt-1" style={{ whiteSpace: 'pre-wrap' }}>
+                        <div className={`${light ? 'text-gray-500' : 'text-gray-400'} mt-1`} style={{ whiteSpace: 'pre-wrap' }}>
                           {(() => {
                             const full = ev.description as string
                             const key = getEventKey(ev, idx)
@@ -211,15 +221,15 @@ export const BusinessCard = memo(function BusinessCard({
                             const needs = full.length > limit
                             if (!needs) return full
                             if (isExpanded) {
-                              return <>{full} <button className="text-sky-400 hover:text-sky-300 underline" onClick={() => setExpandedDescKeys(prev => { const next = new Set(prev); next.delete(key); return next })}>Less</button></>
+                              return <>{full} <button className={`${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'} underline`} onClick={() => setExpandedDescKeys(prev => { const next = new Set(prev); next.delete(key); return next })}>Less</button></>
                             }
-                            return <>{full.slice(0, limit)}… <button className="text-sky-400 hover:text-sky-300 underline" onClick={() => setExpandedDescKeys(prev => new Set(prev).add(key))}>More</button></>
+                            return <>{full.slice(0, limit)}… <button className={`${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'} underline`} onClick={() => setExpandedDescKeys(prev => new Set(prev).add(key))}>More</button></>
                           })()}
                         </div>
                       )}
                     </div>
                     <div className="text-right ml-auto">
-                      <div className="text-xs text-gray-400 whitespace-nowrap">{formatEventDate(ev?.date)}</div>
+                      <div className={`text-xs whitespace-nowrap ${light ? 'text-gray-500' : 'text-gray-400'}`}>{formatEventDate(ev?.date)}</div>
                       {ev?.source && (
                         <div className="mt-1 flex justify-end">
                           {(() => {
@@ -227,7 +237,11 @@ export const BusinessCard = memo(function BusinessCard({
                             const t = s.replace(/_/g, ' ')
                             const label = t.charAt(0).toUpperCase() + t.slice(1)
                             const weight = eventWeights[s] ?? 0
-                            const badgeColor = weight > 0 ? 'border-green-500 bg-green-500/20 text-green-200 hover:bg-green-500/30' : weight < 0 ? 'border-red-500 bg-red-500/20 text-red-200 hover:bg-red-500/30' : 'border-white/30 bg-white/5 text-gray-200 hover:bg-white/10'
+                            const badgeColor = weight > 0
+                              ? (light ? 'border-green-500 bg-green-50 text-green-700 hover:bg-green-100' : 'border-green-500 bg-green-500/20 text-green-200 hover:bg-green-500/30')
+                              : weight < 0
+                                ? (light ? 'border-red-500 bg-red-50 text-red-700 hover:bg-red-100' : 'border-red-500 bg-red-500/20 text-red-200 hover:bg-red-500/30')
+                                : (light ? 'border-gray-300 bg-gray-100 text-gray-700 hover:bg-gray-200' : 'border-white/30 bg-white/5 text-gray-200 hover:bg-white/10')
                             return <span className={`inline-block px-2 py-1 text-[11px] leading-none border ${badgeColor}`} title={label}>{label}</span>
                           })()}
                         </div>
@@ -237,7 +251,7 @@ export const BusinessCard = memo(function BusinessCard({
                   {(() => {
                     const href = typeof ev?.url === 'string' ? ev.url : ''
                     if (!href || !/^https?:\/\//i.test(href)) return null
-                    return <a href={href} target="_blank" rel="noreferrer" className="text-xs text-sky-400 hover:text-sky-300 underline">Source</a>
+                    return <a href={href} target="_blank" rel="noreferrer" className={`text-xs underline ${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'}`}>Source</a>
                   })()}
                 </li>
               ))}
@@ -245,9 +259,9 @@ export const BusinessCard = memo(function BusinessCard({
             {!!events && events.length > 1 && (
               <div className="mt-2">
                 {!showAllEvents ? (
-                  <button className="text-xs text-sky-400 hover:text-sky-300 underline" onClick={() => setShowAllEvents(true)}>Show {events.length - 1} more</button>
+                  <button className={`text-xs underline ${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'}`} onClick={() => setShowAllEvents(true)}>Show {events.length - 1} more</button>
                 ) : (
-                  <button className="text-xs text-sky-400 hover:text-sky-300 underline" onClick={() => { setShowAllEvents(false); setExpandedTitleKeys(new Set()); setExpandedDescKeys(new Set()) }}>Show less</button>
+                  <button className={`text-xs underline ${light ? 'text-sky-600 hover:text-sky-500' : 'text-sky-400 hover:text-sky-300'}`} onClick={() => { setShowAllEvents(false); setExpandedTitleKeys(new Set()); setExpandedDescKeys(new Set()) }}>Show less</button>
                 )}
               </div>
             )}

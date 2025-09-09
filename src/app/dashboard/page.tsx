@@ -5,11 +5,14 @@ import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
 import { useWatchlist } from '@/app/watchlist/useWatchlist'
 import { apiCache } from '@/lib/api-cache'
+import { useDashboardMode } from '@/components/DashboardThemeProvider'
  
 
 export default function DashboardPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
+  const { mode } = useDashboardMode()
+  const light = mode === 'light'
   const [newsLoading, setNewsLoading] = useState(false)
   const [newsError, setNewsError] = useState<string | null>(null)
   const [recentBusinesses, setRecentBusinesses] = useState<
@@ -157,43 +160,38 @@ export default function DashboardPage() {
 
   return (
       <div
-        className="p-4 md:p-6 flex flex-col overflow-hidden"
-        style={{
-          // Approx: reserve ~44px top bar + ~48px bottom bar (dynamic), adjust if chrome changes
-          height: 'calc(100dvh - 92px)'
-        }}
+        className={`p-4 md:p-6 flex flex-col overflow-hidden transition-colors duration-300 ${light ? 'bg-white text-gray-900' : 'bg-black text-white'}`}
+        style={{ height: 'calc(100dvh - 92px)' }}
       >
         {/* Upper half (exact 50%) */}
   <div className="basis-1/2 grow-0 shrink-0 min-h-0 flex flex-col overflow-hidden relative">
-          <h2 className="text-lg font-semibold mb-2">Stats</h2>
+          <h2 className={`text-lg font-semibold mb-2 ${light ? 'text-gray-900' : ''}`}>Stats</h2>
           <div className="flex-1 flex items-center justify-center">
-            <div className="text-5xl md:text-7xl font-extrabold tracking-tight text-white/80 select-none">
-              Needs Setup
-            </div>
+            <div className={`text-5xl md:text-7xl font-extrabold tracking-tight select-none ${light ? 'text-gray-800' : 'text-white/80'}`}>Needs Setup</div>
           </div>
         </div>
 
         {/* Lower half (exact 50%) */}
   <div className="basis-1/2 grow-0 shrink-0 min-h-0 grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6 relative -translate-y-2 md:-translate-y-3">
       <div className="flex flex-col min-h-0 h-full">
-            <h2 className="text-lg font-semibold mb-2">News</h2>
-  <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
+            <h2 className={`text-lg font-semibold mb-2 ${light ? 'text-gray-900' : ''}`}>News</h2>
+  <div className={`mt-2 flex-1 overflow-y-auto overflow-x-hidden border backdrop-blur-sm overscroll-contain ${light ? 'border-gray-200 bg-gray-100' : 'border-white/5 bg-white/5'}` }>
 
               {newsLoading && (
-                <div className="text-sm text-gray-400">Loading latest company events…</div>
+                <div className={`text-sm ${light ? 'text-gray-600' : 'text-gray-400'}`}>Loading latest company events…</div>
               )}
               {!newsLoading && newsError && (
-                <div className="text-sm text-red-400">{newsError}</div>
+                <div className={`text-sm ${light ? 'text-red-600' : 'text-red-400'}`}>{newsError}</div>
               )}
               {!newsLoading && !newsError && recentBusinesses.length === 0 && (
-                <div className="text-sm text-gray-400">No recent events.</div>
+                <div className={`text-sm ${light ? 'text-gray-600' : 'text-gray-400'}`}>No recent events.</div>
               )}
               {!newsLoading && !newsError && recentBusinesses.length > 0 && (
-        <ul className="divide-y divide-white/10">
+  <ul className={`divide-y ${light ? 'divide-gray-200' : 'divide-white/10'}`}>
                   {recentBusinesses.map((b) => (
                     <li
                       key={b.orgNumber}
-          className="py-2 px-2 flex items-start justify-between gap-4 hover:bg-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/30"
+          className={`py-2 px-2 flex items-start justify-between gap-4 cursor-pointer focus:outline-none focus:ring-1 ${light ? 'hover:bg-gray-200 focus:ring-gray-300' : 'hover:bg-white/10 focus:ring-white/30'}`}
                       role="button"
                       tabIndex={0}
                       onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(b.orgNumber)}`)}
@@ -206,12 +204,12 @@ export default function DashboardPage() {
                       title={`Open ${b.businessName}`}
                     >
                       <div className="min-w-0">
-                        <div className="text-sm font-medium text-white truncate">{b.businessName}</div>
+                        <div className={`text-sm font-medium truncate ${light ? 'text-gray-900' : 'text-white'}`}>{b.businessName}</div>
                         {b.latestEventTitle && (
-                          <div className="text-xs text-gray-400 truncate">{b.latestEventTitle}</div>
+                          <div className={`text-xs truncate ${light ? 'text-gray-600' : 'text-gray-400'}`}>{b.latestEventTitle}</div>
                         )}
                       </div>
-                      <div className="text-xs text-gray-500 whitespace-nowrap">
+                      <div className={`text-xs whitespace-nowrap ${light ? 'text-gray-500' : 'text-gray-500'}`}>
                         {b.latestEventDate ? new Date(b.latestEventDate).toLocaleDateString() : ''}
                       </div>
                     </li>
@@ -221,23 +219,23 @@ export default function DashboardPage() {
           </div>
           </div>
           <div className="flex flex-col min-h-0 h-full">
-            <h2 className="text-lg font-semibold mb-2">Watchlist</h2>
-            <div className="mt-2 flex-1 overflow-y-auto overflow-x-hidden border border-white/5 bg-white/5 backdrop-blur-sm overscroll-contain">
+            <h2 className={`text-lg font-semibold mb-2 ${light ? 'text-gray-900' : ''}`}>Watchlist</h2>
+            <div className={`mt-2 flex-1 overflow-y-auto overflow-x-hidden border backdrop-blur-sm overscroll-contain ${light ? 'border-gray-200 bg-gray-100' : 'border-white/5 bg-white/5'}` }>
             {watchlistLoading && (
-              <div className="text-sm text-gray-400">Loading watchlist…</div>
+              <div className={`text-sm ${light ? 'text-gray-600' : 'text-gray-400'}`}>Loading watchlist…</div>
             )}
             {!watchlistLoading && watchlistError && (
-              <div className="text-sm text-red-400">{watchlistError}</div>
+              <div className={`text-sm ${light ? 'text-red-600' : 'text-red-400'}`}>{watchlistError}</div>
             )}
             {!watchlistLoading && !watchlistError && (!watchlistItems || watchlistItems.length === 0) && (
-              <div className="text-sm text-gray-400">Your watchlist is empty.</div>
+              <div className={`text-sm ${light ? 'text-gray-600' : 'text-gray-400'}`}>Your watchlist is empty.</div>
             )}
             {!watchlistLoading && !watchlistError && watchlistItems && watchlistItems.length > 0 && (
-      <ul className="divide-y divide-white/10">
+  <ul className={`divide-y ${light ? 'divide-gray-200' : 'divide-white/10'}`}>
                 {watchlistItems.map((it) => (
                   <li
                     key={it.orgNumber}
-  className="py-2 px-2 flex items-center justify-between gap-4 hover:bg-white/10 cursor-pointer focus:outline-none focus:ring-1 focus:ring-white/30"
+  className={`py-2 px-2 flex items-center justify-between gap-4 cursor-pointer focus:outline-none focus:ring-1 ${light ? 'hover:bg-gray-200 focus:ring-gray-300' : 'hover:bg-white/10 focus:ring-white/30'}`}
                     role="button"
                     tabIndex={0}
                     onClick={() => router.push(`/company?orgNumber=${encodeURIComponent(it.orgNumber)}`)}
@@ -250,12 +248,12 @@ export default function DashboardPage() {
                     title={`Open ${it.name || 'Unnamed company'}`}
                   >
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-white truncate">{it.name || 'Unnamed company'}</div>
-                      <div className="text-xs text-gray-400 truncate">{it.orgNumber}</div>
+                      <div className={`text-sm font-medium truncate ${light ? 'text-gray-900' : 'text-white'}`}>{it.name || 'Unnamed company'}</div>
+                      <div className={`text-xs truncate ${light ? 'text-gray-600' : 'text-gray-400'}`}>{it.orgNumber}</div>
                     </div>
                     <div className="flex items-center gap-2">
                       <button
-                        className="text-xs px-2 py-1 border border-white/20 hover:bg-white/10"
+                        className={`text-xs px-2 py-1 border ${light ? 'border-gray-300 hover:bg-gray-200' : 'border-white/20 hover:bg-white/10'}`}
                         onClick={(e) => {
                           e.stopPropagation()
                           removeWatchlistItem(it.orgNumber)

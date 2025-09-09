@@ -6,6 +6,7 @@ import { useEffect, useState } from 'react'
 import { useWatchlist } from '@/app/watchlist/useWatchlist'
 import dynamic from 'next/dynamic'
 import type { ComponentType } from 'react'
+import { useDashboardMode } from '@/components/DashboardThemeProvider'
 
 // Dynamic import to mirror Search page behaviour (avoids SSR mismatch, heavy code split)
 type BusinessCardProps = {
@@ -55,6 +56,8 @@ export default function WatchlistPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const { items, isLoading: wlLoading, error: wlError, remove } = useWatchlist()
+  const { mode } = useDashboardMode()
+  const light = mode === 'light'
 
   // Local cache keys and TTL (10 minutes)
   const CACHE_KEY = 'watchlistBusinesses'
@@ -207,10 +210,10 @@ export default function WatchlistPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center transition-colors duration-300`}>
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
-          <div className="text-lg text-gray-400">Loading companies…</div>
+          <div className={`animate-spin rounded-full h-12 w-12 border-b-2 mx-auto mb-4 ${light ? 'border-red-600' : 'border-green-400'}`}></div>
+          <div className={`text-lg ${light ? 'text-gray-600' : 'text-gray-400'}`}>Loading companies…</div>
         </div>
       </div>
     )
@@ -219,20 +222,17 @@ export default function WatchlistPage() {
   if (!session) return null
 
   return (
-  <div className="min-h-screen bg-black text-white pb-0">
-      <div className="px-6 py-4 border-b border-white/10 flex items-center justify-between">
-        <h1 className="text-xl font-semibold">Watchlist</h1>
-        <div className="text-xs text-gray-400">{businesses.length} companies</div>
-      </div>
+  <div className={`min-h-screen pb-0 transition-colors duration-300`}>
       <div className="p-6">
+        <div className={`mb-4 text-xs ${light ? 'text-gray-500' : 'text-gray-400'}`} aria-label="Number of companies on watchlist">{businesses.length} companies</div>
         {error && (
-          <div className="mb-6 text-sm text-red-400">{error}</div>
+          <div className={`mb-6 text-sm ${light ? 'text-red-600' : 'text-red-400'}`}>{error}</div>
         )}
         {businesses.length === 0 && !error && (
-          <div className="text-sm text-gray-400">Your watchlist is empty.</div>
+          <div className={`text-sm ${light ? 'text-gray-600' : 'text-gray-400'}`}>Your watchlist is empty.</div>
         )}
         {businesses.length > 0 && (
-          <div className="divide-y divide-white/10">
+          <div className={`divide-y ${light ? 'divide-gray-200' : 'divide-white/10'}`}>
             {businesses.map(b => (
               <div key={b.orgNumber} className="relative">
                 <BusinessCard

@@ -3,6 +3,8 @@
 import { usePathname } from 'next/navigation'
 import TopBar from '@/components/TopBar'
 import BottomSidebar from '@/components/BottomSidebar'
+import { useDashboardMode } from '@/components/DashboardThemeProvider'
+// Path-based light chrome logic removed; light mode applies globally
 
 type AutoChromeProps = {
   children: React.ReactNode
@@ -11,11 +13,21 @@ type AutoChromeProps = {
 
 export default function AutoChrome({ children, title }: AutoChromeProps) {
   const pathname = usePathname()
-  const hideChrome = pathname?.startsWith('/auth/') || pathname === '/noaccess'
+  const isAuth = pathname?.startsWith('/auth/')
+  const isNoAccess = pathname === '/noaccess'
+  // Remove TopBar on auth and noaccess pages
+  const hideTop = isAuth || isNoAccess
+  // Hide bottom nav on auth pages and noaccess page
+  const hideBottom = isAuth || isNoAccess
   const path = pathname || '/'
   const isDashboard = path === '/' || path === '/dashboard'
+  // Pages that should use light chrome when the user selects light mode
+  const isLightCandidate = true
   const isCompany = path === '/company' || path.startsWith('/company/')
   const isProfile = path === '/profile' || path.startsWith('/profile/')
+  const isLists = path === '/lists' || path.startsWith('/lists/')
+  const isExport = path === '/export' || path.startsWith('/export/')
+  const isSandbox = path === '/sandbox' || path.startsWith('/sandbox/')
 
   const computedTitle = (() => {
     if (title) return title
@@ -39,22 +51,25 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
 
   // Container should not include bottom padding to avoid forcing page scroll.
   // Instead, apply bottom padding to the scrollable content area when needed.
-  const containerClass = hideChrome
-    ? 'h-[100dvh] min-h-0 overflow-hidden bg-black text-white flex flex-col'
-    : 'min-h-screen bg-black text-white flex flex-col'
+  const { mode } = useDashboardMode()
+  const containerClass = (() => {
+    const base = 'min-h-screen flex flex-col'
+    if (isAuth) return `${base} bg-black text-white` // Force dark on auth pages
+    const useLightChrome = isLightCandidate && mode === 'light'
+    return `${base} ${useLightChrome ? 'bg-white text-gray-900' : 'bg-black text-white'}`
+  })()
 
-  const contentPadding = !hideChrome && !(isDashboard || isCompany || isProfile)
+  const contentPadding = !(isDashboard || isCompany || isProfile || isLists || isExport || isSandbox) && !hideBottom
     ? 'pb-20 md:pb-24'
     : ''
 
   return (
     <div className={containerClass}>
-      {!hideChrome && <TopBar title={computedTitle} />}
+      {!hideTop && <TopBar title={computedTitle} />}
       <div className={`flex-1 min-h-0 overflow-hidden ${contentPadding}`}>{children}</div>
-      {!hideChrome && (
+      {!hideBottom && (
         <BottomSidebar showGoToTop={pathname === '/search' || pathname?.startsWith('/search/')} />
       )}
     </div>
   )
 }
-

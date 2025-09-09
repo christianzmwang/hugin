@@ -231,12 +231,12 @@ function ExportPageInner() {
   if (!session) return null
 
   return (
-    <div className="min-h-screen bg-black text-white p-6">
+    <div className="min-h-screen p-6 app-export">
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         <div className="lg:col-span-1 space-y-4">
-          <div className="border border-white/10 bg-gray-900/60 p-4">
+          <div className="border border-white/10 bg-gray-900/60 p-4 export-panel">
             <div className="flex items-center justify-between mb-3">
-              <h2 className="font-medium text-sm">Your Lists</h2>
+              <h2 className="font-medium text-sm export-heading">Your Lists</h2>
               {listsLoading && <span className="text-[10px] text-gray-400">Loading…</span>}
             </div>
             <div className="space-y-1 max-h-72 overflow-auto text-sm">
@@ -249,7 +249,7 @@ function ExportPageInner() {
             </div>
           </div>
           {activeList && (
-            <div className="border border-white/10 bg-gray-900/60 p-4">
+            <div className="border border-white/10 bg-gray-900/60 p-4 export-panel">
               <h3 className="font-medium text-sm mb-3">Fields (CSV)</h3>
               <div className="space-y-2 text-xs max-h-56 overflow-auto pr-1">
                 {FIELD_OPTIONS.map(f => (
@@ -274,7 +274,7 @@ function ExportPageInner() {
           )}
         </div>
         <div className="lg:col-span-3 space-y-6">
-          <div className="border border-white/10 bg-gray-900/60 p-6 min-h-[300px]">
+          <div className="border border-white/10 bg-gray-900/60 p-6 min-h-[300px] export-panel">
             {!activeList ? (
               activeLoading ? <div className="text-sm text-gray-400">Loading list…</div> : <div className="text-sm text-gray-400">Select a list to start.</div>
             ) : (
@@ -338,8 +338,8 @@ function ExportPageInner() {
             )}
           </div>
           {activeList && !emailMode && (
-            <div className="border border-white/5 bg-black/40 p-4 overflow-auto max-h-[300px] text-xs">
-              <table className="w-full border-collapse">
+            <div className="border border-white/5 bg-black/40 p-4 overflow-auto max-h-[300px] text-xs export-table-wrap">
+              <table className="w-full border-collapse export-table">
                 <thead>
                   <tr className="text-gray-400">
                     {selectedFields.map(f => <th key={f} className="text-left font-medium pb-2 pr-4">{f}</th>)}
@@ -377,5 +377,4 @@ export default function ExportPage() {
     </Suspense>
   )
 }
-
 

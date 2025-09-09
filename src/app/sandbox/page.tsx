@@ -1,9 +1,7 @@
-'use client'
-
+"use client"
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useEffect, useState } from 'react'
- 
 
 type ScanItem = { orgNumber: string; name?: string | null; website?: string | null; revenue?: number | null; webHtmlKb?: number | null; webStatus?: number | null; webFinalUrl?: string | null; stats: Record<string, { present: boolean; count: number; density: number }> }
 
@@ -52,7 +50,7 @@ export default function SandboxPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
           <div className="text-lg text-gray-400">Loading...</div>
@@ -242,10 +240,13 @@ export default function SandboxPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black p-6 space-y-8">
-      <div className="bg-gray-900 border border-white/10 p-6 space-y-4">
-        <h1 className="text-lg font-semibold">Sandbox</h1>
-        <p className="text-xs text-gray-400 leading-relaxed">
+    <div
+      className="flex-1 min-h-0 p-6 space-y-8 app-sandbox overflow-hidden flex flex-col"
+      style={{ height: 'calc(100dvh - 92px)' }}
+    >
+      <div className="bg-gray-900 border border-white/10 p-6 space-y-4 sandbox-panel">
+        <h1 className="text-lg font-semibold sandbox-heading">Sandbox</h1>
+        <p className="text-xs text-gray-400 leading-relaxed sandbox-muted">
           Keyword scanner for companies with websites. Set limit to 0 for all available{maxAvailable ? ` (${maxAvailable.toLocaleString()} companies with websites)` : ''}.
         </p>
         <div className="flex flex-wrap gap-2 items-center text-xs">
@@ -254,11 +255,11 @@ export default function SandboxPage() {
             onChange={e=>setKwInput(e.target.value)}
             onKeyDown={e=>{ if(e.key==='Enter'){ const v=kwInput.trim().toLowerCase(); if(v && !keywords.includes(v)){ setKeywords(p=>[...p,v]); setKwInput('') } } }}
             placeholder="Add keyword"
-            className="px-2 py-1 bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/70"
+            className="px-2 py-1 bg-black/40 border border-white/20 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/70 sandbox-input"
           />
-          <button type="button" className="px-2 py-1 border border-white/20 text-white/80 hover:border-red-600/60 hover:bg-red-600/10" onClick={()=>{ const v=kwInput.trim().toLowerCase(); if(v && !keywords.includes(v)){ setKeywords(p=>[...p,v]); setKwInput('') } }}>Add</button>
+          <button type="button" className="px-2 py-1 border border-white/20 text-white/80 hover:border-red-600/60 hover:bg-red-600/10 sandbox-btn" onClick={()=>{ const v=kwInput.trim().toLowerCase(); if(v && !keywords.includes(v)){ setKeywords(p=>[...p,v]); setKwInput('') } }}>Add</button>
           <div className="flex items-center gap-2">
-            <label className="text-gray-400">Limit</label>
+            <label className="text-gray-400 sandbox-muted">Limit</label>
             <input
               type="text"
               inputMode="numeric"
@@ -269,30 +270,30 @@ export default function SandboxPage() {
                 const v = Number(raw)
                 setLimit(Math.min(maxAvailable || 40000, v))
               }}
-              className="w-28 px-2 py-1 bg-black/40 border border-white/20 text-white text-xs"
+              className="w-28 px-2 py-1 bg-black/40 border border-white/20 text-white text-xs sandbox-input"
               placeholder="0 (all)"
             />
           </div>
-          <button type="button" disabled={keywords.length===0 || scanning} onClick={runScan} className={`px-2 py-1 border text-white/80 text-xs flex items-center gap-1 ${scanning? 'opacity-50 cursor-not-allowed border-white/10':'border-white/20 hover:border-red-600/60 hover:bg-red-600/10'}`}>
+          <button type="button" disabled={keywords.length===0 || scanning} onClick={runScan} className={`px-2 py-1 border text-white/80 text-xs flex items-center gap-1 sandbox-btn ${scanning? 'opacity-50 cursor-not-allowed border-white/10':'border-white/20 hover:border-red-600/60 hover:bg-red-600/10'}`}>
             {scanning && <div className="animate-spin rounded-full h-3 w-3 border border-white/40 border-t-white"></div>}
             {scanning? 'Scanning...' : 'Scan'}
           </button>
-          <button type="button" disabled={keywords.length===0 || scanning || results.length===0} onClick={downloadCsv} className="px-2 py-1 border border-white/20 text-white/80 text-xs hover:border-red-600/60 hover:bg-red-600/10">Export CSV</button>
+          <button type="button" disabled={keywords.length===0 || scanning || results.length===0} onClick={downloadCsv} className="px-2 py-1 border border-white/20 text-white/80 text-xs hover:border-red-600/60 hover:bg-red-600/10 sandbox-btn">Export CSV</button>
           {keywords.length>0 && (
-            <button type="button" className="px-2 py-1 border border-white/20 text-white/60 text-xs hover:border-yellow-500/60 hover:bg-yellow-500/10" onClick={()=> setKeywords([])}>Clear keywords</button>
+            <button type="button" className="px-2 py-1 border border-white/20 text-white/60 text-xs hover:border-yellow-500/60 hover:bg-yellow-500/10 sandbox-btn" onClick={()=> setKeywords([])}>Clear keywords</button>
           )}
         </div>
         {keywords.length>0 && (
           <div className="flex flex-wrap gap-1">
             {keywords.map(k=> (
-              <span key={k} className="group inline-flex items-center gap-1 text-[10px] px-2 py-1 border border-white/20 text-white/80">
+              <span key={k} className="group inline-flex items-center gap-1 text-[10px] px-2 py-1 border border-white/20 text-white/80 sandbox-chip">
                 <span>{k}</span>
                 <button type="button" className="opacity-0 group-hover:opacity-100" onClick={()=> setKeywords(prev=> prev.filter(x=>x!==k))}>×</button>
               </span>
             ))}
           </div>
         )}
-        {error && <div className="text-xs text-red-400">{error}</div>}
+        {error && <div className="text-xs text-red-400 sandbox-error">{error}</div>}
         {scanProgress && (
           <div className="space-y-2">
             <div className="flex justify-between text-xs text-gray-400">
@@ -308,30 +309,30 @@ export default function SandboxPage() {
           </div>
         )}
       </div>
-      <div className="space-y-6">
+      <div className="flex-1 min-h-0 space-y-6 overflow-y-auto">
         {progress.length>0 && (
           <div className="space-y-2">
             <div className="flex justify-between items-center">
-              <h3 className="text-sm text-gray-400">Progress Log</h3>
+              <h3 className="text-sm text-gray-400 sandbox-muted">Progress Log</h3>
               <button 
                 type="button" 
                 onClick={() => setProgress([])}
-                className="px-2 py-1 text-xs border border-white/20 text-white/60 hover:border-yellow-500/60 hover:bg-yellow-500/10"
+                className="px-2 py-1 text-xs border border-white/20 text-white/60 hover:border-yellow-500/60 hover:bg-yellow-500/10 sandbox-btn"
               >
                 Clear Log
               </button>
             </div>
             <div 
               ref={setProgressRef}
-              className="bg-black/40 border border-white/10 p-3 max-h-80 overflow-auto text-[10px] font-mono whitespace-pre-wrap leading-relaxed scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent"
+              className="bg-black/40 border border-white/10 p-3 max-h-80 overflow-auto text-[10px] font-mono whitespace-pre-wrap leading-relaxed scrollbar-thin scrollbar-thumb-white/20 scrollbar-track-transparent sandbox-log"
             >
               {progress.map((p,i)=>(<div key={i} className="mb-1">{p}</div>))}
             </div>
           </div>
         )}
         {results.length>0 ? (
-          <div className="overflow-x-auto border border-white/10">
-            <table className="min-w-full text-xs">
+          <div className="overflow-x-auto border border-white/10 sandbox-table-wrap">
+            <table className="min-w-full text-xs sandbox-table">
               <thead className="bg-black/60">
                 <tr>
                   <Sortable label="Org" col="org" sortKey={sortKey} sortDir={sortDir} setSort={(k)=> toggleSort(k)} />
@@ -341,21 +342,16 @@ export default function SandboxPage() {
                   <th className="px-2 py-2 text-left font-semibold">Status</th>
                   <th className="px-2 py-2 text-left font-semibold">KB</th>
                   <Sortable label="Total kw count" col="kwCount" sortKey={sortKey} sortDir={sortDir} setSort={(k)=> toggleSort(k)} />
-                  <Sortable label="Best kw %" col="kwPct" sortKey={sortKey} sortDir={sortDir} setSort={(k)=> toggleSort(k)} />
                   {keywords.map(k=> (
                     <Sortable key={k+':count'} label={`${k} count`} col={`kwCount:${k}`} sortKey={sortKey} sortDir={sortDir} setSort={(c)=>toggleSort(c)} />
-                  ))}
-                  {keywords.map(k=> (
-                    <Sortable key={k+':pct'} label={`${k} %`} col={`kwPct:${k}`} sortKey={sortKey} sortDir={sortDir} setSort={(c)=>toggleSort(c)} />
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {sortResults(results, keywords, sortKey, sortDir).map(r=> {
+        {sortResults(results, keywords, sortKey, sortDir).map(r=> {
                   const totalCount = keywords.reduce((acc,k)=> acc + (r.stats[k]?.count||0),0)
-                  const bestPct = keywords.reduce((mx,k)=> Math.max(mx, (r.stats[k]?.density||0)),0)
                   return (
-                    <tr key={r.orgNumber} className={`odd:bg-black/30 even:bg-black/10 ${scanning ? 'opacity-60' : 'cursor-pointer hover:bg-red-600/10'}`} onClick={scanning ? undefined : () => router.push(`/company?orgNumber=${encodeURIComponent(r.orgNumber)}`)}>
+          <tr key={r.orgNumber} className={`odd:bg-black/30 even:bg-black/10 ${scanning ? 'opacity-60' : 'cursor-pointer hover:bg-red-600/10'} sandbox-row`} onClick={scanning ? undefined : () => router.push(`/company?orgNumber=${encodeURIComponent(r.orgNumber)}`)}>
                       <td className="px-2 py-1 whitespace-nowrap font-mono text-[11px]">{r.orgNumber}</td>
                       <td className="px-2 py-1">{r.name || ''}</td>
                       <td className="px-2 py-1">{r.revenue != null ? r.revenue : ''}</td>
@@ -363,12 +359,7 @@ export default function SandboxPage() {
                       <td className="px-2 py-1">{r.webStatus ?? ''}</td>
                       <td className="px-2 py-1">{r.webHtmlKb ?? ''}</td>
                       <td className="px-2 py-1">{totalCount}</td>
-                      <td className="px-2 py-1">{(bestPct*100).toFixed(2)}%</td>
                       {keywords.map(k=> <td key={k} className="px-2 py-1">{r.stats[k]?.count ?? 0}</td>)}
-                      {keywords.map(k=> {
-                        const d = r.stats[k]?.density ?? 0
-                        return <td key={k+':d'} className="px-2 py-1">{(d*100).toFixed(2)}%</td>
-                      })}
                     </tr>
                   )
                 })}
@@ -400,13 +391,9 @@ function sortResults(items: ScanItem[], kws: string[], key: (string|null), dir:'
     else if (key === 'name') { va=a.name||''; vb=b.name||'' }
     else if (key === 'revenue') { va=a.revenue??-Infinity; vb=b.revenue??-Infinity }
     else if (key === 'kwCount') { va=totalA; vb=totalB }
-    else if (key === 'kwPct') { va=bestA; vb=bestB }
-    else if (key.startsWith('kwCount:')) {
+  else if (key.startsWith('kwCount:')) {
       const kw = key.split(':',2)[1]
       va = a.stats[kw]?.count||0; vb = b.stats[kw]?.count||0
-    } else if (key.startsWith('kwPct:')) {
-      const kw = key.split(':',2)[1]
-      va = a.stats[kw]?.density||0; vb = b.stats[kw]?.density||0
     } else { return 0 }
     if (va < vb) return -1*mul
     if (va > vb) return 1*mul
@@ -429,6 +416,3 @@ function Sortable({ label, col, sortKey, sortDir, setSort }: SortableProps) {
     </th>
   )
 }
-
-
-

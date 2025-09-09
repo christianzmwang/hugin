@@ -3,6 +3,7 @@
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
+import { useDashboardMode } from '@/components/DashboardThemeProvider'
 // ParallelChat removed from inline usage; chat implemented directly in this page now
 import { createPortal } from 'react-dom'
 
@@ -50,32 +51,12 @@ type Business = {
   sumEiendeler?: string | number | null
   sumEgenkapital?: string | number | null
   sumGjeld?: string | number | null
-  reports?: Array<{
-    fiscalYear: number
-    revenue: string
-    operatingIncome: string
-    operatingResult: string
-    profitBeforeTax: string
-    profit: string
-    totalAssets: string
-    equity: string
-    valuta: string
-    fraDato: string
-    tilDato: string
-    sumDriftsinntekter: string
-    driftsresultat: string
-    aarsresultat: string
-    sumEiendeler: string
-    sumEgenkapital: string
-    sumGjeld: string
-  }>
   // Website analysis data
   webFinalUrl?: string | null
   webStatus?: number | null
   webElapsedMs?: number | null
   webIp?: string | null
   webTlsValid?: boolean | null
-  webTlsNotBefore?: string | null
   webTlsNotAfter?: string | null
   webTlsDaysToExpiry?: number | null
   webTlsIssuer?: string | null
@@ -513,6 +494,8 @@ function renderStructuredResearch(data: StructuredResearch) {
 }
 
 function CompanyPageContent() {
+  const { mode: themeMode } = useDashboardMode()
+  const light = themeMode === 'light'
   const { data: session, status } = useSession()
   const router = useRouter()
   const searchParams = useSearchParams()
@@ -531,10 +514,24 @@ function CompanyPageContent() {
   const pollTokenRef = useRef(0)
   const [processor, setProcessor] = useState<'lite' | 'base' | 'core' | 'pro' | 'ultra'>('base')
   // UI mode: deep research (default) vs chat
-  const [mode, setMode] = useState<'research' | 'chat'>('research')
+  const [uiMode, setUiMode] = useState<'research' | 'chat'>('research')
   const [procDropdownOpen, setProcDropdownOpen] = useState(false)
   const procDropdownRef = useRef<HTMLDivElement | null>(null)
   const procAnchorRef = useRef<HTMLDivElement | null>(null)
+  // Close processor mode dropdown on outside click
+  useEffect(() => {
+    if (!procDropdownOpen) return
+    const handleClick = (e: MouseEvent) => {
+      const dropdown = procDropdownRef.current
+      const anchor = procAnchorRef.current
+      if (!dropdown || !anchor) return
+      if (dropdown.contains(e.target as Node)) return
+      if (anchor.contains(e.target as Node)) return
+      setProcDropdownOpen(false)
+    }
+    window.addEventListener('mousedown', handleClick)
+    return () => window.removeEventListener('mousedown', handleClick)
+  }, [procDropdownOpen])
   const procButtonsContainerRef = useRef<HTMLDivElement | null>(null)
   const [procGroupWidth, setProcGroupWidth] = useState<number | null>(null)
   // Inline chat state (replaces ParallelChat component)
@@ -554,7 +551,7 @@ function CompanyPageContent() {
 
   const [chatTypeoutClass, setChatTypeoutClass] = useState('')
   const [researchDotAnimClass, setResearchDotAnimClass] = useState('')
-  const previousModeRef = useRef<'research' | 'chat'>(mode)
+  const previousModeRef = useRef<'research' | 'chat'>(uiMode)
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
 
   
@@ -660,18 +657,18 @@ function CompanyPageContent() {
   }, [prompt, autoResizePrompt])
 
   useEffect(() => {
-    if (previousModeRef.current !== mode) {
-      if (mode === 'research') {
+    if (previousModeRef.current !== uiMode) {
+      if (uiMode === 'research') {
         setResearchDotAnimClass('dot-cascade-enter')
         setChatTypeoutClass('')
       } else {
-  // no button container animation
+        // no button container animation
         setChatTypeoutClass('typeout-animate')
         setResearchDotAnimClass('dot-cascade-exit')
       }
-      previousModeRef.current = mode
+      previousModeRef.current = uiMode
     }
-  }, [mode])
+  }, [uiMode])
 
   useEffect(() => {
     const containerEl = procButtonsContainerRef.current
@@ -681,8 +678,7 @@ function CompanyPageContent() {
       const w = el.getBoundingClientRect().width
       if (w && Math.abs(w - (procGroupWidth || 0)) > 1) setProcGroupWidth(Math.round(w))
     }
-    // Measure when research group visible
-    if (mode === 'research') {
+    if (uiMode === 'research') {
       measure()
     }
     const ro = typeof ResizeObserver !== 'undefined' && containerEl ? new ResizeObserver(measure) : null
@@ -694,7 +690,7 @@ function CompanyPageContent() {
       if (ro && containerEl) ro.unobserve(containerEl)
       clearInterval(id)
     }
-  }, [mode, processor, procGroupWidth])
+  }, [uiMode, processor, procGroupWidth])
 
   // Heartbeat for Info line to refresh relative times every 5s
   useEffect(() => {
@@ -1875,9 +1871,21 @@ function CompanyPageContent() {
   }
 
   return (
-  <div className="min-h-screen bg-black text-white pb-8 md:pb-12">
+  <div className={`min-h-screen pb-8 md:pb-12 transition-colors ${light ? 'company-light' : ''}`}>
+    {light && (
+      <style jsx global>{`
+        .company-light .border-white\/10 { border-color: #e5e7eb !important; }
+        .company-light .border-white\/20 { border-color: #d1d5db !important; }
+        .company-light .bg-white\/5 { background-color: #f9fafb !important; }
+        .company-light .text-white { color: #111827 !important; }
+        .company-light .text-white\/90 { color: #1f2937 !important; }
+        .company-light .text-gray-300 { color: #4b5563 !important; }
+        .company-light .text-gray-400 { color: #6b7280 !important; }
+        .company-light .text-gray-500 { color: #6b7280 !important; }
+      `}</style>
+    )}
       {/* Search Bar and Recently Viewed */}
-      <div className="p-2 px-6 border-b border-white/10">
+  <div className={`p-2 px-6 border-b ${light ? 'border-gray-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60' : 'border-white/10'}` }>
         <div className="flex items-center gap-8">
               {/* Search Bar */}
           <div className="relative w-64">
@@ -1886,7 +1894,7 @@ function CompanyPageContent() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Søk selskaper"
-            className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
+            className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
             ref={companySearchRef}
             onFocus={() => {
               if (companySuggestions.length > 0) setCompanyDropdownOpen(true)
@@ -1897,18 +1905,18 @@ function CompanyPageContent() {
           {companyDropdownOpen && companySuggestions.length > 0 && companyDropdownRect && isMounted && createPortal(
             <div
               ref={companyDropdownRef}
-              className="z-50 border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10"
+              className={`z-50 shadow-xl ${light ? 'bg-white border border-gray-200 text-gray-900 divide-y divide-gray-100' : 'border border-white/10 bg-black text-white divide-y divide-white/10'}`}
               style={{ position: 'fixed', top: companyDropdownRect.top, left: companyDropdownRect.left, width: companyDropdownRect.width }}
             >
               {companySuggestions.map((c, idx) => (
                 <button
                   key={`${c.orgNumber}-${idx}`}
                   onClick={() => handleCompanySelect(c.orgNumber)}
-                  className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
+                  className={`block w-full text-left px-4 py-3 text-sm focus:outline-none transition-colors ${light ? 'hover:bg-gray-100 focus:bg-gray-100' : 'hover:bg-white/20 focus:bg-white/20'}`}
                 >
                   <div className="flex items-center justify-between gap-3">
                     <span>{c.name || 'Uten navn'}</span>
-                    <span className="text-xs text-gray-400">{c.orgNumber}</span>
+                    <span className={`text-xs ${light ? 'text-gray-500' : 'text-gray-400'}`}>{c.orgNumber}</span>
                   </div>
                 </button>
               ))}
@@ -1976,9 +1984,9 @@ function CompanyPageContent() {
                 ))}
               </div>
               {/* Fade effect on the left */}
-              <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-black to-transparent pointer-events-none z-10"></div>
+              <div className={`absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r ${light ? 'from-white' : 'from-black'} to-transparent pointer-events-none z-10`}></div>
               {/* Fade effect on the right */}
-              <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-black to-transparent pointer-events-none z-10"></div>
+              <div className={`absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l ${light ? 'from-white' : 'from-black'} to-transparent pointer-events-none z-10`}></div>
             </div>
           )}
         </div>
@@ -1990,7 +1998,7 @@ function CompanyPageContent() {
           <div className="border border-white/10 p-4 mb-6 bg-white/5">
             <div className="flex items-start gap-3">
               {/* 1. Input area */}
-              {mode === 'research' ? (
+              {uiMode === 'research' ? (
                 <textarea
                   id="research-prompt"
                   ref={promptRef}
@@ -1998,7 +2006,9 @@ function CompanyPageContent() {
                   onChange={(e) => { setPrompt(e.target.value); setLastPromptEditAt(Date.now()); autoResizePrompt() }}
                   rows={1}
                   placeholder="Spør hugin"
-                  className="flex-1 bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/70 overflow-hidden resize-none leading-6"
+                  className={`flex-1 border text-sm px-3 py-2 overflow-hidden resize-none leading-6 focus:outline-none ${light
+                    ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-red-600'
+                    : 'bg-black border-white/20 text-white placeholder-gray-500 focus:border-red-600/70'}`}
                 />
               ) : (
                 <textarea
@@ -2008,36 +2018,42 @@ function CompanyPageContent() {
                   onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat() } }}
                   placeholder="Spør hugin"
                   rows={1}
-                  className="flex-1 bg-black border border-white/20 text-sm px-3 py-2 text-white placeholder-gray-500 focus:outline-none focus:border-red-600/70 overflow-hidden resize-none leading-6"
+                  className={`flex-1 border text-sm px-3 py-2 overflow-hidden resize-none leading-6 focus:outline-none ${light
+                    ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-red-600'
+                    : 'bg-black border-white/20 text-white placeholder-gray-500 focus:border-red-600/70'}`}
                 />
               )}
               {/* 2. Action button */}
-              {mode === 'research' ? (
+              {uiMode === 'research' ? (
                 <button
                   onClick={triggerResearch}
                   disabled={(researchStatus === 'running' || researchStatus === 'queued') || !prompt.trim()}
-                  className={`h-10 w-24 border text-sm ${ (researchStatus === 'running' || researchStatus === 'queued')
-                    ? 'border-white/20 text-white/50 cursor-not-allowed'
+                  className={`h-10 w-24 border text-sm transition-colors ${ (researchStatus === 'running' || researchStatus === 'queued')
+                    ? (light ? 'border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed' : 'border-white/20 text-white/50 cursor-not-allowed')
                     : (!prompt.trim())
-                      ? 'border-white/10 text-white/40 cursor-not-allowed'
-                      : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'}`}
+                      ? (light ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-white/10 text-white/40 cursor-not-allowed')
+                      : (light
+                          ? 'border-gray-300 text-gray-800 hover:bg-red-50 hover:border-red-500 hover:text-red-700'
+                          : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60')}`}
                 >{(researchStatus === 'running' || researchStatus === 'queued') ? 'Flyr…' : 'Spør'}</button>
               ) : chatStreaming ? (
                 <button
                   onClick={() => chatAbortRef.current?.abort()}
-                  className="h-10 w-24 border border-red-600/60 text-white text-sm hover:bg-red-600/20"
+                  className={`h-10 w-24 border text-sm ${light ? 'border-red-500 text-red-700 hover:bg-red-50' : 'border-red-600/60 text-white hover:bg-red-600/20'}`}
                 >Stopp</button>
               ) : (
                 <button
                   onClick={sendChat}
                   disabled={!chatInput.trim()}
-                  className={`h-10 w-24 border text-sm ${chatInput.trim() ? 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60' : 'border-white/10 text-white/40'}`}
+                  className={`h-10 w-24 border text-sm transition-colors ${chatInput.trim()
+                    ? (light ? 'border-gray-300 text-gray-800 hover:bg-red-50 hover:border-red-500 hover:text-red-700' : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60')
+                    : (light ? 'border-gray-200 text-gray-400' : 'border-white/10 text-white/40')}`}
                 >Spør</button>
               )}
               {/* 3. Processor group (research) or Chat dropdown toggle (chat) */}
               <div ref={procAnchorRef} className="relative flex items-stretch h-10">
-                {mode === 'research' ? (
-                  <div ref={procButtonsContainerRef} className="h-10 bg-black border border-white/20 overflow-hidden flex items-stretch text-sm select-none">
+                {uiMode === 'research' ? (
+                  <div ref={procButtonsContainerRef} className={`h-10 overflow-hidden flex items-stretch text-sm select-none border ${light ? 'bg-white border-gray-300' : 'bg-black border-white/20'}`}>
         {(['base','pro','ultra'] as const).map((key, idx) => {
                       const selected = processor === key
                       const level = idx + 1
@@ -2052,13 +2068,16 @@ function CompanyPageContent() {
                           aria-pressed={selected}
                           onClick={() => setProcessor(key)}
                           title={`Estimert tid: ${processorMeta[key].est} • ${pointsLabel} poeng / spørsmål`}
-                          className={`px-2 h-full flex items-center justify-center ${selected ? 'bg-red-600/20 text-white border-red-600/60' : 'text-white/85 hover:bg-white/10'} ${idx > 0 ? 'border-l border-white/15' : ''}`}
+                          className={`px-2 h-full flex items-center justify-center transition-colors ${selected
+                            ? (light ? 'bg-red-50 text-red-700' : 'bg-red-600/20 text-white')
+                            : (light ? 'text-gray-700 hover:bg-gray-100' : 'text-white/85 hover:bg-white/10')}
+                            ${idx > 0 ? (light ? 'border-l border-gray-200' : 'border-l border-white/15') : ''}`}
                         >
-                          <span className={`inline-flex flex-col-reverse items-center gap-[3px] ${mode==='research' ? researchDotAnimClass : ''}`}>
+                          <span className={`inline-flex flex-col-reverse items-center gap-[3px] ${uiMode==='research' ? researchDotAnimClass : ''}`}>
                             {Array.from({ length: 3 }).map((_, j) => {
                               const litCount = level
                               const isLit = j < litCount
-                              return <span key={j} className={`w-1.5 h-1.5 rounded-full transition-colors duration-200 ${isLit ? 'bg-red-400' : 'bg-white/25'}`} />
+                              return <span key={j} className={`w-1.5 h-1.5 rounded-full transition-colors duration-200 ${isLit ? (light ? 'bg-red-500' : 'bg-red-400') : (light ? 'bg-gray-300' : 'bg-white/25')}`} />
                             })}
                           </span>
                         </button>
@@ -2070,7 +2089,9 @@ function CompanyPageContent() {
                       aria-haspopup="menu"
                       aria-expanded={procDropdownOpen}
                       aria-label="Bytt modus"
-                      className={`px-2 h-full flex items-center justify-center border-l border-white/15 text-white/70 hover:bg-white/10 ${procDropdownOpen ? 'bg-white/10' : ''}`}
+                      className={`px-2 h-full flex items-center justify-center border-l text-sm transition-colors ${light
+                        ? 'border-gray-200 text-gray-600 hover:bg-gray-100'
+                        : 'border-white/15 text-white/70 hover:bg-white/10'} ${procDropdownOpen ? (light ? 'bg-gray-100' : 'bg-white/10') : ''}`}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none">
                         <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -2081,7 +2102,9 @@ function CompanyPageContent() {
                   <button
                     type="button"
                     onClick={() => setProcDropdownOpen(o => !o)}
-                    className={`h-10 border border-white/20 text-sm text-white/85 hover:bg-white/10 flex items-center justify-between px-4 pl-5 pr-2`}
+                    className={`h-10 border text-sm flex items-center justify-between px-4 pl-5 pr-2 transition-colors ${light
+                      ? 'border-gray-300 text-gray-700 hover:bg-gray-100'
+                      : 'border-white/20 text-white/85 hover:bg-white/10'}`}
                     style={{ width: procGroupWidth ? `${procGroupWidth}px` : undefined }}
                     aria-haspopup="menu"
                     aria-expanded={procDropdownOpen}
@@ -2096,60 +2119,53 @@ function CompanyPageContent() {
                   </button>
                 )}
                 {procDropdownOpen && (
-                  <div ref={procDropdownRef} className="absolute right-0 top-full bg-black border border-white/20 shadow-xl z-50" style={{ width: mode==='research' ? ((procAnchorRef.current?.firstElementChild as HTMLElement | null)?.offsetWidth || 0) : (procGroupWidth || undefined) }}>
+                  <div ref={procDropdownRef} className={`absolute right-0 top-full z-50 border ${light ? 'bg-white border-gray-200' : 'bg-black border-white/20'}`} style={{ width: uiMode==='research' ? ((procAnchorRef.current?.firstElementChild as HTMLElement | null)?.offsetWidth || 0) : (procGroupWidth || undefined) }}>
                     <div className="flex flex-col">
-                      <button
-                        disabled={mode==='chat'}
-                        onClick={() => { if(mode!=='chat'){ setMode('chat'); setProcDropdownOpen(false) } }}
-                        className={`text-left px-4 py-2 text-sm transition-colors ${mode==='chat'
-                          ? 'text-white/30 cursor-default pointer-events-none'
-                          : 'text-white/85 hover:bg-white/10 hover:text-white'}
-                        `}
-                        aria-disabled={mode==='chat'}
-                      >Chat</button>
-                      <button
-                        disabled={mode==='research'}
-                        onClick={() => { if(mode!=='research'){ setMode('research'); setProcDropdownOpen(false) } }}
-                        className={`text-left px-4 py-2 text-sm transition-colors ${mode==='research'
-                          ? 'text-white/30 cursor-default pointer-events-none'
-                          : 'text-white/85 hover:bg-white/10 hover:text-white'}
-                        `}
-                        aria-disabled={mode==='research'}
-                      >Research</button>
+                      {uiMode === 'research' ? (
+                        <button
+                          onClick={() => { setUiMode('chat'); setProcDropdownOpen(false) }}
+                          className={`text-left px-4 py-2 text-sm transition-colors ${light ? 'text-gray-700 hover:bg-gray-100' : 'text-white/85 hover:bg-white/10 hover:text-white'}`}
+                        >Chat</button>
+                      ) : (
+                        <button
+                          onClick={() => { setUiMode('research'); setProcDropdownOpen(false) }}
+                          className={`text-left px-4 py-2 text-sm transition-colors ${light ? 'text-gray-700 hover:bg-gray-100' : 'text-white/85 hover:bg-white/10 hover:text-white'}`}
+                        >Research</button>
+                      )}
                     </div>
                   </div>
                 )}
               </div>
               {/* 4. Clear / abort */}
-              {mode === 'research' ? (
-                <button
-                  onClick={handleClearResearch}
-                  className={`h-10 w-24 border text-sm ${researchStatus === 'running' || researchStatus === 'queued'
-                    ? 'border-red-600/60 text-white hover:bg-red-600/20'
-                    : (researchText || researchStructured)
-            ? 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60 transition-colors'
-            : 'border-white/10 text-white/40 hover:bg-red-600/10 hover:border-red-600/30 transition-colors'}`}
-                  title={(researchStatus === 'running' || researchStatus === 'queued') ? 'Avbryt' : 'Tøm svar'}
-                >{(researchStatus === 'running' || researchStatus === 'queued') ? 'Avbryt' : 'Tøm'}</button>
-              ) : (
-                <button
-                  onClick={() => { if (chatStreaming) chatAbortRef.current?.abort(); setChatMessages([]); setChatError(null) }}
-                  className={`h-10 w-24 border text-sm transition-colors ${ (chatMessages.some(m => m.content.trim().length > 0) || chatStreaming)
-                    ? 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60'
-                    : 'border-white/10 text-white/40 hover:bg-red-600/10 hover:border-red-600/30'}`}
-                >Tøm</button>
-              )}
+                {uiMode === 'research' ? (
+                  <button
+                    onClick={handleClearResearch}
+                    className={`h-10 w-24 border text-sm transition-colors ${researchStatus === 'running' || researchStatus === 'queued'
+                      ? (light ? 'border-red-500 text-red-700 hover:bg-red-50' : 'border-red-600/60 text-white hover:bg-red-600/20')
+                      : (researchText || researchStructured)
+                        ? (light ? 'border-gray-300 text-gray-700 hover:bg-red-50 hover:border-red-500 hover:text-red-700' : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60')
+                        : (light ? 'border-gray-200 text-gray-400 hover:bg-gray-100' : 'border-white/10 text-white/40 hover:bg-red-600/10 hover:border-red-600/30')}`}
+                    title={(researchStatus === 'running' || researchStatus === 'queued') ? 'Avbryt' : 'Tøm svar'}
+                  >{(researchStatus === 'running' || researchStatus === 'queued') ? 'Avbryt' : 'Tøm'}</button>
+                ) : (
+                  <button
+                    onClick={() => { if (chatStreaming) chatAbortRef.current?.abort(); setChatMessages([]); setChatError(null) }}
+                    className={`h-10 w-24 border text-sm transition-colors ${(chatMessages.some(m => m.content.trim().length > 0) || chatStreaming)
+                      ? (light ? 'border-gray-300 text-gray-700 hover:bg-red-50 hover:border-red-500 hover:text-red-700' : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60')
+                      : (light ? 'border-gray-200 text-gray-400 hover:bg-gray-100' : 'border-white/10 text-white/40 hover:bg-red-600/10 hover:border-red-600/30')}`}
+                  >Tøm</button>
+                )}
             </div>
             {/* Output region with smooth height transitions */}
             {/* Ensure research/chat output wrapper only mounts when there's content or activity */}
             {(() => {
               const hasResearchContent = Boolean(researchText || translatedResearchText || researchStructured || researchError || researchStatus === 'running' || researchStatus === 'queued')
               const hasChatContent = chatMessages.some(m => m.content.trim().length > 0) || chatStreaming || chatError
-              const showOutputWrapper = mode === 'research' ? hasResearchContent : hasChatContent
+              const showOutputWrapper = uiMode === 'research' ? hasResearchContent : hasChatContent
               return showOutputWrapper
             })() && (
               <div className="relative mt-3">
-                {mode === 'research' ? (
+                {uiMode === 'research' ? (
                   <div>
                     {researchError && (
                       <div className="text-sm text-red-400">{researchError}</div>
@@ -2173,18 +2189,18 @@ function CompanyPageContent() {
                       </div>
                     )}
                     {(researchStatus === 'running' || researchStatus === 'queued') && (
-                      <div className="flex items-center gap-3 text-sm text-gray-300 mt-3">
+                      <div className={`flex items-center gap-3 text-sm mt-3 ${light ? 'text-gray-600' : 'text-gray-300'}`}>
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-green-400"></div>
                         Hugin søker… Dette kan ta litt tid.
                       </div>
                     )}
                     {researchStructured && (
-                      <div className="mt-4 text-sm leading-6 text-gray-100">
+                      <div className={`mt-4 text-sm leading-6 ${light ? 'text-gray-800' : 'text-gray-100'}`}>
                         {renderStructuredResearch(researchStructured)}
                       </div>
                     )}
                     {!researchStructured && (translatedResearchText || researchText) && (
-                      <div className="mt-4 text-sm leading-6 text-gray-100">
+                      <div className={`mt-4 text-sm leading-6 ${light ? 'text-gray-800' : 'text-gray-100'}`}>
                         {renderResearchWithLinksAndBasis(translatedResearchText || researchText, researchBasis)}
                       </div>
                     )}
@@ -2194,18 +2210,18 @@ function CompanyPageContent() {
                     const hasChatContentInner = chatMessages.some(m => m.content.trim().length > 0)
                     if (!hasChatContentInner && !chatStreaming && !chatError) return null
                     return (
-                      <div className="text-sm leading-6 text-gray-100">
+                      <div className={`text-sm leading-6 ${light ? 'text-gray-800' : 'text-gray-100'}`}>
                         <div className="relative">
                           <div
                             ref={chatScrollRef}
-                            className={`max-h-[55vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent transition-[min-height] duration-200 ${chatMessages.filter(m=>m.content.trim()).length <= 2 ? 'min-h-[40px]' : 'min-h-[200px]'}`}
+                            className={`max-h-[55vh] overflow-y-auto pr-2 transition-[min-height] duration-200 scrollbar-thin scrollbar-track-transparent ${light ? 'scrollbar-thumb-gray-300' : 'scrollbar-thumb-white/10'} ${chatMessages.filter(m=>m.content.trim()).length <= 2 ? 'min-h-[40px]' : 'min-h-[200px]'}`}
                             style={{ scrollbarWidth: 'thin' }}
                           >
                             {chatMessages.map((m, idx) => (
                               <div key={m.id} className={`pb-4 ${idx === chatMessages.length - 1 ? 'pb-0' : ''}`}>
                                 {m.role === 'user' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Du</div>}
                                 {m.role === 'assistant' && <div className="text-[11px] uppercase tracking-wide mb-1 text-gray-500">Hugin</div>}
-                                <div className="whitespace-pre-wrap text-gray-200 leading-6">{m.content || (m.role === 'assistant' && chatStreaming ? <span className="opacity-60">Søker…</span> : '')}</div>
+                                <div className={`whitespace-pre-wrap leading-6 ${light ? 'text-gray-800' : 'text-gray-200'}`}>{m.content || (m.role === 'assistant' && chatStreaming ? <span className="opacity-60">Søker…</span> : '')}</div>
                               </div>
                             ))}
                           </div>

@@ -78,72 +78,72 @@ export default async function ProfilePage() {
   })()
 
   return (
-    <div className="h-full overflow-hidden bg-black text-white flex flex-col">
-  <div className="p-6 flex-1 overflow-hidden">
+    <div className="h-full overflow-hidden flex flex-col app-profile">
+      <div className="p-6 flex-1 overflow-hidden">
         {/* Top layout: two columns on large screens */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
           {/* Left: Account + Login methods */}
-          <section className="bg-white/5 border border-white/10 p-6 h-full flex flex-col">
+          <section className="profile-panel p-6 h-full flex flex-col">
             <h2 className="text-lg font-semibold mb-4">Konto & innlogging</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
               <div>
-                <div className="text-white/60">Brukernavn</div>
+                <div className="profile-muted">Brukernavn</div>
                 <div className="mt-1 font-medium">{String(displayName)}</div>
               </div>
               <div>
-                <div className="text-white/60">E-post</div>
+                <div className="profile-muted">E-post</div>
                 <div className="mt-1 font-medium">{String(displayEmail)}</div>
               </div>
             </div>
-            <div className="border-t border-white/10 mt-4 pt-4 text-sm">
-              <div className="text-white/60 mb-1">Innloggingsmetoder</div>
+            <div className="profile-divider mt-4 pt-4 text-sm">
+              <div className="profile-muted mb-1">Innloggingsmetoder</div>
               {methods.length > 0 ? (
                 <div className="space-y-2">
                   <div className="font-medium">{methods.join(', ')}</div>
                   {methods.includes('Password') && (
-                    <div className="text-white/60">Av sikkerhetsgrunner vises aldri passordet ditt.</div>
+                    <div className="profile-muted">Av sikkerhetsgrunner vises aldri passordet ditt.</div>
                   )}
                 </div>
               ) : (
-                <div className="text-white/60">Ikke fastslått (e‑post/passord eller OAuth).</div>
+                <div className="profile-muted">Ikke fastslått (e‑post/passord eller OAuth).</div>
               )}
             </div>
           </section>
 
           {/* Right: Credits + Overview */}
-            <section className="bg-white/5 border border-white/10 p-6 h-full flex flex-col">
+            <section className="profile-panel p-6 h-full flex flex-col">
               <h2 className="text-lg font-semibold mb-4">Poeng & bruk</h2>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
                 <div>
-                  <div className="text-white/60">Månedlige poeng</div>
+                  <div className="profile-muted">Månedlige poeng</div>
                   <div className="mt-1 font-medium">{MONTHLY_CREDITS.toLocaleString('en-US')}</div>
                 </div>
                 <div>
-                  <div className="text-white/60">Brukt</div>
+                  <div className="profile-muted">Brukt</div>
                   <div className="mt-1 font-medium">{usedTotal.toLocaleString('en-US')}</div>
                 </div>
                 <div>
-                  <div className="text-white/60">Gjenstår</div>
-                  <div className={`mt-1 font-medium ${remaining <= 0 ? 'text-red-400' : ''}`}>{remaining.toLocaleString('en-US')}</div>
+                  <div className="profile-muted">Gjenstår</div>
+                  <div className={`mt-1 font-medium ${remaining <= 0 ? 'profile-negative' : ''}`}>{remaining.toLocaleString('en-US')}</div>
                 </div>
                 <div>
-                  <div className="text-white/60">Tilbakestilles</div>
+                  <div className="profile-muted">Tilbakestilles</div>
                   <div className="mt-1 font-medium">{resetAt}</div>
                 </div>
               </div>
-              <div className="mt-4 text-xs text-white/70 flex flex-wrap gap-x-4 gap-y-1">
+              <div className="mt-4 text-xs profile-subtle flex flex-wrap gap-x-4 gap-y-1">
                 <span>Chat: {usedByType.chat.toLocaleString('en-US')}</span>
                 <span>Forskning: {usedByType.research.toLocaleString('en-US')}</span>
               </div>
               <ul className="text-xs space-y-1 mt-4">
-                <li><span className="text-white/60">Chat-spørsmål:</span> <span className="font-medium">6 poeng</span></li>
-                <li className="text-white/60">Forskning (per prosessor): <span className="font-medium text-white">Base {researchCost.base} • Pro {researchCost.pro} • Ultra {researchCost.ultra}</span></li>
+                <li><span className="profile-muted">Chat-spørsmål:</span> <span className="font-medium">6 poeng</span></li>
+                <li className="profile-muted">Forskning (per prosessor): <span className="font-medium">Base {researchCost.base} • Pro {researchCost.pro} • Ultra {researchCost.ultra}</span></li>
               </ul>
             </section>
         </div>
 
         {/* Bottom: timeline */}
-  <section className="bg-white/5 border border-white/10 p-6 overflow-hidden">
+        <section className="profile-panel p-6 overflow-hidden">
           <h2 className="text-lg font-semibold mb-4">Forbruk denne måneden</h2>
           <UsageTimeline userId={session.user.id as unknown as string} />
         </section>
@@ -230,7 +230,7 @@ async function UsageTimeline({ userId }: { userId: string }) {
   const max = Math.max(1, ...days.map((d) => d.total))
 
   if (!rows.length) {
-    return <div className="text-sm text-white/60">Ingen forbruk registrert ennå.</div>
+    return <div className="text-sm profile-muted">Ingen forbruk registrert ennå.</div>
   }
 
   const monthChat = days.reduce((a, d) => a + d.chat, 0)
@@ -240,7 +240,7 @@ async function UsageTimeline({ userId }: { userId: string }) {
   return (
     <div className="w-full">
       <div
-  className="grid items-end gap-1 h-64 pb-2 pr-2"
+        className="grid items-end gap-1 h-64 pb-2 pr-2"
         style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}
       >
         {days.map((d) => {
@@ -255,7 +255,7 @@ async function UsageTimeline({ userId }: { userId: string }) {
           return (
             <div key={d.date} className="flex flex-col items-center h-64">
               <div
-                className="relative w-full h-full bg-white/10 rounded-sm overflow-hidden"
+                className="relative w-full h-full profile-bar-track rounded-sm overflow-hidden"
                 title={`${dayNum}.: Totalt ${d.total} (Chat ${d.chat} • Forskning ${d.research})`}
               >
                 <div
@@ -266,18 +266,18 @@ async function UsageTimeline({ userId }: { userId: string }) {
                   <div className="absolute bottom-0 left-0 w-full bg-indigo-500/80" style={{ height: `${chatPct}%` }} />
                 </div>
               </div>
-              <div className="mt-1 text-[10px] leading-none text-white/70">{dayNum}</div>
+              <div className="mt-1 text-[10px] leading-none profile-subtle">{dayNum}</div>
             </div>
           )
         })}
       </div>
-      <div className="mt-4 flex flex-wrap gap-4 text-xs text-white/60">
+      <div className="mt-4 flex flex-wrap gap-4 text-xs profile-muted">
         <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-indigo-500/80" /> Chat</div>
         <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-emerald-400/80" /> Forskning</div>
         <div className="flex items-center gap-1"><span className="inline-block w-3 h-3 bg-blue-400/80" /> Totalt (ramme)</div>
       </div>
-      <div className="mt-2 text-xs text-white/70">
-        Totalt denne måneden: <span className="text-white">{monthTotal}</span> (Chat {monthChat} • Forskning {monthResearch})
+      <div className="mt-2 text-xs profile-subtle">
+        Totalt denne måneden: <span className="font-medium">{monthTotal}</span> (Chat {monthChat} • Forskning {monthResearch})
       </div>
     </div>
   )

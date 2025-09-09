@@ -3,6 +3,8 @@ import { JetBrains_Mono, Inter } from 'next/font/google'
 import './globals.css'
 import Providers from '@/components/Providers'
 import AutoChrome from '@/components/AutoChrome'
+import { DashboardThemeProvider } from '@/components/DashboardThemeProvider'
+import BodyThemeSync from '@/components/BodyThemeSync'
 
 const jetbrainsMono = JetBrains_Mono({
   variable: '--font-jetbrains-mono',
@@ -33,10 +35,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body
-        className={`${jetbrainsMono.variable} ${inter.variable} font-mono bg-black`}
+        className={`${jetbrainsMono.variable} ${inter.variable} font-mono app-dark`}
       >
         <Providers>
-          <AutoChrome>{children}</AutoChrome>
+          <DashboardThemeProvider>
+            <BodyThemeSync />
+            <AutoChrome>{children}</AutoChrome>
+          </DashboardThemeProvider>
         </Providers>
       </body>
     </html>

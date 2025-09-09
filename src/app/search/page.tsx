@@ -6,6 +6,7 @@ import type { ComponentType } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter, usePathname } from 'next/navigation'
 import dynamic from 'next/dynamic'
+import { useDashboardMode } from '@/components/DashboardThemeProvider'
 // NOTE: Virtualized list (react-window) temporarily removed due to import export mismatch under Next 15 / React 19.
 // If needed, reintroduce with a guarded dynamic import.
 
@@ -148,6 +149,8 @@ export default function SearchPage() {
   const { data: session, status } = useSession()
   const router = useRouter()
   const pathname = usePathname()
+  const { mode: themeMode } = useDashboardMode()
+  const light = themeMode === 'light'
   
   useEffect(() => {
     if (status === 'loading') return
@@ -986,7 +989,7 @@ export default function SearchPage() {
 
   if (!isMounted) {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
           <div className="text-lg text-gray-400">Loading...</div>
@@ -997,7 +1000,7 @@ export default function SearchPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className={`min-h-screen flex items-center justify-center`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
           <div className="text-lg text-gray-400">Loading...</div>
@@ -1011,11 +1014,29 @@ export default function SearchPage() {
   }
 
   return (
-    <div className="min-h-screen bg-black text-white pb-20 md:pb-24">
+    <div className={`min-h-screen ${light ? 'search-light' : ''} transition-colors`}>
+      {light && (
+        <style jsx global>{`
+          .search-light .border-white\/10 { border-color: #e5e7eb !important; }
+          .search-light .border-white\/20 { border-color: #d1d5db !important; }
+          .search-light .divide-white\/10 { border-color: #e5e7eb !important; }
+          .search-light .text-white { color: #111827 !important; }
+          .search-light .text-white\/90 { color: #1f2937 !important; }
+          .search-light .text-gray-400 { color: #6b7280 !important; }
+          .search-light .text-gray-300 { color: #4b5563 !important; }
+          .search-light .bg-black { background-color: #ffffff !important; }
+          .search-light .hover\:bg-white\/20:hover { background-color: #f3f4f6 !important; }
+          /* Event types slider track and scrollbars tuned for light */
+          .search-light .slider-square { background: rgba(0,0,0,0.15) !important; }
+          .search-light .thin-scroll { scrollbar-color: rgba(0,0,0,0.3) rgba(0,0,0,0.08); }
+          .search-light .thin-scroll::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.28); }
+          .search-light .thin-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.06); }
+        `}</style>
+      )}
       {globalDropdownOpen && companySuggestions.length > 0 && globalDropdownRect && isMounted && createPortal(
         <div
           ref={globalDropdownRef}
-          className="z-[9999] max-h-80 overflow-auto border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10"
+          className={`z-[9999] max-h-80 overflow-auto shadow-xl ${light ? 'bg-white text-gray-900 border border-gray-200 divide-y divide-gray-100' : 'border border-white/10 bg-black text-white divide-y divide-white/10'}`}
           style={{ position: 'fixed', top: globalDropdownRect.top, left: globalDropdownRect.left, width: globalDropdownRect.width }}
         >
           {companySuggestions.map((c, idx) => (
@@ -1025,7 +1046,7 @@ export default function SearchPage() {
                 setGlobalSearch(c.name || c.orgNumber)
                 setGlobalDropdownOpen(false)
               }}
-              className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
+              className={`block w-full text-left px-4 py-3 focus:outline-none text-sm transition-colors ${light ? 'hover:bg-gray-100 focus:bg-gray-100' : 'hover:bg-white/20 focus:bg-white/20'}`}
             >
               <div className="flex items-center justify-between gap-3">
                 <span>{c.name || 'Unnamed company'}</span>
@@ -1037,7 +1058,7 @@ export default function SearchPage() {
         document.body,
       )}
       {/* Topwide search + quick filters */}
-      <div className="px-6 py-3 border-b border-white/10">
+      <div className={`px-6 py-3 border-b ${light ? 'border-gray-200 bg-white/80 backdrop-blur supports-[backdrop-filter]:bg-white/60' : 'border-white/10'}`}>
         <div className="flex flex-col md:flex-row md:items-center gap-3">
           <div className="w-full md:w-1/3">
             <input
@@ -1056,7 +1077,7 @@ export default function SearchPage() {
                   setGlobalDropdownOpen(false)
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
+              className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
             />
           </div>
           <div className="w-full md:w-2/3 grid grid-cols-1 sm:grid-cols-3 gap-3 md:pl-3">
@@ -1091,7 +1112,7 @@ export default function SearchPage() {
                   )
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
+              className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
             />
             <input
               type="text"
@@ -1115,7 +1136,7 @@ export default function SearchPage() {
                   removeSelectedArea(selectedAreas[selectedAreas.length - 1])
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
+              className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
             />
             <input
               type="text"
@@ -1149,14 +1170,14 @@ export default function SearchPage() {
                   setSelectedCompanyTypes((prev) => prev.slice(0, -1))
                 }
               }}
-              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90"
+              className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
             />
           </div>
         </div>
         {companyTypeDropdownOpen && companyTypeDropdownRect && isMounted && createPortal(
           <div
             ref={companyTypeDropdownRef}
-            className="z-[9999] max-h-80 overflow-auto border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10"
+            className={`z-[9999] max-h-80 overflow-auto shadow-xl ${light ? 'bg-white text-gray-900 border border-gray-200 divide-y divide-gray-100' : 'border border-white/10 bg-black text-white divide-y divide-white/10'}`}
             style={{ position: 'fixed', top: companyTypeDropdownRect.top, left: companyTypeDropdownRect.left, width: companyTypeDropdownRect.width }}
           >
             {companyTypeSuggestions.length === 0 ? (
@@ -1170,7 +1191,7 @@ export default function SearchPage() {
                     setCompanyTypeQuery('')
                     setCompanyTypeDropdownOpen(false)
                   }}
-                  className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
+                  className={`block w-full text-left px-4 py-3 focus:outline-none text-sm transition-colors ${light ? 'hover:bg-gray-100 focus:bg-gray-100' : 'hover:bg-white/20 focus:bg-white/20'}`}
                 >
                   {s}
                 </button>
@@ -1182,16 +1203,16 @@ export default function SearchPage() {
         {dropdownOpen && suggestions.length > 0 && dropdownRect && isMounted && createPortal(
           <div
             ref={dropdownRef}
-            className="z-[9999] max-h-80 overflow-auto border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10"
+            className={`z-[9999] max-h-80 overflow-auto shadow-xl ${light ? 'bg-white text-gray-900 border border-gray-200 divide-y divide-gray-100' : 'border border-white/10 bg-black text-white divide-y divide-white/10'}`}
             style={{ position: 'fixed', top: dropdownRect.top, left: dropdownRect.left, width: dropdownRect.width }}
           >
             {industryQuery.trim() && (
-              <div className="px-4 py-2 text-xs text-gray-400 bg-gray-800 border-b border-white/10">
+              <div className={`px-4 py-2 text-xs ${light ? 'text-gray-500 bg-gray-50 border-b border-gray-200' : 'text-gray-400 bg-gray-800 border-b border-white/10'}`}>
                 {suggestions.length} of {totalFilteredCount} industries match &quot;{industryQuery}&quot;
               </div>
             )}
             {!industryQuery.trim() && allIndustries.length > 0 && (
-              <div className="px-4 py-2 text-xs text-gray-400 bg-gray-800 border-b border-white/10">
+              <div className={`px-4 py-2 text-xs ${light ? 'text-gray-500 bg-gray-50 border-b border-gray-200' : 'text-gray-400 bg-gray-800 border-b border-white/10'}`}>
                 {suggestions.length} of {allIndustries.length} industries shown
               </div>
             )}
@@ -1207,7 +1228,7 @@ export default function SearchPage() {
                     setSuggestions([])
                     setDropdownOpen(false)
                   }}
-                  className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
+                  className={`block w-full text-left px-4 py-3 focus:outline-none text-sm transition-colors ${light ? 'hover:bg-gray-100 focus:bg-gray-100' : 'hover:bg-white/20 focus:bg-white/20'}`}
                 >
                   {label}
                 </button>
@@ -1219,7 +1240,7 @@ export default function SearchPage() {
         {areaDropdownOpen && areaDropdownRect && isMounted && createPortal(
           <div
             ref={areaDropdownRef}
-            className="z-[9999] max-h-80 overflow-auto border border-white/10 bg-black text-white shadow-xl divide-y divide-white/10"
+            className={`z-[9999] max-h-80 overflow-auto shadow-xl ${light ? 'bg-white text-gray-900 border border-gray-200 divide-y divide-gray-100' : 'border border-white/10 bg-black text-white divide-y divide-white/10'}`}
             style={{ position: 'fixed', top: areaDropdownRect.top, left: areaDropdownRect.left, width: areaDropdownRect.width }}
           >
             {areaSuggestions.length === 0 ? (
@@ -1233,7 +1254,7 @@ export default function SearchPage() {
                     setAreaQuery('')
                     setAreaDropdownOpen(false)
                   }}
-                  className="block w-full text-left px-4 py-3 hover:bg-white/20 focus:bg-white/20 focus:outline-none text-sm"
+                  className={`block w-full text-left px-4 py-3 focus:outline-none text-sm transition-colors ${light ? 'hover:bg-gray-100 focus:bg-gray-100' : 'hover:bg-white/20 focus:bg-white/20'}`}
                 >
                   {s}
                 </button>
@@ -1258,7 +1279,7 @@ export default function SearchPage() {
         const revenueLabel = `${revenueMin !== '' ? numberFormatter.format(Math.floor(revenueMin / 1000)) : 'Min'} - ${revenueMax !== '' ? numberFormatter.format(Math.floor(revenueMax / 1000)) : 'Max'} NOK`
         const profitLabel = `${profitMin !== '' ? numberFormatter.format(Math.floor(profitMin / 1000)) : 'Min'} - ${profitMax !== '' ? numberFormatter.format(Math.floor(profitMax / 1000)) : 'Max'} NOK`
         return (
-          <div className="px-6 py-2 border-b border-white/10">
+          <div className={`px-6 py-2 border-b ${light ? 'border-gray-200' : 'border-white/10'}`}>
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs text-gray-400 mr-1">Applied:</span>
               {selectedIndustries.map((si) => (
@@ -1447,7 +1468,7 @@ export default function SearchPage() {
       })()}
 
       <div className="flex">
-        <div className="w-96 bg-black border-r border-white/10 min-h-screen p-6 sticky top-0 self-start overflow-y-auto">
+        <div className={`w-96 min-h-screen p-6 sticky top-0 self-start overflow-y-auto border-r ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
           <div className="mb-6">
             {(() => {
               const hasAnyFilter =
@@ -1513,9 +1534,13 @@ export default function SearchPage() {
                 </div>
               </div>
             )}
-            <div className="sticky top-0 z-20 bg-black pb-2" ref={eventsRef}>
+            <div className={`sticky top-0 z-20 pb-2 ${light ? 'bg-white' : 'bg-black'}`} ref={eventsRef}>
               <label className="block text-sm font-medium mb-2">Events</label>
-              <select value={eventsFilter} onChange={(e) => setEventsFilter(e.target.value)} className="select-dark w-full px-3 py-2">
+              <select
+                value={eventsFilter}
+                onChange={(e) => setEventsFilter(e.target.value)}
+                className={`${light ? 'border border-gray-300 bg-white text-gray-900 focus:border-red-600' : 'select-dark'} w-full px-3 py-2`}
+              >
                 <option value="">All companies</option>
                 <option value="with">With events</option>
                 <option value="without">Without events</option>
@@ -1523,7 +1548,7 @@ export default function SearchPage() {
             
             </div>
             <div className="mt-6">
-              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
+              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between border-b ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
                 <label className="block text-sm font-medium">Registration date</label>
               </div>
               <div className="flex items-center gap-3 w-full">
@@ -1531,7 +1556,7 @@ export default function SearchPage() {
                   type="date"
                   value={registrationFrom}
                   onChange={(e) => setRegistrationFrom(e.target.value)}
-                  className="flex-1 min-w-0 bg-black border border-white/10 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  className={`flex-1 min-w-0 text-xs px-2 py-1 focus:outline-none border ${light ? 'bg-white border-gray-300 text-gray-900 focus:border-red-600' : 'bg-black border-white/10 text-white focus:border-red-600/70'}`}
                   placeholder="From"
                 />
                 <span className="text-gray-500 text-xs px-1 select-none">to</span>
@@ -1539,7 +1564,7 @@ export default function SearchPage() {
                   type="date"
                   value={registrationTo}
                   onChange={(e) => setRegistrationTo(e.target.value)}
-                  className="flex-1 min-w-0 bg-black border border-white/10 text-xs px-2 py-1 text-white focus:outline-none focus:border-red-600/70"
+                  className={`flex-1 min-w-0 text-xs px-2 py-1 focus:outline-none border ${light ? 'bg-white border-gray-300 text-gray-900 focus:border-red-600' : 'bg-black border-white/10 text-white focus:border-red-600/70'}`}
                   placeholder="To"
                 />
                 {(registrationFrom || registrationTo) && (
@@ -1555,7 +1580,7 @@ export default function SearchPage() {
             </div>
             {/* Website tech: moved directly below Registration date */}
             <div className="mt-6">
-              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
+              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between border-b ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
                 <label className="block text-sm font-medium">Website tech</label>
                 {(hasShopify || hasWoo) && (
                   <button
@@ -1589,12 +1614,12 @@ export default function SearchPage() {
               </div>
             </div>
             <div className="mt-6">
-              <div className="sticky top-[var(--events-height)] z-10 bg-black pb-2 flex items-center justify-between">
+              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between border-b ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
                 <label className="block text-sm font-medium">Event types</label>
                 <button
                   type="button"
                   onClick={() => setIsEventTypesCollapsed(prev => !prev)}
-                  className="text-xs px-2 py-1 border border-white/10 text-white/70 hover:text-white hover:border-red-600/60 hover:bg-red-600/10 focus:outline-none focus:ring-1 focus:ring-red-600/40"
+                  className={`text-xs px-2 py-1 border focus:outline-none focus:ring-1 ${light ? 'text-gray-700 border-gray-300 hover:text-gray-900 hover:bg-gray-100 focus:ring-red-600' : 'text-white/70 border-white/10 hover:text-white hover:border-red-600/60 hover:bg-red-600/10 focus:ring-red-600/40'}`}
                   aria-expanded={!isEventTypesCollapsed}
                 >
                   {isEventTypesCollapsed ? 'Show' : 'Hide'}
@@ -1615,7 +1640,7 @@ export default function SearchPage() {
                   const display = (t || '').replace(/_/g, ' ')
                   const displayCap = display.charAt(0).toUpperCase() + display.slice(1)
                   return (
-                    <div key={t} className={`p-3 bg-transparent border ${selected ? (weight > 0 ? 'border-green-500' : weight < 0 ? 'border-red-500' : 'border-yellow-500') : 'border-white/10'}`} onClick={() => {
+                    <div key={t} className={`p-3 bg-transparent border ${selected ? (weight > 0 ? 'border-green-500' : weight < 0 ? 'border-red-500' : 'border-yellow-500') : (light ? 'border-gray-200' : 'border-white/10')}`} onClick={() => {
                       setSelectedEventTypes((prev) => prev.includes(t) ? prev.filter((x) => x !== t) : [...prev, t])
                       if (selected) {
                         setEventWeights((prev) => ({ ...prev, [t]: 0 }))
@@ -1625,7 +1650,7 @@ export default function SearchPage() {
                     }}>
                       <div className="flex items-center justify-between gap-3">
                         <span className="text-sm">{displayCap}</span>
-                        <span className="text-xs text-gray-400">{weight}</span>
+                        <span className={`text-xs ${light ? 'text-gray-500' : 'text-gray-400'}`}>{weight}</span>
                       </div>
                       <input type="range" min={-10} max={10} step={1} value={weight} onClick={(e) => e.stopPropagation()} onChange={(e) => {
                         const val = Number(e.target.value)
@@ -1640,11 +1665,11 @@ export default function SearchPage() {
                 </div>
                 {/* Top fade */}
                 {!eventTypesScrollState.atTop && (
-                  <div className="pointer-events-none absolute top-0 left-0 right-0 h-6 bg-gradient-to-b from-black via-black/70 to-transparent" />
+                  <div className={`pointer-events-none absolute top-0 left-0 right-0 h-6 bg-gradient-to-b ${light ? 'from-white via-white/70' : 'from-black via-black/70'} to-transparent`} />
                 )}
                 {/* Bottom fade */}
                 {!eventTypesScrollState.atBottom && (
-                  <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t from-black via-black/70 to-transparent" />
+                  <div className={`pointer-events-none absolute bottom-0 left-0 right-0 h-8 bg-gradient-to-t ${light ? 'from-white via-white/70' : 'from-black via-black/70'} to-transparent`} />
                 )}
               </div>
               )}
@@ -1721,7 +1746,7 @@ export default function SearchPage() {
                                   const value = e.target.value.replace(/[^0-9-]/g, '')
                                   setDraftRevenueMin(value)
                                 }}
-                                className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
+                                className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 text-sm ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
                               />
                             </div>
                             <div className="flex-1">
@@ -1734,7 +1759,7 @@ export default function SearchPage() {
                                   const value = e.target.value.replace(/[^0-9-]/g, '')
                                   setDraftRevenueMax(value)
                                 }}
-                                className="w-full bgtransparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
+                                className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 text-sm ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
                               />
                             </div>
                           </div>
@@ -1752,7 +1777,7 @@ export default function SearchPage() {
                                 const value = e.target.value.replace(/[^0-9-]/g, '')
                                 setDraftProfitMin(value)
                               }}
-                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
+                              className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 text-sm ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
                             />
                           </div>
                           <div className="flex-1">
@@ -1765,7 +1790,7 @@ export default function SearchPage() {
                                 const value = e.target.value.replace(/[^0-9-]/g, '')
                                 setDraftProfitMax(value)
                               }}
-                              className="w-full bg-transparent text-white placeholder-gray-500 px-0 py-2 border-0 border-b border-white/20 focus:outline-none focus:ring-0 focus:border-red-600/90 text-sm"
+                              className={`w-full bg-transparent px-0 py-2 border-0 border-b focus:outline-none focus:ring-0 text-sm ${light ? 'text-gray-900 placeholder-gray-400 border-gray-300 focus:border-red-600' : 'text-white placeholder-gray-500 border-white/20 focus:border-red-600/90'}`}
                             />
                           </div>
                         </div>
@@ -1784,7 +1809,7 @@ export default function SearchPage() {
                       } else {
                         setSortBy(newValue)
                       }
-                    }} className="select-dark w-full px-4 py-3">
+                    }} className={`${light ? 'border border-gray-300 bg-white text-gray-900 focus:border-red-600' : 'select-dark'} w-full px-4 py-3`}>
                       <option value="updatedAt">Last Updated (New → Old)</option>
                       <option value="name">Company Name (A → Z)</option>
                       <option value="revenue">Revenue (High → Low)</option>
@@ -1825,7 +1850,7 @@ export default function SearchPage() {
               )
             })()
           ) : (
-            <div className="mt-4 divide-y divide-white/10">
+            <div className={`mt-4 divide-y ${light ? 'divide-gray-200' : 'divide-white/10'}`}>
               {data.map((business) => {
                 const org = business.orgNumber
                 const isWatched = watchlist.has(org)
@@ -1851,7 +1876,12 @@ export default function SearchPage() {
               <div className="mt-8">
         {/* Hide Load more if list filter active and we've already loaded all list companies present in current batch */}
                 {data.length < totalForPaging && (
-                  <button onClick={() => setOffset((prev) => prev + PAGE_SIZE)} className="w-full px-4 py-2 border border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40 text-sm transition-colors duration-200">Load more</button>
+                  <button
+                    onClick={() => setOffset((prev) => prev + PAGE_SIZE)}
+                    className={`w-full px-4 py-2 border text-sm transition-colors duration-200 focus:outline-none focus:ring-1 ${light ? 'border-gray-300 hover:bg-gray-100 focus:ring-red-600' : 'border-white/10 hover:bg-red-600/10 hover:border-red-600/60 focus:ring-red-600/40'}`}
+                  >
+                    Load more
+                  </button>
                 )}
               </div>
             )

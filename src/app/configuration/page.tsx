@@ -15,10 +15,10 @@ export default function ConfigurationPage() {
 
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-black text-white flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-400 mx-auto mb-4"></div>
-          <div className="text-lg text-gray-400">Loading...</div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-500 mx-auto mb-4"></div>
+          <div className="text-lg config-loading-text">Loading...</div>
         </div>
       </div>
     )
@@ -27,9 +27,9 @@ export default function ConfigurationPage() {
   if (!session) return null
 
   return (
-    <div className="p-6 w-full">
-      <div className="w-full border border-white/10 p-6">
-        <h2 className="text-xl font-semibold mb-4">Company profile</h2>
+  <div className="p-6 w-full">
+      <div className="w-full p-6 config-panel">
+        <h2 className="text-xl font-semibold mb-4 config-heading">Company profile</h2>
         <BusinessContextEditor />
       </div>
     </div>
@@ -196,66 +196,66 @@ function BusinessContextEditor() {
 
   return (
     <div className="w-full">
-      {loading && <div className="text-xs text-gray-400 mb-2">Laster...</div>}
+  {loading && <div className="text-xs config-muted mb-2">Laster...</div>}
 
       <div className="grid grid-cols-1 gap-6 w-full">
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Business name</label>
+          <label className="config-label">Business name</label>
           <input
             type="text"
             value={form.businessName}
             onChange={(e) => setForm((f) => ({ ...f, businessName: e.target.value }))}
             placeholder="Acme AS"
-            className="w-full bg-transparent border border-white/20 text-sm px-3 py-2 text-white"
+            className="config-input"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-400 mb-1">Organization number</label>
+          <label className="config-label">Organization number</label>
           <input
             type="text"
             value={form.orgNumber}
             onChange={(e) => setForm((f) => ({ ...f, orgNumber: e.target.value }))}
             placeholder="999999999"
-            className="w-full bg-transparent border border-white/20 text-sm px-3 py-2 text-white"
+            className="config-input"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-400 mb-1">What the company delivers</label>
+          <label className="config-label">What the company delivers</label>
           <textarea
             value={form.delivers}
             onChange={(e) => setForm((f) => ({ ...f, delivers: e.target.value }))}
             rows={4}
             placeholder="Short description of your product/service."
-            className="w-full bg-transparent border border-white/20 text-sm p-2 text-white"
+            className="config-textarea"
           />
         </div>
 
         <div>
-          <label className="block text-xs text-gray-400 mb-1">ICP (Ideal Customer Profile)</label>
+          <label className="config-label">ICP (Ideal Customer Profile)</label>
           <textarea
             value={form.icp}
             onChange={(e) => setForm((f) => ({ ...f, icp: e.target.value }))}
             rows={4}
             placeholder="Who you sell to, key segments, company size, industry, etc."
-            className="w-full bg-transparent border border-white/20 text-sm p-2 text-white"
+            className="config-textarea"
           />
         </div>
       </div>
 
       {legacyText && (
         <div className="mt-4">
-          <div className="text-xs text-gray-400 mb-1">Legacy note</div>
-          <div className="text-xs text-gray-500">We found an older single-text business context. You can copy details into the fields above.</div>
-          <pre className="mt-2 text-xs whitespace-pre-wrap bg-transparent border border-white/10 p-2 text-gray-300">{legacyText}</pre>
+          <div className="text-xs config-label mb-1 opacity-80">Legacy note</div>
+          <div className="text-xs config-legacy-hint">We found an older single-text business context. You can copy details into the fields above.</div>
+          <pre className="mt-2 text-xs whitespace-pre-wrap config-legacy-block">{legacyText}</pre>
         </div>
       )}
 
       <div className="mt-4 flex items-center gap-2">
-        <button onClick={onSave} className="px-3 py-2 border border-white/20 text-sm text-white/90 hover:bg-white/10">Save</button>
-        {saved && <span className="text-xs text-green-400">Saved</span>}
-        {error && <span className="text-xs text-red-400">{error}</span>}
+        <button onClick={onSave} className="config-save-btn">Save</button>
+        {saved && <span className="text-xs config-success">Saved</span>}
+        {error && <span className="text-xs config-error">{error}</span>}
       </div>
     </div>
   )
