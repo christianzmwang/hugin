@@ -1580,7 +1580,7 @@ export default function SearchPage() {
             </div>
             {/* Website tech: moved directly below Registration date */}
             <div className="mt-6">
-              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between border-b ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
+              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between ${light ? 'bg-white' : 'bg-black'}`}>
                 <label className="block text-sm font-medium">Website tech</label>
                 {(hasShopify || hasWoo) && (
                   <button

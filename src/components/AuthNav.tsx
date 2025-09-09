@@ -107,7 +107,7 @@ export default function AuthNav() {
 
       {dropdownOpen && (
         <div
-          className={`absolute left-0 top-full z-50 overflow-hidden shadow-lg box-border w-full ${light ? 'bg-white shadow-gray-200/70' : 'bg-black'}`}
+          className={`absolute left-0 top-full mt-2 z-50 overflow-hidden shadow-lg box-border w-full ${light ? 'bg-white shadow-gray-200/70' : 'bg-black'}`}
         >
           <div>
             <Link
