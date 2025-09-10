@@ -90,7 +90,7 @@ export async function GET() {
       for (const r of ls.rows) {
         if (r.last_session_expires) lastSessions[r.user_id] = new Date(r.last_session_expires)
       }
-    } catch (e) {
+  } catch {
       console.warn('[admin/users] Unable to fetch last sessions (non-fatal).')
     }
 
@@ -112,7 +112,7 @@ export async function GET() {
             research: Number(r.credits_used_research_month) || 0
         }
       }
-    } catch (e) {
+  } catch {
       console.warn('[admin/users] Unable to fetch credits usage (non-fatal).')
     }
 

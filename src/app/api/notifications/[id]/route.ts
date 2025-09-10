@@ -5,7 +5,9 @@ import { dbConfigured, query } from '@/lib/db'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-export async function DELETE(_req: Request, { params }: { params: { id: string } }) {
+// Next.js Route Handler: use context param with typed shape; avoid explicit inline type rejected by validator
+export async function DELETE(_req: Request, context: { params: { id: string } }) {
+  const { params } = context
   const accessError = await checkApiAccess();
   if (accessError) return accessError
   if (!dbConfigured) return NextResponse.json({ ok: false }, { status: 503 })

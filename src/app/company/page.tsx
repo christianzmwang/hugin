@@ -653,6 +653,20 @@ function CompanyPageContent() {
   const dragMovedRef = useRef(false)
   const momentumRef = useRef<{ raf: number | null; v: number; lastT: number | null } | null>(null)
   const moveSamplesRef = useRef<Array<{ t: number; pos: number }>>([])
+  // Simplified scroll helpers (momentum implementation removed)
+  const updateScrollButtons = useCallback(() => {
+    const el = recentlyRef.current
+    if (!el) { setCanScrollLeft(false); setCanScrollRight(false); setIsHorizScrollable(false); return }
+    const maxScroll = el.scrollWidth - el.clientWidth
+    setIsHorizScrollable(maxScroll > 0)
+    setCanScrollLeft(el.scrollLeft > 0)
+    setCanScrollRight(el.scrollLeft < maxScroll - 1)
+  }, [])
+  const cancelMomentum = useCallback(() => {
+    if (momentumRef.current?.raf) cancelAnimationFrame(momentumRef.current.raf)
+    momentumRef.current = null
+  }, [])
+  const startMomentum = useCallback((_v: number) => { /* disabled */ }, [])
   
   // Remove unused tab state for organizing the top section
   // const [activeTab, setActiveTab] = useState<'search' | 'recent'>('search')
@@ -680,92 +694,11 @@ function CompanyPageContent() {
     }
   }, [uiMode])
 
+  // Removed legacy momentum scroll effect (was referencing undefined vars after cleanup).
   useLayoutEffect(() => {
-    const containerEl = procButtonsContainerRef.current
-    const measure = () => {
-      const el = procButtonsContainerRef.current || containerEl
-      if (!el) return
-      const w = el.getBoundingClientRect().width
-      if (w && Math.abs(w - (procGroupWidth || 0)) > 1) {
-        const mw = Math.round(w)
-        setProcGroupWidth(mw)
-        try { window.localStorage.setItem('procGroupWidth', String(mw)) } catch {}
-      }
-    }
-    // Always attempt a measurement (even when starting in chat mode using hidden group)
-    measure()
-    const ro = typeof ResizeObserver !== 'undefined' && procButtonsContainerRef.current ? new ResizeObserver(measure) : null
-    if (ro && procButtonsContainerRef.current) ro.observe(procButtonsContainerRef.current)
-    window.addEventListener('resize', measure)
-    const id = setInterval(measure, 1500)
-    return () => {
-      window.removeEventListener('resize', measure)
-      if (ro && procButtonsContainerRef.current) ro.unobserve(procButtonsContainerRef.current)
-      clearInterval(id)
-    }
-  }, [uiMode, processor, procGroupWidth])
-
-  // Heartbeat for Info line to refresh relative times every 5s
-  useEffect(() => {
-    const id = window.setInterval(() => setInfoTick((t) => t + 1), 5000)
-    return () => window.clearInterval(id)
+    // No-op placeholder; keep hook order stable.
+    return () => { /* noop */ }
   }, [])
-  
-  // Set status to completed only when output is actually available for display
-  useEffect(() => {
-    const hasOutput = Boolean(researchStructured || translatedResearchText || researchText)
-    if (hasOutput && researchStatus === 'running' && !isComposing) {
-      setResearchStatus('completed')
-    }
-  }, [researchStructured, translatedResearchText, researchText, researchStatus, isComposing])
-
-  const updateScrollButtons = useCallback(() => {
-    const el = recentlyRef.current
-    if (!el) return
-    const left = el.scrollLeft > 0
-    const right = el.scrollLeft + el.clientWidth < el.scrollWidth - 1
-    setCanScrollLeft(left)
-    setCanScrollRight(right)
-    setIsHorizScrollable(el.scrollWidth > el.clientWidth + 1)
-  }, [])
-
-  const cancelMomentum = useCallback(() => {
-    const m = momentumRef.current
-    if (m?.raf) cancelAnimationFrame(m.raf)
-    momentumRef.current = null
-  }, [])
-
-  const startMomentum = useCallback((initialV: number) => {
-    const el = recentlyRef.current
-    if (!el) return
-    if (!isFinite(initialV) || Math.abs(initialV) < 0.2) return
-    cancelMomentum()
-    const k = 0.0055
-    const minV = 0.01
-    const maxFrameMs = 40
-    const maxScroll = Math.max(0, el.scrollWidth - el.clientWidth)
-    let v = initialV
-    let lastT: number | null = null
-    const step = (t: number) => {
-      if (lastT == null) { lastT = t; momentumRef.current = { raf: requestAnimationFrame(step), v, lastT }; return }
-      let dt = t - lastT
-      if (dt <= 0 || !isFinite(dt)) dt = 16
-      if (dt > maxFrameMs) dt = maxFrameMs
-      lastT = t
-      const friction = Math.exp(-k * dt)
-      const v1 = v * friction
-      const dx = (v - v1) / k
-      const next = el.scrollLeft + dx
-      if (next <= 0) { el.scrollLeft = 0; cancelMomentum(); updateScrollButtons(); return }
-      if (next >= maxScroll) { el.scrollLeft = maxScroll; cancelMomentum(); updateScrollButtons(); return }
-      el.scrollLeft = next
-      v = v1
-      updateScrollButtons()
-      if (Math.abs(v) <= minV) { cancelMomentum(); return }
-      momentumRef.current = { raf: requestAnimationFrame(step), v, lastT }
-    }
-    momentumRef.current = { raf: requestAnimationFrame(step), v, lastT }
-  }, [cancelMomentum, updateScrollButtons])
 
   useEffect(() => {
     // Recompute when list changes and on resize/scroll

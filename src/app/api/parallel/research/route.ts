@@ -231,7 +231,6 @@ export async function GET(req: Request) {
         const normalize = (input: unknown): { output: Record<string, unknown> } => {
           try {
             const anyIn = input as Record<string, unknown> | null
-            const out: Record<string, unknown> = {}
             const maybeOutput = (anyIn && typeof anyIn === 'object' ? (anyIn as Record<string, unknown>).output : undefined) as
               | Record<string, unknown>
               | undefined
