@@ -64,35 +64,20 @@ function ExportPageInner() {
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [progressTotal, setProgressTotal] = useState(0)
   const [progressDone, setProgressDone] = useState(0)
+  // CSV import related state
+  const [importParsing, setImportParsing] = useState(false)
+  const [importOrgNumbers, setImportOrgNumbers] = useState<string[] | null>(null)
+  const [importError, setImportError] = useState<string | null>(null)
+  const [importFileName, setImportFileName] = useState('')
+  const [importListName, setImportListName] = useState('')
+  const [importCreating, setImportCreating] = useState(false)
+  const IMPORT_MAX = 5000
 
   // Guard auth
   useEffect(() => {
     if (status === 'loading') return
     if (!session) router.push('/auth/signin')
   }, [status, session, router])
-
-  // Load list summaries
-  useEffect(() => {
-    if (!session) return
-    let cancelled = false
-    const load = async () => {
-      setListsLoading(true)
-      try {
-        const res = await fetch('/api/lists', { cache: 'no-store' })
-        const json = await res.json()
-  const arr = Array.isArray(json) ? json : json.items || []
-  const mapped: ListSummary[] = arr.map((r: Partial<ListSummary>) => ({ id: Number(r.id), name: String(r.name), itemCount: Number(r.itemCount) }))
-        if (!cancelled) setLists(mapped)
-        if (listId && !cancelled) {
-          const found = mapped.find(l => l.id === listId)
-          if (found) selectList(found.id)
-        }
-      } finally { if (!cancelled) setListsLoading(false) }
-    }
-    load()
-    return () => { cancelled = true }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session])
 
   const selectList = useCallback(async (id: number) => {
     setActiveLoading(true)
@@ -106,6 +91,30 @@ function ExportPageInner() {
       }
     } finally { setActiveLoading(false) }
   }, [])
+
+  // Fetch lists (refactored so we can reuse after import)
+  const loadLists = useCallback(async (opts?: { selectId?: number }) => {
+    if (!session) return
+    setListsLoading(true)
+    try {
+      const res = await fetch('/api/lists', { cache: 'no-store' })
+      const json = await res.json()
+      const arr = Array.isArray(json) ? json : json.items || []
+      const mapped: ListSummary[] = arr.map((r: Partial<ListSummary>) => ({ id: Number(r.id), name: String(r.name), itemCount: Number(r.itemCount) }))
+      setLists(mapped)
+      if (opts?.selectId) {
+        const found = mapped.find(l => l.id === opts.selectId)
+        if (found) selectList(found.id)
+      } else if (listId) {
+        const found = mapped.find(l => l.id === listId)
+        if (found) selectList(found.id)
+      }
+    } finally { setListsLoading(false) }
+  }, [session, listId, selectList])
+
+  useEffect(() => { if (session) { loadLists() } }, [session, loadLists])
+
+  // moved selectList earlier
 
   const toggleField = (k: string) => setFieldState(s => ({ ...s, [k]: !s[k] }))
 
@@ -196,6 +205,100 @@ function ExportPageInner() {
     setCsvGenerating(false)
   }
 
+  // --- CSV IMPORT LOGIC ---
+  const parseCsvText = (text: string): string[] => {
+    // Basic CSV parser supporting quoted values. Returns array of all cells (flattened by rows)
+    const rows: string[][] = []
+    let cur: string[] = []
+    let field = ''
+    let inQuotes = false
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i]
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++ } else { inQuotes = false }
+        } else { field += ch }
+      } else {
+        if (ch === '"') { inQuotes = true }
+        else if (ch === ',' || ch === ';') { cur.push(field); field = '' }
+        else if (ch === '\n' || ch === '\r') {
+          if (field.length > 0 || cur.length > 0) { cur.push(field); field = '' }
+          if (cur.length > 0) { rows.push(cur); cur = [] }
+        } else { field += ch }
+      }
+    }
+    if (field.length > 0 || cur.length > 0) { cur.push(field); rows.push(cur) }
+    // If single column header looks like orgNumber remove it
+    const flat: string[] = []
+    for (const r of rows) {
+      for (const c of r) flat.push(c.trim())
+    }
+    return flat
+  }
+
+  const extractOrgNumbers = (cells: string[]): string[] => {
+    const out: string[] = []
+    for (const raw of cells) {
+      if (!raw) continue
+      const cleaned = raw.replace(/[^0-9]/g, '')
+      if (cleaned.length >= 5 && cleaned.length <= 20) out.push(cleaned)
+    }
+    // Deduplicate preserve order
+    const seen = new Set<string>()
+    const uniq: string[] = []
+    for (const o of out) { if (!seen.has(o)) { seen.add(o); uniq.push(o) } }
+    return uniq
+  }
+
+  const handleCsvFile = async (file: File) => {
+    setImportParsing(true)
+    setImportError(null)
+    setImportOrgNumbers(null)
+    try {
+      const text = await file.text()
+      const cells = parseCsvText(text)
+      let orgs = extractOrgNumbers(cells)
+      // Drop header if first looks like non-numeric
+      if (orgs.length > 0 && /[a-zA-Z]/.test(cells[0]) && cells[0].toLowerCase().includes('org')) {
+        // Already handled by numeric extraction; nothing to do.
+      }
+      if (orgs.length === 0) {
+        setImportError('No org numbers found in file.')
+        return
+      }
+      if (orgs.length > IMPORT_MAX) {
+        orgs = orgs.slice(0, IMPORT_MAX)
+        setImportError(`Trimmed to first ${IMPORT_MAX} org numbers.`)
+      }
+      setImportOrgNumbers(orgs)
+      const baseName = file.name.replace(/\.[^.]+$/, '')
+      setImportFileName(file.name)
+      setImportListName(baseName.slice(0, 60))
+    } catch (e) {
+      setImportError('Failed to parse CSV.')
+    } finally { setImportParsing(false) }
+  }
+
+  const handleCreateImportedList = async () => {
+    if (!importOrgNumbers || importOrgNumbers.length === 0 || !importListName || importCreating) return
+    setImportCreating(true)
+    try {
+      const res = await fetch('/api/lists', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: importListName, orgNumbers: importOrgNumbers }) })
+      const json = await res.json()
+      if (json?.ok && json.id) {
+        // Refresh lists and select new one
+        await loadLists({ selectId: Number(json.id) })
+        // Reset import state
+        setImportOrgNumbers(null)
+        setImportListName('')
+        setImportFileName('')
+      } else {
+        setImportError('Failed to create list.')
+      }
+    } catch { setImportError('Error during creation.') }
+    finally { setImportCreating(false) }
+  }
+
   const handleSendEmails = async () => {
     if (!activeList || emailSending) return
     setEmailSending(true)
@@ -231,8 +334,9 @@ function ExportPageInner() {
   if (!session) return null
 
   return (
-    <div className="min-h-screen p-6 app-export">
-      <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
+    <div className="h-full overflow-hidden flex flex-col app-export">
+      <div className="flex-1 overflow-auto overflow-x-hidden p-6">
+        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         <div className="lg:col-span-1 space-y-4">
           <div className="border border-white/10 bg-gray-900/60 p-4 export-panel">
             <div className="flex items-center justify-between mb-3">
@@ -247,6 +351,41 @@ function ExportPageInner() {
                 </button>
               ))}
             </div>
+          </div>
+          <div className="border border-white/10 bg-gray-900/60 p-4 space-y-3 export-panel">
+            <h3 className="font-medium text-sm">Import CSV</h3>
+            <div className="text-[11px] text-gray-400 leading-relaxed">Upload a CSV containing org numbers (any column). Max {IMPORT_MAX} will be used. After import the list appears above.</div>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={e => { const f = e.target.files?.[0]; if (f) handleCsvFile(f) }}
+              className="block w-full text-xs text-gray-300 file:mr-2 file:py-1 file:px-2 file:border file:border-white/20 file:bg-black/40 file:text-xs file:hover:border-red-600/60"
+            />
+            {importParsing && <div className="text-[10px] text-gray-400">Parsing…</div>}
+            {importError && <div className="text-[10px] text-red-400">{importError}</div>}
+            {importOrgNumbers && !importParsing && (
+              <div className="space-y-2">
+                <div className="text-[10px] text-green-400">Found {importOrgNumbers.length} org numbers.</div>
+                <input
+                  type="text"
+                  value={importListName}
+                  onChange={e => setImportListName(e.target.value)}
+                  placeholder="List name"
+                  className="w-full bg-black/40 border border-white/10 px-2 py-1 text-xs focus:outline-none focus:border-red-600/60"
+                />
+                <button
+                  disabled={!importListName || importOrgNumbers.length === 0 || importCreating}
+                  onClick={handleCreateImportedList}
+                  className="w-full text-xs px-3 py-1.5 border border-red-600/60 hover:bg-red-600/20 disabled:opacity-50"
+                >
+                  {importCreating ? 'Creating…' : 'Create List'}
+                </button>
+                <button
+                  onClick={() => { setImportOrgNumbers(null); setImportListName(''); setImportFileName(''); setImportError(null) }}
+                  className="w-full text-[10px] px-2 py-1 border border-white/10 hover:border-red-600/40"
+                >Clear</button>
+              </div>
+            )}
           </div>
           {activeList && (
             <div className="border border-white/10 bg-gray-900/60 p-4 export-panel">
@@ -377,4 +516,3 @@ export default function ExportPage() {
     </Suspense>
   )
 }
-

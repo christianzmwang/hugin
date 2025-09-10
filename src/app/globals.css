@@ -14,6 +14,18 @@ html.app-light, html.app-dark {
 }
 html { overscroll-behavior: contain; }
 
+:root { --bottom-nav-height: 0px; }
+
+@layer utilities {
+  .pb-bottom-nav {
+    /* Add a little extra spacing (8px) plus safe-area inset if present */
+    padding-bottom: calc(var(--bottom-nav-height, 0px) + env(safe-area-inset-bottom, 0px) + 8px);
+  }
+  .scroll-margin-btm {
+    scroll-margin-bottom: calc(var(--bottom-nav-height, 0px) + env(safe-area-inset-bottom, 0px) + 16px);
+  }
+}
+
 /* Sandbox & Export page light mode tweaks */
 body.app-light .app-sandbox, body.app-light .app-export {
   color: #111827;
@@ -346,7 +358,7 @@ a,
     border: 1px solid rgba(255, 255, 255, 0.1); /* border-white/10 */
     display: inline-grid;
     place-content: center;
-    border-radius: 2px; /* subtle rounding */
+    border-radius: 0; /* square corners */
     cursor: pointer;
   }
   .checkbox-tech:focus {
@@ -359,11 +371,11 @@ a,
   }
 
   /* Light mode adjustments for tech checkboxes */
-  body.app-light .checkbox-tech {
+  body.app-light .checkbox-tech, body.lists-light .checkbox-tech {
     background-color: #fff; /* white */
     border-color: #d1d5db; /* gray-300 */
   }
-  body.app-light .checkbox-tech:checked {
+  body.app-light .checkbox-tech:checked, body.lists-light .checkbox-tech:checked {
     background-color: rgba(220, 38, 38, 0.15); /* subtle red tint */
     border-color: #ef4444; /* red-500 for clearer edge */
   }

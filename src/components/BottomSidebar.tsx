@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Search, Eye, Building2, Settings, Download, FlaskConical, List as ListIcon, Bell, Sun, Moon } from 'lucide-react'
 import { useDashboardMode } from '@/components/DashboardThemeProvider'
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 
 type BottomSidebarProps = {
   onClearFilters?: () => void
@@ -23,8 +23,28 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
     return pathname === href || pathname.startsWith(href + '/')
   }
   const light = mode === 'light'
+  const wrapperRef = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = wrapperRef.current
+    if (!el) return
+    const update = () => {
+      const h = el.getBoundingClientRect().height
+      document.documentElement.style.setProperty('--bottom-nav-height', `${Math.round(h)}px`)
+    }
+    update()
+    const ro = new ResizeObserver(update)
+    ro.observe(el)
+    window.addEventListener('orientationchange', update)
+    window.addEventListener('resize', update)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('orientationchange', update)
+      window.removeEventListener('resize', update)
+    }
+  }, [])
+
   return (
-    <div className="fixed inset-x-0 bottom-0 z-50 pointer-events-none">
+    <div ref={wrapperRef} className="fixed inset-x-0 bottom-0 z-50 pointer-events-none">
       <div className={`pointer-events-auto backdrop-blur border-t transition-colors duration-300 ${light ? 'bg-white/90 border-gray-200' : 'bg-black/90 border-white/10'}` }>
         <div className="px-3 md:px-6 py-3">
           <div className="flex items-center gap-2">

@@ -240,12 +240,10 @@ export default function SandboxPage() {
   }
 
   return (
-    <div
-      className="flex-1 min-h-0 p-6 space-y-8 app-sandbox overflow-hidden flex flex-col"
-      style={{ height: 'calc(100dvh - 92px)' }}
-    >
-      <div className="bg-gray-900 border border-white/10 p-6 space-y-4 sandbox-panel">
-        <h1 className="text-lg font-semibold sandbox-heading">Sandbox</h1>
+    <div className="h-full overflow-hidden flex flex-col app-sandbox">
+      <div className="flex-1 overflow-auto overflow-x-hidden p-6 space-y-8">
+        <div className="bg-gray-900 border border-white/10 p-6 space-y-4 sandbox-panel">
+        <h1 className="text-lg font-semibold sandbox-heading">Keyword Scanner</h1>
         <p className="text-xs text-gray-400 leading-relaxed sandbox-muted">
           Keyword scanner for companies with websites. Set limit to 0 for all available{maxAvailable ? ` (${maxAvailable.toLocaleString()} companies with websites)` : ''}.
         </p>
@@ -369,6 +367,7 @@ export default function SandboxPage() {
         ) : (
           <div className="text-xs text-gray-500">No results yet. Add keywords and scan.</div>
         )}
+        </div>
       </div>
     </div>
   )

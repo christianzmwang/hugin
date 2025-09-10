@@ -59,14 +59,13 @@ export default function AutoChrome({ children, title }: AutoChromeProps) {
     return `${base} ${useLightChrome ? 'bg-white text-gray-900' : 'bg-black text-white'}`
   })()
 
-  const contentPadding = !(isDashboard || isCompany || isProfile || isLists || isExport || isSandbox) && !hideBottom
-    ? 'pb-20 md:pb-24'
-    : ''
+  // Always reserve space for bottom nav dynamically (BottomSidebar sets --bottom-nav-height)
+  const contentPadding = !hideBottom ? 'pb-bottom-nav' : ''
 
   return (
     <div className={containerClass}>
       {!hideTop && <TopBar title={computedTitle} />}
-      <div className={`flex-1 min-h-0 overflow-hidden ${contentPadding}`}>{children}</div>
+  <div className={`flex-1 min-h-0 overflow-hidden ${contentPadding}`}>{children}</div>
       {!hideBottom && (
         <BottomSidebar showGoToTop={pathname === '/search' || pathname?.startsWith('/search/')} />
       )}
