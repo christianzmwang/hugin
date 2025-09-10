@@ -267,12 +267,12 @@ async function UsageTimeline({ userId }: { userId: string }) {
                 </div>
                 {d.total > 0 && (
                   <div
-                    className="absolute bottom-0 left-0 w-full pointer-events-none"
+                    className="absolute bottom-0 left-0 w-full pointer-events-none flex justify-center"
                     style={{ height: `${totalPct}%` }}
                   >
                     <div
-                      className="absolute left-0 w-full text-[10px] leading-none text-center font-medium profile-subtle select-none"
-                      style={{ top: '2px' }}
+                      className="mt-1 text-[10px] leading-none font-medium select-none text-gray-800 dark:text-gray-200 drop-shadow-[0_1px_1px_rgba(0,0,0,0.4)]"
+                      title={`Totalt ${d.total}`}
                     >
                       {d.total}
                     </div>
