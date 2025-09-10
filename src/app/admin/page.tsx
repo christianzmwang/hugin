@@ -12,6 +12,12 @@ interface User {
   created_at: Date
   updated_at: Date
   main_access?: boolean | null
+  lastSession?: string | Date | null
+  creditsUsedMonth?: number
+  creditsRemaining?: number
+  creditsMonthlyLimit?: number
+  creditsUsedChatMonth?: number
+  creditsUsedResearchMonth?: number
 }
 
 interface ApiResponse {
@@ -409,8 +415,8 @@ export default function AdminPage() {
   return (
     <>
     <div className="min-h-screen bg-black text-white">
-      <div className="container mx-auto px-4 py-8">
-        <div className="max-w-7xl mx-auto">
+      <div className="w-full px-6 py-8 mx-auto max-w-full">
+        <div className="w-full">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
             <button
@@ -422,7 +428,7 @@ export default function AdminPage() {
           </div>
 
           {/* Stats Overview */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
             <div className="bg-gray-900 p-6 rounded-lg">
               <h3 className="text-lg font-semibold mb-2">Total Users</h3>
               <p className="text-3xl font-bold text-blue-400">{users.length}</p>
@@ -434,6 +440,10 @@ export default function AdminPage() {
             <div className="bg-gray-900 p-6 rounded-lg">
               <h3 className="text-lg font-semibold mb-2">Unverified Users</h3>
               <p className="text-3xl font-bold text-red-400">{unverifiedUsers.length}</p>
+            </div>
+            <div className="bg-gray-900 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-2">Total Monthly Credits Used</h3>
+              <p className="text-3xl font-bold text-purple-400">{users.reduce((acc,u)=>acc + (u.creditsUsedMonth||0),0)}</p>
             </div>
           </div>
 
@@ -559,6 +569,8 @@ export default function AdminPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Main Access</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Created</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Last Login</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Credits (Used / Limit)</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Actions</th>
                     </tr>
                   </thead>
@@ -605,6 +617,22 @@ export default function AdminPage() {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                           {new Date(user.created_at).toLocaleDateString()}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
+                          {user.lastSession ? new Date(user.lastSession).toLocaleString(undefined, { hour: '2-digit', minute: '2-digit', day: '2-digit', month: 'short' }) : <span className="text-gray-500">—</span>}
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm">
+                          {typeof user.creditsUsedMonth === 'number' ? (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="text-gray-200 font-medium">
+                                {user.creditsUsedMonth} / {user.creditsMonthlyLimit}
+                              </span>
+                              <span className="text-[10px] uppercase tracking-wide text-gray-400">Chat {user.creditsUsedChatMonth||0} • Research {user.creditsUsedResearchMonth||0}</span>
+                              <span className="text-xs text-gray-500">Rem: {user.creditsRemaining}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-500">n/a</span>
+                          )}
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm">
                           <div className="flex space-x-2">

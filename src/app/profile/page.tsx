@@ -255,7 +255,7 @@ async function UsageTimeline({ userId }: { userId: string }) {
           return (
             <div key={d.date} className="flex flex-col items-center h-64">
               <div
-                className="relative w-full h-full profile-bar-track rounded-sm overflow-hidden"
+                className="relative w-full h-full profile-bar-track overflow-hidden"
                 title={`${dayNum}.: Totalt ${d.total} (Chat ${d.chat} • Forskning ${d.research})`}
               >
                 <div
@@ -265,6 +265,19 @@ async function UsageTimeline({ userId }: { userId: string }) {
                   <div className="absolute bottom-0 left-0 w-full bg-emerald-400/80" style={{ height: `${researchPct}%` }} />
                   <div className="absolute bottom-0 left-0 w-full bg-indigo-500/80" style={{ height: `${chatPct}%` }} />
                 </div>
+                {d.total > 0 && (
+                  <div
+                    className="absolute bottom-0 left-0 w-full pointer-events-none"
+                    style={{ height: `${totalPct}%` }}
+                  >
+                    <div
+                      className="absolute left-0 w-full text-[10px] leading-none text-center font-medium profile-subtle select-none"
+                      style={{ top: '2px' }}
+                    >
+                      {d.total}
+                    </div>
+                  </div>
+                )}
               </div>
               <div className="mt-1 text-[10px] leading-none profile-subtle">{dayNum}</div>
             </div>

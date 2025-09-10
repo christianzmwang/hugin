@@ -2,7 +2,7 @@
 
 import { useSession } from 'next-auth/react'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { useEffect, useState, useRef, useCallback, Suspense } from 'react'
+import { useEffect, useState, useRef, useCallback, useLayoutEffect, Suspense } from 'react'
 import { useDashboardMode } from '@/components/DashboardThemeProvider'
 // ParallelChat removed from inline usage; chat implemented directly in this page now
 import { createPortal } from 'react-dom'
@@ -514,7 +514,8 @@ function CompanyPageContent() {
   const pollTokenRef = useRef(0)
   const [processor, setProcessor] = useState<'lite' | 'base' | 'core' | 'pro' | 'ultra'>('base')
   // UI mode: deep research (default) vs chat
-  const [uiMode, setUiMode] = useState<'research' | 'chat'>('research')
+  // Default to 'chat' so users see chat first; they can switch to research via dropdown
+  const [uiMode, setUiMode] = useState<'research' | 'chat'>('chat')
   const [procDropdownOpen, setProcDropdownOpen] = useState(false)
   const procDropdownRef = useRef<HTMLDivElement | null>(null)
   const procAnchorRef = useRef<HTMLDivElement | null>(null)
@@ -533,7 +534,18 @@ function CompanyPageContent() {
     return () => window.removeEventListener('mousedown', handleClick)
   }, [procDropdownOpen])
   const procButtonsContainerRef = useRef<HTMLDivElement | null>(null)
-  const [procGroupWidth, setProcGroupWidth] = useState<number | null>(null)
+  // Persisted processor group width to keep Chat button stable and avoid layout shift
+  const PROC_FALLBACK_WIDTH = 220
+  const [procGroupWidth, setProcGroupWidth] = useState<number | null>(() => {
+    if (typeof window !== 'undefined') {
+      const v = window.localStorage.getItem('procGroupWidth')
+      if (v) {
+        const n = parseInt(v, 10)
+        if (Number.isFinite(n) && n > 50) return n
+      }
+    }
+    return null
+  })
   // Inline chat state (replaces ParallelChat component)
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([])
   const [chatInput, setChatInput] = useState('')
@@ -549,7 +561,8 @@ function CompanyPageContent() {
     el.scrollTop = el.scrollHeight
   }, [chatMessages, chatStreaming])
 
-  const [chatTypeoutClass, setChatTypeoutClass] = useState('')
+  // Ensure Chat label is visible on initial load when defaulting to chat
+  // Chat animation removed; no typeout effect
   const [researchDotAnimClass, setResearchDotAnimClass] = useState('')
   const previousModeRef = useRef<'research' | 'chat'>(uiMode)
   const promptRef = useRef<HTMLTextAreaElement | null>(null)
@@ -660,34 +673,34 @@ function CompanyPageContent() {
     if (previousModeRef.current !== uiMode) {
       if (uiMode === 'research') {
         setResearchDotAnimClass('dot-cascade-enter')
-        setChatTypeoutClass('')
       } else {
-        // no button container animation
-        setChatTypeoutClass('typeout-animate')
         setResearchDotAnimClass('dot-cascade-exit')
       }
       previousModeRef.current = uiMode
     }
   }, [uiMode])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const containerEl = procButtonsContainerRef.current
     const measure = () => {
-      const el = containerEl || procButtonsContainerRef.current
+      const el = procButtonsContainerRef.current || containerEl
       if (!el) return
       const w = el.getBoundingClientRect().width
-      if (w && Math.abs(w - (procGroupWidth || 0)) > 1) setProcGroupWidth(Math.round(w))
+      if (w && Math.abs(w - (procGroupWidth || 0)) > 1) {
+        const mw = Math.round(w)
+        setProcGroupWidth(mw)
+        try { window.localStorage.setItem('procGroupWidth', String(mw)) } catch {}
+      }
     }
-    if (uiMode === 'research') {
-      measure()
-    }
-    const ro = typeof ResizeObserver !== 'undefined' && containerEl ? new ResizeObserver(measure) : null
-    if (ro && containerEl) ro.observe(containerEl)
+    // Always attempt a measurement (even when starting in chat mode using hidden group)
+    measure()
+    const ro = typeof ResizeObserver !== 'undefined' && procButtonsContainerRef.current ? new ResizeObserver(measure) : null
+    if (ro && procButtonsContainerRef.current) ro.observe(procButtonsContainerRef.current)
     window.addEventListener('resize', measure)
     const id = setInterval(measure, 1500)
     return () => {
       window.removeEventListener('resize', measure)
-      if (ro && containerEl) ro.unobserve(containerEl)
+      if (ro && procButtonsContainerRef.current) ro.unobserve(procButtonsContainerRef.current)
       clearInterval(id)
     }
   }, [uiMode, processor, procGroupWidth])
@@ -2005,10 +2018,11 @@ function CompanyPageContent() {
                   value={prompt}
                   onChange={(e) => { setPrompt(e.target.value); setLastPromptEditAt(Date.now()); autoResizePrompt() }}
                   rows={1}
-                  placeholder="Spør hugin"
-                  className={`flex-1 border text-sm px-3 py-2 overflow-hidden resize-none leading-6 focus:outline-none ${light
-                    ? 'bg-white border-gray-300 text-gray-900 placeholder-gray-400 focus:border-red-600'
-                    : 'bg-black border-white/20 text-white placeholder-gray-500 focus:border-red-600/70'}`}
+                  disabled
+                  placeholder="Coming soon..."
+                  className={`flex-1 border text-sm px-3 py-2 overflow-hidden resize-none leading-6 focus:outline-none cursor-not-allowed opacity-60 ${light
+                    ? 'bg-white border-gray-200 text-gray-500 placeholder-gray-400'
+                    : 'bg-black border-white/10 text-white/50 placeholder-gray-500'}`}
                 />
               ) : (
                 <textarea
@@ -2026,16 +2040,10 @@ function CompanyPageContent() {
               {/* 2. Action button */}
               {uiMode === 'research' ? (
                 <button
-                  onClick={triggerResearch}
-                  disabled={(researchStatus === 'running' || researchStatus === 'queued') || !prompt.trim()}
-                  className={`h-10 w-24 border text-sm transition-colors ${ (researchStatus === 'running' || researchStatus === 'queued')
-                    ? (light ? 'border-gray-300 text-gray-400 bg-gray-100 cursor-not-allowed' : 'border-white/20 text-white/50 cursor-not-allowed')
-                    : (!prompt.trim())
-                      ? (light ? 'border-gray-200 text-gray-400 cursor-not-allowed' : 'border-white/10 text-white/40 cursor-not-allowed')
-                      : (light
-                          ? 'border-gray-300 text-gray-800 hover:bg-red-50 hover:border-red-500 hover:text-red-700'
-                          : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60')}`}
-                >{(researchStatus === 'running' || researchStatus === 'queued') ? 'Flyr…' : 'Spør'}</button>
+                  onClick={() => { /* disabled while coming soon */ }}
+                  disabled
+                  className={`h-10 w-24 border text-sm cursor-not-allowed ${light ? 'border-gray-200 text-gray-400 bg-gray-100' : 'border-white/10 text-white/40 bg-black'}`}
+                >Spør</button>
               ) : chatStreaming ? (
                 <button
                   onClick={() => chatAbortRef.current?.abort()}
@@ -2046,15 +2054,15 @@ function CompanyPageContent() {
                   onClick={sendChat}
                   disabled={!chatInput.trim()}
                   className={`h-10 w-24 border text-sm transition-colors ${chatInput.trim()
-                    ? (light ? 'border-gray-300 text-gray-800 hover:bg-red-50 hover:border-red-500 hover:text-red-700' : 'border-white/20 text-white/90 hover:bg-red-600/20 hover:border-red-600/60')
-                    : (light ? 'border-gray-200 text-gray-400' : 'border-white/10 text-white/40')}`}
+                    ? (light ? 'border-gray-300 text-gray-800 hover:bg-red-50 hover:border-red-500 hover:text-red-700' : 'border-white/20 text-white/90 bg-black hover:bg-red-600/20 hover:border-red-600/60')
+                    : (light ? 'border-gray-200 text-gray-400' : 'border-white/10 text-white/40 bg-black')}`}
                 >Spør</button>
               )}
               {/* 3. Processor group (research) or Chat dropdown toggle (chat) */}
               <div ref={procAnchorRef} className="relative flex items-stretch h-10">
                 {uiMode === 'research' ? (
                   <div ref={procButtonsContainerRef} className={`h-10 overflow-hidden flex items-stretch text-sm select-none border ${light ? 'bg-white border-gray-300' : 'bg-black border-white/20'}`}>
-        {(['base','pro','ultra'] as const).map((key, idx) => {
+                    {(['base','pro','ultra'] as const).map((key, idx) => {
                       const selected = processor === key
                       const level = idx + 1
                       const costStr = processorMeta[key].cost
@@ -2104,19 +2112,27 @@ function CompanyPageContent() {
                     onClick={() => setProcDropdownOpen(o => !o)}
                     className={`h-10 border text-sm flex items-center justify-between px-4 pl-5 pr-2 transition-colors ${light
                       ? 'border-gray-300 text-gray-700 hover:bg-gray-100'
-                      : 'border-white/20 text-white/85 hover:bg-white/10'}`}
-                    style={{ width: procGroupWidth ? `${procGroupWidth}px` : undefined }}
+                      : 'border-white/20 text-white/85 bg-black hover:bg-white/10'}`}
+                    style={{ width: procGroupWidth ? `${procGroupWidth}px` : `${PROC_FALLBACK_WIDTH}px` }}
                     aria-haspopup="menu"
                     aria-expanded={procDropdownOpen}
                     title="Velg modus"
                   >
-                    <span className={`typeout ${chatTypeoutClass}`}>
-                      {Array.from('Chat').map((c,i)=>(<span key={i}>{c}</span>))}
-                    </span>
+                    <span>Chat</span>
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="pointer-events-none shrink-0 ml-2">
                       <path d="M6 9L12 15L18 9" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
                     </svg>
                   </button>
+                )}
+                {uiMode === 'chat' && procGroupWidth == null && (
+                  <div aria-hidden="true" className="absolute -left-[9999px] top-0">
+                    <div ref={procButtonsContainerRef} className={`h-10 flex items-stretch text-sm select-none border ${light ? 'bg-white border-gray-300' : 'bg-black border-white/20'}`}> 
+                      {(['base','pro','ultra'] as const).map((key) => (
+                        <button key={`m-${key}`} type="button" className="px-2 h-full" />
+                      ))}
+                      <button type="button" className="px-2 h-full" />
+                    </div>
+                  </div>
                 )}
                 {procDropdownOpen && (
                   <div ref={procDropdownRef} className={`absolute right-0 top-full z-50 border ${light ? 'bg-white border-gray-200' : 'bg-black border-white/20'}`} style={{ width: uiMode==='research' ? ((procAnchorRef.current?.firstElementChild as HTMLElement | null)?.offsetWidth || 0) : (procGroupWidth || undefined) }}>

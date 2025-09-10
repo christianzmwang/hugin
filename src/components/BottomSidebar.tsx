@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { LayoutDashboard, Search, Eye, Building2, Settings, Download, FlaskConical, List as ListIcon, Sun, Moon } from 'lucide-react'
+import { LayoutDashboard, Search, Eye, Building2, Settings, Download, FlaskConical, List as ListIcon, Bell, Sun, Moon } from 'lucide-react'
 import { useDashboardMode } from '@/components/DashboardThemeProvider'
 import { useEffect, useState } from 'react'
 
@@ -15,17 +15,15 @@ type BottomSidebarProps = {
 export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFilters }: BottomSidebarProps) {
   const pathname = usePathname()
   const { mode, toggle } = useDashboardMode()
-  const [isDashboard, setIsDashboard] = useState(false)
-  useEffect(() => {
-    const lightPages = ['/', '/dashboard', '/search', '/company', '/profile', '/watchlist', '/configuration', '/sandbox', '/lists', '/export']
-    const match = lightPages.includes(pathname) || lightPages.some(p => p !== '/' && pathname.startsWith(p + '/'))
-    setIsDashboard(match)
-  }, [pathname])
+  // Standardize: light styling applies globally when user selects light mode.
+  // (Keep potential hook structure if future per-page overrides are needed.)
+  const [alwaysTrue] = useState(true)
+  useEffect(() => { /* placeholder for future dynamic logic */ }, [])
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
     return pathname === href || pathname.startsWith(href + '/')
   }
-  const light = isDashboard && mode === 'light'
+  const light = mode === 'light'
   return (
     <div className="fixed inset-x-0 bottom-0 z-50 pointer-events-none">
       <div className={`pointer-events-auto backdrop-blur border-t transition-colors duration-300 ${light ? 'bg-white/90 border-gray-200' : 'bg-black/90 border-white/10'}` }>
@@ -132,6 +130,18 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
                   }`}
                 />
               </Link>
+              <Link
+                href="/notifications"
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 ${light ? (isActive('/notifications') ? 'text-gray-900' : 'text-gray-700') : (isActive('/notifications') ? 'text-white/90' : 'text-white/80')}`}
+              >
+                <Bell size={16} />
+                <span>Notifications</span>
+                <span
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
+                    isActive('/notifications') ? 'opacity-100' : 'group-hover:opacity-100'
+                  }`}
+                />
+              </Link>
             </nav>
 
             {/* Right actions */}
@@ -146,17 +156,15 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
                 </button>
               ) : null}
               {showClearFilters && onClearFilters ? null : null}
-              {isDashboard && (
-                <button
-                  onClick={toggle}
-                  aria-label="Toggle light/dark"
-                  className={`group relative px-2 py-2 inline-flex items-center ${light ? 'text-gray-700 hover:text-gray-900' : 'text-white/80 hover:text-white/90'}`}
-                  title={mode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
-                >
-                  {mode === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-                  <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
-                </button>
-              )}
+              <button
+                onClick={toggle}
+                aria-label="Toggle light/dark"
+                className={`group relative px-2 py-2 inline-flex items-center ${light ? 'text-gray-700 hover:text-gray-900' : 'text-white/80 hover:text-white/90'}`}
+                title={mode === 'light' ? 'Switch to dark mode' : 'Switch to light mode'}
+              >
+                {mode === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+                <span className="pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+              </button>
             </div>
           </div>
         </div>

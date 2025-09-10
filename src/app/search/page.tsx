@@ -22,6 +22,79 @@ const numberFormatter: Intl.NumberFormat = (() => {
   }
 })()
 
+function UnifiedSaveCreator({ queryParam, onListSaved }: { queryParam: string; onListSaved: (name: string) => Promise<boolean> }) {
+  const [mode, setMode] = useState<'list' | 'notification'>('list')
+  const [name, setName] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [flash, setFlash] = useState<'ok' | 'err' | null>(null)
+  useEffect(() => {
+    if (flash) {
+      const t = setTimeout(() => setFlash(null), 2000)
+      return () => clearTimeout(t)
+    }
+  }, [flash])
+  const disabled = saving || !name.trim()
+  const swap = () => setMode((m) => (m === 'list' ? 'notification' : 'list'))
+  const handleSave = async () => {
+    if (disabled) return
+    setSaving(true)
+    try {
+      if (mode === 'notification') {
+        const res = await fetch('/api/notifications', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: name.trim(), filterQuery: queryParam || '' }) })
+        const j = await res.json()
+        if (j.ok) {
+          setFlash('ok')
+          setName('')
+        } else setFlash('err')
+      } else {
+        const ok = await onListSaved(name.trim())
+        if (ok) {
+          setFlash('ok')
+          setName('')
+        } else setFlash('err')
+      }
+    } catch {
+      setFlash('err')
+    } finally {
+      setSaving(false)
+    }
+  }
+  return (
+  <div className="mb-6 flex flex-col gap-2">
+      <div className="flex items-center justify-between">
+        <div className="text-sm font-medium select-none">{mode === 'notification' ? 'Notification' : 'List'}</div>
+        <button
+          type="button"
+            onClick={swap}
+            aria-label={mode === 'notification' ? 'Switch to list' : 'Switch to notification'}
+            title={mode === 'notification' ? 'Switch to list' : 'Switch to notification'}
+            className="text-xl leading-none px-3 py-0.5 border border-white/10 text-white bg-transparent hover:bg-red-600/10 hover:border-red-600/60 focus:outline-none focus:ring-1 focus:ring-red-600/40"
+        >
+          ⇄
+        </button>
+      </div>
+      <div className="flex items-center gap-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Name"
+          className="flex-1 min-w-0 bg-transparent text-white placeholder-gray-500 px-2 h-9 border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90 text-xs"
+        />
+        <button
+          type="button"
+          disabled={disabled}
+          onClick={handleSave}
+          className={`h-9 w-20 inline-flex items-center justify-center text-xs px-3 border transition-colors ${saving ? 'border-white/10 text-gray-400 opacity-70' : disabled ? 'border-white/10 text-gray-400 opacity-50 cursor-not-allowed' : 'border-white/10 hover:border-red-600/60 hover:bg-red-600/10'}`}
+          title={mode === 'notification' ? 'Save notification' : 'Save list'}
+        >
+          {saving ? 'Saving…' : flash === 'ok' ? 'Saved ✓' : 'Save'}
+        </button>
+      </div>
+      {flash === 'err' && <div className="text-[11px] text-red-400">Failed to save {mode}</div>}
+    </div>
+  )
+}
 function useDebounce<T>(value: T, delay = 100) {
   const [debounced, setDebounced] = useState(value)
   useEffect(() => {
@@ -128,6 +201,45 @@ const COMPANY_TYPES: string[] = [
   'A/S/ASA',
 ]
 
+// Session-scoped persistence key (filters live only for current tab session)
+const SEARCH_FILTERS_SESSION_KEY = 'searchFilters.session.v1'
+// Session result & metadata cache keys
+const SEARCH_RESULTS_SESSION_KEY = 'searchResults.session.v1'
+const INDUSTRIES_SESSION_KEY = 'industries.session.v1'
+const EVENT_TYPES_SESSION_KEY = 'eventTypes.session.v1'
+const BOUNDS_SESSION_KEY = 'bounds.session.v1'
+
+// Canonicalize a query string (with or without leading ?) by sorting keys and values and removing
+// transient pagination/count params so cache matches regardless of param order added by code.
+function canonicalizeQuery(raw: string): string {
+  try {
+    if (!raw) return ''
+    const q = raw.startsWith('?') ? raw.slice(1) : raw
+    const sp = new URLSearchParams(q)
+    // Remove volatile params
+    sp.delete('offset')
+    sp.delete('skipCount')
+    sp.delete('countOnly')
+    // Collect keys
+    const entries: Array<[string, string[]]> = []
+    const seenKeys = new Set<string>()
+    for (const [k] of sp.entries()) {
+      if (seenKeys.has(k)) continue
+      seenKeys.add(k)
+      const vals = sp.getAll(k).sort()
+      entries.push([k, vals])
+    }
+    entries.sort((a, b) => (a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0))
+    const flat: string[] = []
+    for (const [k, vals] of entries) {
+      for (const v of vals) flat.push(`${encodeURIComponent(k)}=${encodeURIComponent(v)}`)
+    }
+    return flat.join('&')
+  } catch {
+    return raw
+  }
+}
+
 interface BusinessCardProps {
   business: Business
   numberFormatter: Intl.NumberFormat
@@ -151,6 +263,51 @@ export default function SearchPage() {
   const pathname = usePathname()
   const { mode: themeMode } = useDashboardMode()
   const light = themeMode === 'light'
+
+  // --- Pre-read sessionStorage filters synchronously (client only) so UI shows them immediately on mount ---
+  const sessionSavedFiltersRef = useRef<null | {
+    industries?: string[]
+    areas?: string[]
+    companyTypes?: string[]
+    revenueMin?: number | ''
+    revenueMax?: number | ''
+    profitMin?: number | ''
+    profitMax?: number | ''
+    eventsFilter?: string
+    eventTypes?: string[]
+    eventWeights?: Record<string, number>
+    hasWoo?: boolean
+    hasShopify?: boolean
+    registeredFrom?: string
+    registeredTo?: string
+    q?: string
+    sortBy?: string
+  }>(null)
+  const hasMeaningfulUrlFiltersRef = useRef<boolean>(false)
+  if (typeof window !== 'undefined' && sessionSavedFiltersRef.current === null) {
+    try {
+      const sp = new URLSearchParams(window.location.search)
+      const filterParamNames = [
+        'industries','areas','orgFormCode','revenueMin','revenueMax','profitMin','profitMax','events','eventTypes','eventWeights','webEcomWoocommerce','webCmsShopify','registeredFrom','registeredTo','q','sortBy'
+      ] as const
+      hasMeaningfulUrlFiltersRef.current = filterParamNames.some((k) => {
+        if (!sp.has(k)) return false
+        if (k === 'sortBy') {
+          const v = sp.get('sortBy') || ''
+          return v !== '' && v !== 'updatedAt'
+        }
+        return true
+      })
+      if (!hasMeaningfulUrlFiltersRef.current) {
+        const raw = sessionStorage.getItem(SEARCH_FILTERS_SESSION_KEY)
+        if (raw) {
+          sessionSavedFiltersRef.current = JSON.parse(raw)
+        }
+      }
+    } catch {
+      sessionSavedFiltersRef.current = null
+    }
+  }
   
   useEffect(() => {
     if (status === 'loading') return
@@ -178,9 +335,11 @@ export default function SearchPage() {
   const [industryQuery, setIndustryQuery] = useState('')
   const [selectedIndustries, setSelectedIndustries] = useState<SelectedIndustry[]>(() => {
     if (typeof window === 'undefined') return []
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) {
+      return (sessionSavedFiltersRef.current.industries || []).map(v => ({ value: v, label: v }))
+    }
     const sp = new URLSearchParams(window.location.search)
-    const inds = sp.getAll('industries')
-    return inds.map((v) => ({ value: v, label: v }))
+    return sp.getAll('industries').map(v => ({ value: v, label: v }))
   })
   const [allIndustries, setAllIndustries] = useState<IndustryOpt[]>([])
   const [suggestions, setSuggestions] = useState<IndustryOpt[]>([])
@@ -191,18 +350,20 @@ export default function SearchPage() {
   const [companySuggestions, setCompanySuggestions] = useState<Array<{ name: string; orgNumber: string }>>([])
   const [globalSearch, setGlobalSearch] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.q || ''
     return new URLSearchParams(window.location.search).get('q') || ''
   })
   const [committedGlobalSearch, setCommittedGlobalSearch] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.q || ''
     return new URLSearchParams(window.location.search).get('q') || ''
   })
   const [areaQuery, setAreaQuery] = useState('')
   const [selectedAreas, setSelectedAreas] = useState<string[]>(() => {
     if (typeof window === 'undefined') return []
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.areas || []
     const sp = new URLSearchParams(window.location.search)
-    const arr = sp.getAll('areas')
-    return arr.filter(Boolean)
+    return sp.getAll('areas').filter(Boolean)
   })
   const areaInputRef = useRef<HTMLInputElement | null>(null)
   const areaDropdownRef = useRef<HTMLDivElement | null>(null)
@@ -214,7 +375,8 @@ export default function SearchPage() {
   const [companyTypeQuery, setCompanyTypeQuery] = useState('')
   const [selectedCompanyTypes, setSelectedCompanyTypes] = useState<string[]>(() => {
     if (typeof window === 'undefined') return []
-    return new URLSearchParams(window.location.search).getAll('orgFormCode').map((s) => s.trim()).filter(Boolean)
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.companyTypes || []
+    return new URLSearchParams(window.location.search).getAll('orgFormCode').map(s => s.trim()).filter(Boolean)
   })
   const companyTypeInputRef = useRef<HTMLInputElement | null>(null)
   const companyTypeDropdownRef = useRef<HTMLDivElement | null>(null)
@@ -223,16 +385,16 @@ export default function SearchPage() {
   const [companyTypeSuggestions, setCompanyTypeSuggestions] = useState<string[]>(COMPANY_TYPES)
   const [revenueMin, setRevenueMin] = useState<number | ''>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.revenueMin ?? ''
     const sp = new URLSearchParams(window.location.search)
-    const v = sp.get('revenueMin')
-    const n = v == null ? NaN : Number(v)
+    const v = sp.get('revenueMin'); const n = v == null ? NaN : Number(v)
     return Number.isFinite(n) ? Math.floor(n) : ''
   })
   const [revenueMax, setRevenueMax] = useState<number | ''>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.revenueMax ?? ''
     const sp = new URLSearchParams(window.location.search)
-    const v = sp.get('revenueMax')
-    const n = v == null ? NaN : Number(v)
+    const v = sp.get('revenueMax'); const n = v == null ? NaN : Number(v)
     return Number.isFinite(n) ? Math.floor(n) : ''
   })
   // Draft values for revenue inputs; only applied when clicking Apply
@@ -249,16 +411,16 @@ export default function SearchPage() {
   const [minRevenue, setMinRevenue] = useState<number>(-1868256000)
   const [profitMin, setProfitMin] = useState<number | ''>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.profitMin ?? ''
     const sp = new URLSearchParams(window.location.search)
-    const v = sp.get('profitMin')
-    const n = v == null ? NaN : Number(v)
+    const v = sp.get('profitMin'); const n = v == null ? NaN : Number(v)
     return Number.isFinite(n) ? Math.floor(n) : ''
   })
   const [profitMax, setProfitMax] = useState<number | ''>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.profitMax ?? ''
     const sp = new URLSearchParams(window.location.search)
-    const v = sp.get('profitMax')
-    const n = v == null ? NaN : Number(v)
+    const v = sp.get('profitMax'); const n = v == null ? NaN : Number(v)
     return Number.isFinite(n) ? Math.floor(n) : ''
   })
   // Draft values for profit inputs; only applied when clicking Apply  
@@ -272,43 +434,44 @@ export default function SearchPage() {
   const [, setApiLoaded] = useState<boolean>(false)
   const [eventsFilter, setEventsFilter] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.eventsFilter || ''
     return new URLSearchParams(window.location.search).get('events') || ''
   })
   const [availableEventTypes, setAvailableEventTypes] = useState<string[]>([])
   // Website tech filters
   const [hasWoo, setHasWoo] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return !!sessionSavedFiltersRef.current.hasWoo
     const v = new URLSearchParams(window.location.search).get('webEcomWoocommerce')
     return ['1', 'true', 'yes'].includes(String(v).toLowerCase())
   })
   const [hasShopify, setHasShopify] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return !!sessionSavedFiltersRef.current.hasShopify
     const v = new URLSearchParams(window.location.search).get('webCmsShopify')
     return ['1', 'true', 'yes'].includes(String(v).toLowerCase())
   })
   const [selectedEventTypes, setSelectedEventTypes] = useState<string[]>(() => {
     if (typeof window === 'undefined') return []
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.eventTypes || []
     const sp = new URLSearchParams(window.location.search)
     const csv = sp.get('eventTypes') || ''
-    return csv ? csv.split(',').map((s) => s.trim()).filter(Boolean) : []
+    return csv ? csv.split(',').map(s => s.trim()).filter(Boolean) : []
   })
   const [eventWeights, setEventWeights] = useState<Record<string, number>>(() => {
     if (typeof window === 'undefined') return {}
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.eventWeights || {}
     const sp = new URLSearchParams(window.location.search)
-    try {
-      const raw = sp.get('eventWeights')
-      if (!raw) return {}
-      const obj = JSON.parse(raw)
-      if (obj && typeof obj === 'object') return obj as Record<string, number>
-    } catch {}
+    try { const raw = sp.get('eventWeights'); if (!raw) return {}; const obj = JSON.parse(raw); if (obj && typeof obj === 'object') return obj as Record<string, number> } catch {}
     return {}
   })
   const selectedSource = 'general'
   const [metricMode, setMetricMode] = useState<'revenue' | 'operating'>('revenue')
   const [sortBy, setSortBy] = useState<string>(() => {
     if (typeof window === 'undefined') return 'updatedAt'
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current && sessionSavedFiltersRef.current.sortBy) return sessionSavedFiltersRef.current.sortBy
     const v = new URLSearchParams(window.location.search).get('sortBy') || 'updatedAt'
-  const allowed = new Set(['updatedAt', 'name', 'revenue', 'revenueAsc', 'employees', 'employeesAsc', 'scoreDesc', 'scoreAsc', 'registreringsdato'])
+    const allowed = new Set(['updatedAt', 'name', 'revenue', 'revenueAsc', 'employees', 'employeesAsc', 'scoreDesc', 'scoreAsc', 'registreringsdato'])
     return allowed.has(v) ? v : 'updatedAt'
   })
   const [offset, setOffset] = useState<number>(0)
@@ -323,10 +486,16 @@ export default function SearchPage() {
   const eventsRef = useRef<HTMLDivElement>(null);
   const [isEventTypesCollapsed, setIsEventTypesCollapsed] = useState<boolean>(false)
   const [listName, setListName] = useState<string>('')
+  const listNameRef = useRef<string>('')
   // listId no longer used; filters are encoded directly in query params when link created.
   // Event types scroll state for fade overlays
   const eventTypesScrollRef = useRef<HTMLDivElement | null>(null)
   const [eventTypesScrollState, setEventTypesScrollState] = useState<{ atTop: boolean; atBottom: boolean }>({ atTop: true, atBottom: true })
+  // Cached results hydration tracker
+  const hydratedResultsRef = useRef(false)
+  const [initialResultsHydrated, setInitialResultsHydrated] = useState(false)
+  // Track which canonical query we hydrated so we only skip the duplicate fetch for THAT exact query
+  const hydratedCanonRef = useRef<string | null>(null)
 
   const updateEventTypesScrollState = () => {
     const el = eventTypesScrollRef.current
@@ -402,10 +571,12 @@ export default function SearchPage() {
   // Registration date filters (moved up so they are declared before queryParam useMemo)
   const [registrationFrom, setRegistrationFrom] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.registeredFrom || ''
     return new URLSearchParams(window.location.search).get('registeredFrom') || ''
   })
   const [registrationTo, setRegistrationTo] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
+    if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.registeredTo || ''
     return new URLSearchParams(window.location.search).get('registeredTo') || ''
   })
 
@@ -476,7 +647,67 @@ export default function SearchPage() {
     if (hydratedFromUrl) return
     if (typeof window === 'undefined') return
     const sp = new URLSearchParams(window.location.search)
+    // Determine if any explicit URL filters are present (shared link / bookmark case)
+    const filterParamNames = [
+      'industries','areas','orgFormCode','revenueMin','revenueMax','profitMin','profitMax','events','eventTypes','eventWeights','webEcomWoocommerce','webCmsShopify','registeredFrom','registeredTo','q','sortBy'
+    ] as const
+    // Treat sortBy as meaningful only if NOT the default (updatedAt)
+    const hasMeaningfulUrlFilter = filterParamNames.some((k) => {
+      if (!sp.has(k)) return false
+      if (k === 'sortBy') {
+        const v = sp.get('sortBy') || ''
+        return v !== '' && v !== 'updatedAt'
+      }
+      return true
+    })
     let changed = false
+
+    // If NO meaningful URL filters, attempt session-storage restore first
+    if (!hasMeaningfulUrlFilter) {
+      try {
+        const raw = sessionStorage.getItem(SEARCH_FILTERS_SESSION_KEY)
+        if (raw) {
+          const saved = JSON.parse(raw) as {
+            industries?: string[]
+            areas?: string[]
+            companyTypes?: string[]
+            revenueMin?: number | ''
+            revenueMax?: number | ''
+            profitMin?: number | ''
+            profitMax?: number | ''
+            eventsFilter?: string
+            eventTypes?: string[]
+            eventWeights?: Record<string, number>
+            hasWoo?: boolean
+            hasShopify?: boolean
+            registeredFrom?: string
+            registeredTo?: string
+            q?: string
+            sortBy?: string
+          }
+          if (saved.industries?.length) { setSelectedIndustries(saved.industries.map(v => ({ value: v, label: v }))); changed = true }
+          if (saved.areas?.length) { setSelectedAreas(saved.areas); changed = true }
+          if (saved.companyTypes?.length) { setSelectedCompanyTypes(saved.companyTypes); changed = true }
+          if (saved.revenueMin !== undefined) { setRevenueMin(saved.revenueMin === '' ? '' : Number(saved.revenueMin)); changed = true }
+          if (saved.revenueMax !== undefined) { setRevenueMax(saved.revenueMax === '' ? '' : Number(saved.revenueMax)); changed = true }
+          if (saved.profitMin !== undefined) { setProfitMin(saved.profitMin === '' ? '' : Number(saved.profitMin)); changed = true }
+          if (saved.profitMax !== undefined) { setProfitMax(saved.profitMax === '' ? '' : Number(saved.profitMax)); changed = true }
+          if (saved.eventsFilter) { setEventsFilter(saved.eventsFilter); changed = true }
+            if (saved.eventTypes?.length) { setSelectedEventTypes(saved.eventTypes); changed = true }
+          if (saved.eventWeights && Object.keys(saved.eventWeights).length) { setEventWeights(saved.eventWeights); changed = true }
+          if (saved.hasWoo) { setHasWoo(true); changed = true }
+          if (saved.hasShopify) { setHasShopify(true); changed = true }
+          if (saved.registeredFrom) { setRegistrationFrom(saved.registeredFrom); changed = true }
+          if (saved.registeredTo) { setRegistrationTo(saved.registeredTo); changed = true }
+          if (saved.q) { setGlobalSearch(saved.q); setCommittedGlobalSearch(saved.q); changed = true }
+          if (saved.sortBy) { setSortBy(saved.sortBy); changed = true }
+        }
+      } catch { /* ignore parse errors */ }
+      setHydratedFromUrl(true)
+      if (changed) setOffset(0)
+      return
+    }
+    // URL filters present: hydrate from URL (existing logic)
     // Industries
     if (selectedIndustries.length === 0) {
       const inds = sp.getAll('industries').filter(Boolean)
@@ -543,14 +774,58 @@ export default function SearchPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Persist filters to sessionStorage whenever they change (after initial hydration)
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (!hydratedFromUrl) return // avoid writing incomplete pre-hydration state
+    try {
+      const payload = {
+        industries: selectedIndustries.map(i => i.value),
+        areas: selectedAreas,
+        companyTypes: selectedCompanyTypes,
+        revenueMin,
+        revenueMax,
+        profitMin,
+        profitMax,
+        eventsFilter,
+        eventTypes: selectedEventTypes,
+        eventWeights,
+        hasWoo,
+        hasShopify,
+        registeredFrom: registrationFrom || '',
+        registeredTo: registrationTo || '',
+        q: committedGlobalSearch || '',
+        sortBy
+      }
+      sessionStorage.setItem(SEARCH_FILTERS_SESSION_KEY, JSON.stringify(payload))
+    } catch { /* noop */ }
+  }, [
+    selectedIndustries,
+    selectedAreas,
+    selectedCompanyTypes,
+    revenueMin,
+    revenueMax,
+    profitMin,
+    profitMax,
+    eventsFilter,
+    selectedEventTypes,
+    eventWeights,
+    hasWoo,
+    hasShopify,
+    registrationFrom,
+    registrationTo,
+    committedGlobalSearch,
+    sortBy,
+    hydratedFromUrl,
+  ])
+
   const [isSavingList, setIsSavingList] = useState(false)
   const [saveProgress, setSaveProgress] = useState<number>(0)
   const [saveSuccessFlash, setSaveSuccessFlash] = useState<boolean>(false)
 
-  const handleSaveList = () => {
-    if (isSavingList) return
-    const name = (listName || '').trim()
-    if (!name) { alert('Please enter a list name'); return }
+  const handleSaveListInternal = (name: string): Promise<boolean> => {
+    if (isSavingList) return Promise.resolve(false)
+    if (!name) return Promise.resolve(false)
     setIsSavingList(true)
     setSaveProgress(0)
     setSaveSuccessFlash(false)
@@ -567,7 +842,7 @@ export default function SearchPage() {
     try {
       const es = new EventSource(url)
       const cleanup = () => { try { es.close() } catch {} }
-  es.addEventListener('progress', (ev: MessageEvent) => {
+      es.addEventListener('progress', (ev: MessageEvent) => {
         try {
           const d = JSON.parse(ev.data)
           const total = Number(d?.total || 0)
@@ -580,63 +855,94 @@ export default function SearchPage() {
           }
         } catch {}
       })
-  es.addEventListener('done', () => {
-        setSaveProgress(100)
-        setTimeout(() => {
+      es.addEventListener('created', () => {
+        // could capture list id here if needed
+      })
+      return new Promise<boolean>((resolve) => {
+        es.addEventListener('done', () => {
+          setSaveProgress(100)
+          setTimeout(() => {
+            setIsSavingList(false)
+            setSaveSuccessFlash(true)
+            setListName('')
+            setTimeout(() => setSaveSuccessFlash(false), 1000)
+            setSaveProgress(0)
+          }, 200)
+          cleanup()
+          resolve(true)
+        })
+        es.addEventListener('error', () => {
           setIsSavingList(false)
-          setSaveSuccessFlash(true)
-          setListName('')
-          setTimeout(() => setSaveSuccessFlash(false), 1000)
           setSaveProgress(0)
-        }, 200)
-        cleanup()
-      })
-  es.addEventListener('error', () => {
-        cleanup()
-        setIsSavingList(false)
-        setSaveProgress(0)
-        alert('Failed to save list')
-      })
-  es.addEventListener('created', () => {
-        // could read id if needed in future
+          cleanup()
+          resolve(false)
+        })
       })
     } catch {
       setIsSavingList(false)
-      setSaveProgress(0)
-      alert('Failed to save list')
+      return Promise.resolve(false)
     }
   }
+  // (Removed orphaned add/remove industry/area helper code during merge)
 
-  const addSelectedIndustry = (value: string, label?: string) => {
-    const v = value.trim()
-    if (!v) return
+  // Helper functions restored after merge refactor
+  const addSelectedIndustry = (raw: string, labelMaybe?: string) => {
+    const term = (raw || '').trim()
+    if (!term) return
     setSelectedIndustries((prev) => {
-      const exists = prev.some((p) => p.value.toLowerCase() === v.toLowerCase())
-      if (exists) return prev
-      return [...prev, { value: v, label: (label ?? v).trim() }]
+      if (prev.some((p) => p.value === term)) return prev
+      const label = labelMaybe || term
+      return [...prev, { value: term, label }]
     })
+    setOffset(0)
+  }
+  const removeSelectedIndustry = (val: string) => {
+    setSelectedIndustries((prev) => prev.filter((p) => p.value !== val))
+    setOffset(0)
+  }
+  const addSelectedArea = (raw: string) => {
+    const term = (raw || '').trim()
+    if (!term) return
+    setSelectedAreas((prev) => (prev.includes(term) ? prev : [...prev, term]))
+    setOffset(0)
+  }
+  const removeSelectedArea = (val: string) => {
+    setSelectedAreas((prev) => prev.filter((p) => p !== val))
+    setOffset(0)
   }
 
-  const removeSelectedIndustry = (value: string) => {
-    setSelectedIndustries((prev) => prev.filter((p) => p.value.toLowerCase() !== value.toLowerCase()))
-  }
 
-  const addSelectedArea = (value: string) => {
-    const v = value.trim()
-    if (!v) return
-    setSelectedAreas((prev) => {
-      const exists = prev.some((p) => p.toLowerCase() === v.toLowerCase())
-      if (exists) return prev
-      return [...prev, v]
-    })
-  }
-
-  const removeSelectedArea = (value: string) => {
-    setSelectedAreas((prev) => prev.filter((p) => p.toLowerCase() !== value.toLowerCase()))
-  }
-
+  // Hydrate businesses & totals from session cache (first mount only)
+  useEffect(() => {
+    if (hydratedResultsRef.current) return
+    if (typeof window === 'undefined') return
+    try {
+      const raw = sessionStorage.getItem(SEARCH_RESULTS_SESSION_KEY)
+      if (!raw) return
+  const cached = JSON.parse(raw) as { query: string; canonQuery?: string; items: Business[]; total?: number; grandTotal?: number | null }
+  if (!cached || (!cached.query && !cached.canonQuery)) return
+  const currentCanon = canonicalizeQuery(queryParam)
+  const cachedCanon = cached.canonQuery || canonicalizeQuery(cached.query)
+  if (cachedCanon === currentCanon) {
+        setData(cached.items || [])
+        if (typeof cached.total === 'number') setTotal(cached.total)
+        if (typeof cached.grandTotal === 'number') setGrandTotal(cached.grandTotal)
+        setLoading(false)
+        setCountPending(false)
+        hydratedResultsRef.current = true
+        setInitialResultsHydrated(true)
+        hydratedCanonRef.current = cachedCanon
+      }
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
+    // Only skip the fetch if we truly already hydrated THIS exact canonical query & have data.
+    const canon = canonicalizeQuery(queryParam)
+    if (initialResultsHydrated && offset === 0 && hydratedCanonRef.current === canon && data.length > 0) {
+      return
+    }
     setLoading(true)
     setCountPending(queryParam.includes('skipCount=1'))
     const controller = new AbortController()
@@ -644,49 +950,62 @@ export default function SearchPage() {
       .then((r) => r.json())
       .then((res: BusinessesResponse | Business[]) => {
         if (controller.signal.aborted) return
+        const normalizeArr = (arr: RawBusinessData[]): Business[] => (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
+        const canonInner = canon
         if (Array.isArray(res)) {
           setData((prev) => {
-            const normalize = (arr: RawBusinessData[]): Business[] =>
-              (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
             if (offset > 0) {
-              const combined = [...prev, ...normalize(res)]
+              const combined = [...prev, ...normalizeArr(res)]
               const seen = new Set<string>()
-              return combined.filter((business) => {
-                const org = business?.orgNumber
-                if (!org) return false
-                if (seen.has(org)) return false
-                seen.add(org)
-                return true
-              })
+              return combined.filter(b => { const org=b.orgNumber; if(!org||seen.has(org)) return false; seen.add(org); return true })
             }
-            return normalize(res)
+            return normalizeArr(res)
           })
           setTotal(res.length)
+          // Cache snapshot (first page only)
+          if (offset === 0) {
+            try { sessionStorage.setItem(SEARCH_RESULTS_SESSION_KEY, JSON.stringify({ query: queryParam, canonQuery: canonInner, items: res, total: res.length, grandTotal: null })) } catch {}
+            hydratedCanonRef.current = canonInner
+          }
         } else {
           setData((prev) => {
-            const normalize = (arr: RawBusinessData[]): Business[] =>
-              (arr || []).map((b: RawBusinessData) => ({ ...b, orgNumber: String(b?.orgNumber ?? b?.org_number ?? '').trim(), })).filter((b: RawBusinessData) => b && b.orgNumber && b.orgNumber.length > 0) as Business[]
             if (offset > 0) {
-              const combined = [...prev, ...normalize(res.items)]
+              const combined = [...prev, ...normalizeArr(res.items)]
               const seen = new Set<string>()
-              return combined.filter((business) => {
-                const org = business?.orgNumber
-                if (!org) return false
-                if (seen.has(org)) return false
-                seen.add(org)
-                return true
-              })
+              return combined.filter(b => { const org=b.orgNumber; if(!org||seen.has(org)) return false; seen.add(org); return true })
             }
-            return normalize(res.items)
+            return normalizeArr(res.items)
           })
           if (typeof res.total === 'number' && res.total > 0) setTotal(res.total)
           if (typeof res.grandTotal === 'number') setGrandTotal(res.grandTotal)
+          if (offset === 0) {
+            try { sessionStorage.setItem(SEARCH_RESULTS_SESSION_KEY, JSON.stringify({ query: queryParam, canonQuery: canonInner, items: res.items, total: res.total, grandTotal: res.grandTotal ?? null })) } catch {}
+            hydratedCanonRef.current = canonInner
+          } else {
+            // update existing cache merge
+            try {
+              const raw = sessionStorage.getItem(SEARCH_RESULTS_SESSION_KEY)
+              if (raw) {
+                const cached = JSON.parse(raw)
+                if (cached) {
+                  const cachedCanon = cached.canonQuery || canonicalizeQuery(cached.query || '')
+                  if (cachedCanon === canonInner) {
+                    const existing: Business[] = cached.items || []
+                    const merged = [...existing, ...res.items]
+                    const seen = new Set<string>()
+                    const dedup = merged.filter(b => { const org = b?.orgNumber; if(!org||seen.has(org)) return false; seen.add(org); return true })
+                    sessionStorage.setItem(SEARCH_RESULTS_SESSION_KEY, JSON.stringify({ ...cached, canonQuery: cachedCanon, items: dedup, total: res.total ?? dedup.length, grandTotal: res.grandTotal ?? cached.grandTotal }))
+                  }
+                }
+              }
+            } catch {}
+          }
         }
       })
-      .catch(() => { /* swallow fetch abort or network errors */ })
+      .catch(() => { /* swallow */ })
       .finally(() => { if (!controller.signal.aborted) setLoading(false) })
     return () => controller.abort()
-  }, [queryParam, offset, eventWeights])
+  }, [queryParam, offset, eventWeights, initialResultsHydrated, data.length])
 
   useEffect(() => {
     const hasSkip = queryParam.includes('skipCount=1')
@@ -749,6 +1068,22 @@ export default function SearchPage() {
     if (pathname !== '/search') return
     if (typeof document === 'undefined') return
     let cancelled = false
+    let had = false
+    try {
+      const raw = sessionStorage.getItem(BOUNDS_SESSION_KEY)
+      if (raw) {
+        const json = JSON.parse(raw)
+        if (json) {
+          const { maxRevenue: mxR, minRevenue: mnR, maxProfit: mxP, minProfit: mnP } = json || {}
+          setMaxRevenue(Number.isFinite(mxR) ? Math.floor(mxR) : 0)
+          setMinRevenue(Number.isFinite(mnR) ? Math.floor(mnR) : 0)
+          setMaxProfit(Number.isFinite(mxP) ? Math.floor(mxP) : 0)
+          setMinProfit(Number.isFinite(mnP) ? Math.floor(mnP) : 0)
+          setApiLoaded(true)
+          had = true
+        }
+      }
+    } catch {}
     const fetchAllBounds = async () => {
       try {
         const res = await fetch('/api/businesses/bounds', { next: { revalidate: 900 } })
@@ -760,15 +1095,20 @@ export default function SearchPage() {
         setMaxProfit(Number.isFinite(mxP) ? Math.floor(mxP) : 0)
         setMinProfit(Number.isFinite(mnP) ? Math.floor(mnP) : 0)
         setApiLoaded(true)
+        try { sessionStorage.setItem(BOUNDS_SESSION_KEY, JSON.stringify(json)) } catch {}
       } catch (error) {
         if (!cancelled) {
           console.error('Failed to fetch financial bounds:', error)
-          setMaxRevenue(0); setMinRevenue(0); setMaxProfit(0); setMinProfit(0); setApiLoaded(true)
+          if (!had) { setMaxRevenue(0); setMinRevenue(0); setMaxProfit(0); setMinProfit(0) }
+          setApiLoaded(true)
         }
       }
     }
-    const timeoutId = setTimeout(fetchAllBounds, 80)
-    return () => { cancelled = true; clearTimeout(timeoutId) }
+    if (!had) {
+      const timeoutId = setTimeout(fetchAllBounds, 80)
+      return () => { cancelled = true; clearTimeout(timeoutId) }
+    }
+    return () => { cancelled = true }
   }, [pathname])
 
   // Back-compat: map revenueRange buckets from URL into min/max if provided and min/max are empty
@@ -788,23 +1128,56 @@ export default function SearchPage() {
   }, [selectedRevenueRange, revenueMin, revenueMax])
 
   useEffect(() => {
+    let cancelled = false
+    // hydrate from session cache first
+    let had = false
+    try {
+      const raw = sessionStorage.getItem(INDUSTRIES_SESSION_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as { items: IndustryOpt[] }
+        if (Array.isArray(parsed?.items)) {
+          setAllIndustries(parsed.items)
+          setSuggestions(parsed.items)
+          had = true
+        }
+      }
+    } catch {}
+    if (had) return
     fetch('/api/industries')
       .then((r) => r.json())
       .then((rows: IndustryOpt[]) => {
+        if (cancelled) return
         setAllIndustries(rows)
         setSuggestions(rows)
+        try { sessionStorage.setItem(INDUSTRIES_SESSION_KEY, JSON.stringify({ items: rows, ts: Date.now() })) } catch {}
       })
-      .catch(() => {
-        setAllIndustries([])
-        setSuggestions([])
-      })
+      .catch(() => { if (!cancelled) { setAllIndustries([]); setSuggestions([]) } })
+    return () => { cancelled = true }
   }, [])
 
   useEffect(() => {
+    let cancelled = false
+    let had = false
+    try {
+      const raw = sessionStorage.getItem(EVENT_TYPES_SESSION_KEY)
+      if (raw) {
+        const parsed = JSON.parse(raw) as { items: string[] }
+        if (Array.isArray(parsed?.items)) {
+          setAvailableEventTypes(parsed.items)
+          had = true
+        }
+      }
+    } catch {}
+    if (had) return
     fetch('/api/events/types')
       .then((r) => r.json())
-      .then((res: { items?: string[] }) => setAvailableEventTypes(res.items || []))
-      .catch(() => setAvailableEventTypes([]))
+      .then((res: { items?: string[] }) => {
+        if (cancelled) return
+        setAvailableEventTypes(res.items || [])
+        try { sessionStorage.setItem(EVENT_TYPES_SESSION_KEY, JSON.stringify({ items: res.items || [], ts: Date.now() })) } catch {}
+      })
+      .catch(() => { if (!cancelled) setAvailableEventTypes([]) })
+    return () => { cancelled = true }
   }, [])
 
   const [totalFilteredCount, setTotalFilteredCount] = useState(0)
@@ -1274,7 +1647,9 @@ export default function SearchPage() {
           hasProfitFilter ||
           !!eventsFilter ||
           hasShopify || hasWoo ||
-          selectedEventTypes.length > 0
+          selectedEventTypes.length > 0 ||
+          Boolean(registrationFrom) ||
+          Boolean(registrationTo)
         if (!hasAnyAppliedFilter) return null
         const revenueLabel = `${revenueMin !== '' ? numberFormatter.format(Math.floor(revenueMin / 1000)) : 'Min'} - ${revenueMax !== '' ? numberFormatter.format(Math.floor(revenueMax / 1000)) : 'Max'} NOK`
         const profitLabel = `${profitMin !== '' ? numberFormatter.format(Math.floor(profitMin / 1000)) : 'Min'} - ${profitMax !== '' ? numberFormatter.format(Math.floor(profitMax / 1000)) : 'Max'} NOK`
@@ -1457,6 +1832,8 @@ export default function SearchPage() {
                   setEventsFilter('')
                   setSelectedEventTypes([])
                   setEventWeights({})
+                  setRegistrationFrom('')
+                  setRegistrationTo('')
                   setOffset(0)
                 }}
               >
@@ -1491,7 +1868,7 @@ export default function SearchPage() {
               const totalLabel = numberFormatter.format(total)
               const grandLabel = grandTotal != null ? numberFormatter.format(grandTotal) : null
               return (
-                <div className="mb-3 text-sm text-gray-300">
+                <div className="mb-6 text-sm text-gray-300">
                   {hasAnyFilter
                     ? `Matched: ${totalLabel}`
                     : grandLabel
@@ -1500,37 +1877,15 @@ export default function SearchPage() {
                 </div>
               )
             })()}
-            <div className="flex items-center gap-2 mb-2">
-              <input
-                type="text"
-                value={listName}
-                onChange={(e) => setListName(e.target.value)}
-                placeholder="List name"
-                className="flex-1 min-w-0 bg-transparent text-white placeholder-gray-500 px-2 py-1 border border-white/10 focus:outline-none focus:ring-0 focus:border-red-600/90 text-xs"
-              />
-              <button
-                type="button"
-                onClick={handleSaveList}
-                disabled={isSavingList}
-                className={`text-xs px-2 py-1 border ${
-                  isSavingList
-                    ? 'border-white/10 text-gray-400 opacity-70'
-                    : saveSuccessFlash
-                      ? 'border-green-500 text-green-400'
-                      : 'border-white/10 hover:border-red-600/60 hover:bg-red-600/10'
-                }`}
-                title="Save current results as a named list"
-              >
-                {isSavingList ? 'Saving…' : saveSuccessFlash ? 'Saved ✓' : 'Save List'}
-              </button>
-            </div>
+            <UnifiedSaveCreator queryParam={queryParam} onListSaved={(nm) => {
+              listNameRef.current = nm
+              setListName(nm)
+              return handleSaveListInternal(nm)
+            }} />
             {isSavingList && (
               <div className="mb-4">
                 <div className="w-full h-1 bg-white/10 overflow-hidden">
-                  <div
-                    className="h-full bg-red-500 transition-[width] duration-150 ease-linear"
-                    style={{ width: `${saveProgress}%` }}
-                  />
+                  <div className="h-full bg-red-500 transition-[width] duration-150 ease-linear" style={{ width: `${saveProgress}%` }} />
                 </div>
               </div>
             )}
@@ -1539,7 +1894,7 @@ export default function SearchPage() {
               <select
                 value={eventsFilter}
                 onChange={(e) => setEventsFilter(e.target.value)}
-                className={`${light ? 'border border-gray-300 bg-white text-gray-900 focus:border-red-600' : 'select-dark'} w-full px-3 py-2`}
+                className={`${light ? 'border border-gray-300 bg-white text-gray-900 focus:border-red-600' : 'select-dark'} w-full px-3 h-9 text-sm`}
               >
                 <option value="">All companies</option>
                 <option value="with">With events</option>
@@ -1548,7 +1903,7 @@ export default function SearchPage() {
             
             </div>
             <div className="mt-6">
-              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between border-b ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
+              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between ${light ? 'bg-white' : 'bg-black'}`}>
                 <label className="block text-sm font-medium">Registration date</label>
               </div>
               <div className="flex items-center gap-3 w-full">
@@ -1614,7 +1969,7 @@ export default function SearchPage() {
               </div>
             </div>
             <div className="mt-6">
-              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between border-b ${light ? 'bg-white border-gray-200' : 'bg-black border-white/10'}`}>
+              <div className={`sticky top-[var(--events-height)] z-10 pb-2 flex items-center justify-between ${light ? 'bg-white' : 'bg-black'}`}>
                 <label className="block text-sm font-medium">Event types</label>
                 <button
                   type="button"
@@ -1809,7 +2164,7 @@ export default function SearchPage() {
                       } else {
                         setSortBy(newValue)
                       }
-                    }} className={`${light ? 'border border-gray-300 bg-white text-gray-900 focus:border-red-600' : 'select-dark'} w-full px-4 py-3`}>
+                    }} className={`${light ? 'border border-gray-300 bg-white text-gray-900 focus:border-red-600' : 'select-dark'} w-full px-4 h-9 text-sm`}>
                       <option value="updatedAt">Last Updated (New → Old)</option>
                       <option value="name">Company Name (A → Z)</option>
                       <option value="revenue">Revenue (High → Low)</option>

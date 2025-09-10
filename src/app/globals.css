@@ -146,8 +146,26 @@ a,
 
 /* Reusable component classes to reduce Tailwind verbosity */
 @layer components {
+  /* Notifications page adaptive styles */
+  .app-notifications { /* relies on body.app-light / app-dark for bg/text */ }
+  .notify-panel { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.25rem; }
+  body.app-light .notify-panel { background: rgba(255,255,255,0.9); border: 1px solid rgba(0,0,0,0.08); }
+  /* Variant: flatten notification panels when page opts out of rounded corners */
+  .no-rounded-panels .notify-panel { border-radius: 0; }
+  .notify-muted { color: rgba(255,255,255,0.65); }
+  body.app-light .notify-muted { color: #4b5563; }
+  .notify-error { color: #f87171; }
+  body.app-light .notify-error { color: #dc2626; }
+  .notify-btn { border: 1px solid rgba(255,255,255,0.2); color: rgba(255,255,255,0.9); background: transparent; border-radius: 0.125rem; transition: background .18s, border-color .18s; }
+  .notify-btn:hover { background: rgba(255,255,255,0.08); border-color: rgba(220,38,38,0.6); }
+  body.app-light .notify-btn { border-color: #d1d5db; color: #1f2937; }
+  body.app-light .notify-btn:hover { background: #f3f4f6; border-color: #9ca3af; }
+  .notify-delete-btn { border: 1px solid rgba(255,255,255,0.1); color: #fca5a5; background: transparent; border-radius: 0.125rem; transition: background .18s, border-color .18s, color .18s; }
+  .notify-delete-btn:hover { border-color: rgba(220,38,38,0.6); color: #fecaca; }
+  body.app-light .notify-delete-btn { border-color: #e5e7eb; color: #dc2626; }
+  body.app-light .notify-delete-btn:hover { background: #fee2e2; border-color: #dc2626; color: #b91c1c; }
   /* Profile page adaptive styles */
-  .profile-panel { border-radius: 0.25rem; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
+  .profile-panel { border-radius: 0; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); }
   body.app-light .profile-panel { background: rgba(255,255,255,0.9); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px); border: 1px solid #e5e7eb; }
   .profile-muted { color: rgba(255,255,255,0.6); }
   body.app-light .profile-muted { color: #4b5563; }
@@ -432,19 +450,7 @@ a,
   .chat-anim-enter { animation: chat-btn-enter 380ms cubic-bezier(.16,.84,.44,1); }
   .chat-anim-exit { animation: chat-btn-exit 260ms cubic-bezier(.55,.16,.78,.22); }
 
-  /* Typeout animation for chat label */
-  @keyframes typeout-char {
-    0% { opacity: 0; }
-    60% { opacity: 1; }
-    100% { opacity: 1; }
-  }
-  .typeout > span { opacity: 0; display: inline-block; }
-  .typeout-animate > span { animation: typeout-char 460ms cubic-bezier(.16,.84,.44,1) forwards; }
-  .typeout-animate > span:nth-child(1) { animation-delay: 20ms; }
-  .typeout-animate > span:nth-child(2) { animation-delay: 90ms; }
-  .typeout-animate > span:nth-child(3) { animation-delay: 160ms; }
-  .typeout-animate > span:nth-child(4) { animation-delay: 230ms; }
-  .typeout-animate > span:nth-child(5) { animation-delay: 300ms; }
+  /* Chat typeout animation removed */
 
   /* Consistent dark themed select (fixes Windows default white background + white text issue) */
   .select-dark {
