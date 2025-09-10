@@ -92,6 +92,19 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
                   }`}
                 />
               </Link>
+              {/* Notifications moved to be immediately right of Watchlist */}
+              <Link
+                href="/notifications"
+                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 ${light ? (isActive('/notifications') ? 'text-gray-900' : 'text-gray-700') : (isActive('/notifications') ? 'text-white/90' : 'text-white/80')}`}
+              >
+                <Bell size={16} />
+                <span>Notifications</span>
+                <span
+                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
+                    isActive('/notifications') ? 'opacity-100' : 'group-hover:opacity-100'
+                  }`}
+                />
+              </Link>
               <Link
                 href="/configuration"
                 className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 ${light ? (isActive('/configuration') ? 'text-gray-900' : 'text-gray-700') : (isActive('/configuration') ? 'text-white/90' : 'text-white/80')}`}
@@ -126,18 +139,6 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
                 <span
                   className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
                     isActive('/export') ? 'opacity-100' : 'group-hover:opacity-100'
-                  }`}
-                />
-              </Link>
-              <Link
-                href="/notifications"
-                className={`group relative px-2 py-2 text-xs md:text-sm inline-flex items-center gap-2 ${light ? (isActive('/notifications') ? 'text-gray-900' : 'text-gray-700') : (isActive('/notifications') ? 'text-white/90' : 'text-white/80')}`}
-              >
-                <Bell size={16} />
-                <span>Notifications</span>
-                <span
-                  className={`pointer-events-none absolute left-0 right-0 bottom-0 h-[2px] bg-gradient-to-t from-red-600/90 to-transparent opacity-0 transition-opacity duration-200 ${
-                    isActive('/notifications') ? 'opacity-100' : 'group-hover:opacity-100'
                   }`}
                 />
               </Link>
