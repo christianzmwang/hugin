@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { LayoutDashboard, Search, Eye, Building2, Settings, Download, FlaskConical, List as ListIcon, Bell, Sun, Moon } from 'lucide-react'
 import { useDashboardMode } from '@/components/DashboardThemeProvider'
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 
 type BottomSidebarProps = {
   onClearFilters?: () => void
@@ -17,8 +17,7 @@ export default function BottomSidebar({ onClearFilters, showGoToTop, showClearFi
   const { mode, toggle } = useDashboardMode()
   // Standardize: light styling applies globally when user selects light mode.
   // (Keep potential hook structure if future per-page overrides are needed.)
-  const [alwaysTrue] = useState(true)
-  useEffect(() => { /* placeholder for future dynamic logic */ }, [])
+  useEffect(() => { /* placeholder reserved for future dynamic logic */ }, [])
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/'
     return pathname === href || pathname.startsWith(href + '/')

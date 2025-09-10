@@ -4,7 +4,6 @@ import { useSession, signOut } from 'next-auth/react'
 import Link from 'next/link'
 import Image from 'next/image'
 import { useState, useRef, useEffect } from 'react'
-import { usePathname } from 'next/navigation'
 import { useDashboardMode } from '@/components/DashboardThemeProvider'
 // All pages now use light styling when global dashboard mode is light
 
@@ -12,7 +11,6 @@ export default function AuthNav() {
   const { data: session, status } = useSession()
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef<HTMLDivElement>(null)
-  const pathname = usePathname()
   const { mode } = useDashboardMode()
   const light = mode === 'light'
 

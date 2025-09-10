@@ -33,10 +33,17 @@ function summarize(filterQuery: string | null): string {
   } catch { return 'All companies' }
 }
 
+type NotificationItem = {
+  id: number | string
+  name: string
+  filterQuery: string | null
+  createdAt: string | number | Date
+}
+
 export default function NotificationsPage() {
   const { data: session } = useSession()
   useDashboardMode() // ensure theme sync via context (no local usage now)
-  const [items, setItems] = useState<any[]>([])
+  const [items, setItems] = useState<NotificationItem[]>([])
   const [loading, setLoading] = useState(true)
   const [err, setErr] = useState(false)
   const load = async () => {

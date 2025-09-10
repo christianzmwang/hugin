@@ -1,7 +1,7 @@
 'use client'
 
 import AuthNav from '@/components/AuthNav'
-import { usePathname } from 'next/navigation'
+import Image from 'next/image'
 import { useDashboardMode } from '@/components/DashboardThemeProvider'
 // All pages now use light styling when global dashboard mode is light
 
@@ -13,7 +13,6 @@ type TopBarProps = {
 import React, { useRef, useState, useEffect } from 'react'
 
 export default function TopBar({ title }: TopBarProps) {
-  const pathname = usePathname()
   const { mode } = useDashboardMode()
   const light = mode === 'light'
   const bg = light ? 'bg-white border-gray-200' : 'bg-black border-white/10'
@@ -51,7 +50,7 @@ export default function TopBar({ title }: TopBarProps) {
     <div id="topbar-root" className={`${bg} border-b transition-colors duration-300`} onTransitionEnd={handleTransitionEnd}>
   <div className="py-2 pl-6 pr-0 flex items-center">
         <h1 className="text-xl font-normal flex items-center gap-2 flex-shrink-0">
-          <img src={logoSrc} alt="Hugin logo" className="h-6 w-auto" />
+          <Image src={logoSrc} alt="Hugin logo" width={120} height={24} className="h-6 w-auto" priority />
           <span className="inline-block h-6 w-[2px] bg-red-600 mx-2" />
           <span className={text}>{title || 'Hugin'}</span>
         </h1>

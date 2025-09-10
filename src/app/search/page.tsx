@@ -485,7 +485,7 @@ export default function SearchPage() {
   const [isMounted, setIsMounted] = useState(false)
   const eventsRef = useRef<HTMLDivElement>(null);
   const [isEventTypesCollapsed, setIsEventTypesCollapsed] = useState<boolean>(false)
-  const [listName, setListName] = useState<string>('')
+  // list saving form input state removed (listName) since unused after refactor
   const listNameRef = useRef<string>('')
   // listId no longer used; filters are encoded directly in query params when link created.
   // Event types scroll state for fade overlays
@@ -821,14 +821,13 @@ export default function SearchPage() {
 
   const [isSavingList, setIsSavingList] = useState(false)
   const [saveProgress, setSaveProgress] = useState<number>(0)
-  const [saveSuccessFlash, setSaveSuccessFlash] = useState<boolean>(false)
+  // saveSuccessFlash removed (unused visual flash state)
 
   const handleSaveListInternal = (name: string): Promise<boolean> => {
     if (isSavingList) return Promise.resolve(false)
     if (!name) return Promise.resolve(false)
     setIsSavingList(true)
     setSaveProgress(0)
-    setSaveSuccessFlash(false)
     // Remove pagination/count params so re-opening starts from first page with proper filters
     const cleanedQueryNoQ = (() => {
       const raw = (queryParam || '').replace(/^\?/, '')
@@ -863,9 +862,7 @@ export default function SearchPage() {
           setSaveProgress(100)
           setTimeout(() => {
             setIsSavingList(false)
-            setSaveSuccessFlash(true)
-            setListName('')
-            setTimeout(() => setSaveSuccessFlash(false), 1000)
+            // visual flash removed; we could add a toast in the future
             setSaveProgress(0)
           }, 200)
           cleanup()
@@ -1879,7 +1876,6 @@ export default function SearchPage() {
             })()}
             <UnifiedSaveCreator queryParam={queryParam} onListSaved={(nm) => {
               listNameRef.current = nm
-              setListName(nm)
               return handleSaveListInternal(nm)
             }} />
             {isSavingList && (

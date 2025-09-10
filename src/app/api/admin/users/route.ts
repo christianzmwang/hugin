@@ -81,8 +81,8 @@ export async function GET() {
     // Aggregations: last session & monthly credits usage (best-effort; tolerate missing tables)
     type LastSessionRow = { user_id: string; last_session_expires: Date }
   type CreditsRow = { user_id: string; credits_used_month: string | number; credits_used_chat_month: string | number; credits_used_research_month: string | number }
-    let lastSessions: Record<string, Date> = {}
-  let creditsUsage: Record<string, { total: number; chat: number; research: number }> = {}
+  const lastSessions: Record<string, Date> = {}
+  const creditsUsage: Record<string, { total: number; chat: number; research: number }> = {}
 
     // Last session (uses sessions table from auth schema)
     try {
