@@ -5,17 +5,17 @@ import { dbConfigured, query } from '@/lib/db'
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-// Next.js Route Handler: use context param with typed shape; avoid explicit inline type rejected by validator
-export async function DELETE(_req: Request, context: { params: { id: string } }) {
-  const { params } = context
+// Note: leave second arg untyped (any) to satisfy Next.js route analyzer (mirrors lists/[id]/route.ts pattern)
+export async function DELETE(_req: Request, ctx: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
+  const { params } = (ctx || {}) as { params: { id: string } }
   const accessError = await checkApiAccess();
   if (accessError) return accessError
   if (!dbConfigured) return NextResponse.json({ ok: false }, { status: 503 })
   const session = await getAuthorizedSession()
   if (!session?.user?.id) return NextResponse.json({ ok: false }, { status: 401 })
   const userId = session.user.id
-  const idNum = parseInt(params.id, 10)
-  if (!idNum) return NextResponse.json({ ok: false }, { status: 400 })
+  const idNum = Number(params.id)
+  if (!Number.isFinite(idNum)) return NextResponse.json({ ok: false }, { status: 400 })
   try {
     await query(`DELETE FROM saved_notifications WHERE id = $1 AND user_id = $2`, [idNum, userId])
     return NextResponse.json({ ok: true })
