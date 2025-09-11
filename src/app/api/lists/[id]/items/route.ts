@@ -33,8 +33,8 @@ async function ensureTables() {
 }
 
 // DELETE /api/lists/:id/items  { orgNumbers: string[] }
-export async function DELETE(req: Request, ctx: any) { // eslint-disable-line @typescript-eslint/no-explicit-any
-  const { params } = (ctx || {}) as { params: { id: string } }
+export async function DELETE(req: Request, context: unknown) {
+  const { params } = (context as { params: { id: string } }) || { params: { id: '' } }
   const accessError = await checkApiAccess()
   if (accessError) return accessError
 
@@ -47,10 +47,18 @@ export async function DELETE(req: Request, ctx: any) { // eslint-disable-line @t
   const id = Number(params.id)
   if (!Number.isFinite(id)) return NextResponse.json({ ok: false, error: 'Bad list id' }, { status: 400 })
 
-  let body: any = {}
-  try { body = await req.json().catch(() => ({})) } catch {}
-  const orgNumbersRaw = Array.isArray(body?.orgNumbers) ? body.orgNumbers : []
-  const orgNumbers = Array.from(new Set(orgNumbersRaw.map((s: any) => String(s || '').trim()).filter(Boolean)))
+  let body: unknown = {}
+  try { body = await req.json().catch(() => ({})) } catch { /* noop */ }
+  const orgNumbersRaw = Array.isArray((body as { orgNumbers?: unknown }).orgNumbers)
+    ? (body as { orgNumbers?: unknown[] }).orgNumbers!
+    : []
+  const orgNumbers = Array.from(
+    new Set(
+      orgNumbersRaw
+        .map(v => (typeof v === 'string' ? v.trim() : String(v ?? '').trim()))
+        .filter(v => Boolean(v))
+    )
+  )
   if (orgNumbers.length === 0) return NextResponse.json({ ok: false, error: 'No org numbers provided' }, { status: 400 })
 
   try {
