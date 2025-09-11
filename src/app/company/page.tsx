@@ -2434,7 +2434,7 @@ function CompanyPageContent() {
                             {formatEventDate(event.date)}
                           </div>
                           {event.source && (
-                            <span className="inline-block px-2 py-1 text-[11px] bg-white/5 border border-white/20 text-gray-200">
+                            <span className={`inline-block px-2 py-1 text-[11px] bg-white/5 border border-white/20 ${light ? 'text-black' : 'text-gray-200'}`}>
                               {event.source.replace(/_/g, ' ').charAt(0).toUpperCase() + event.source.replace(/_/g, ' ').slice(1)}
                             </span>
                           )}
