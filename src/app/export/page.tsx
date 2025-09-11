@@ -64,6 +64,12 @@ function ExportPageInner() {
   const [detailsLoading, setDetailsLoading] = useState(false)
   const [progressTotal, setProgressTotal] = useState(0)
   const [progressDone, setProgressDone] = useState(0)
+  // Precompute percentage string to avoid complex template nesting in JSX
+  const progressPercent = useMemo(() => {
+    if (!progressTotal || progressTotal <= 0) return '0%'
+    const pct = Math.min(100, (progressDone / progressTotal) * 100)
+    return pct.toFixed(2) + '%'
+  }, [progressDone, progressTotal])
   // CSV import related state
   const [importParsing, setImportParsing] = useState(false)
   const [importOrgNumbers, setImportOrgNumbers] = useState<string[] | null>(null)
@@ -402,7 +408,7 @@ function ExportPageInner() {
                 {csvGenerating ? (detailsLoading ? 'Fetching data…' : 'Generating…') : 'Generate CSV'}
               </button>
               {csvBlobUrl && (
-                <a href={csvBlobUrl} download={`${activeList.name.replace(/[^a-z0-9-_]/gi,'_') || 'list'}.csv`} className="block mt-3 text-center text-xs px-3 py-2 border border-sky-600/60 hover:bg-sky-600/20">
+                <a href={csvBlobUrl} download={`${activeList.name.replace(/[^a-z0-9_\-]/gi,'_') || 'list'}.csv`} className="block mt-3 text-center text-xs px-3 py-2 border border-sky-600/60 hover:bg-sky-600/20">
                   Download CSV
                 </a>
               )}
@@ -433,7 +439,7 @@ function ExportPageInner() {
                     {csvGenerating && neededExtraFields.length > 0 && progressTotal > 0 && (
                       <div className="space-y-1">
                         <div className="h-1 bg-white/10 overflow-hidden">
-                          <div className="h-full bg-red-500 transition-all" style={{ width: `${Math.min(100, (progressDone / progressTotal) * 100).toFixed(2)}%` }} />
+                          <div className="h-full bg-red-500 transition-all" style={{ width: progressPercent }} />
                         </div>
                         <div className="text-[10px] text-gray-400">{progressDone} / {progressTotal} companies</div>
                       </div>
