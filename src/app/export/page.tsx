@@ -408,7 +408,7 @@ function ExportPageInner() {
                 {csvGenerating ? (detailsLoading ? 'Fetching data…' : 'Generating…') : 'Generate CSV'}
               </button>
               {csvBlobUrl && (
-                <a href={csvBlobUrl} download={`${activeList.name.replace(/[^a-z0-9_\-]/gi,'_') || 'list'}.csv`} className="block mt-3 text-center text-xs px-3 py-2 border border-sky-600/60 hover:bg-sky-600/20">
+                <a href={csvBlobUrl} download={`${activeList.name.replace(/[^a-z0-9_-]/gi,'_') || 'list'}.csv`} className="block mt-3 text-center text-xs px-3 py-2 border border-sky-600/60 hover:bg-sky-600/20">
                   Download CSV
                 </a>
               )}
@@ -510,6 +510,7 @@ function ExportPageInner() {
           )}
         </div>
       </div>
+    </div>
     </div>
   )
 }
