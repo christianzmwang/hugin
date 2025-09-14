@@ -353,6 +353,28 @@ export default function AdminPage() {
     }
   }
 
+  const handlePromoteToManager = async (userId: string) => {
+    setUserActionLoading(userId, true)
+    try {
+      const response = await fetch('/api/admin/promote-user', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId })
+      })
+      const data: ApiResponse = await response.json()
+      if (response.ok && data.success) {
+        await loadUsers()
+        alert('User promoted to manager')
+      } else {
+        alert(data.message || 'Failed to promote user')
+      }
+    } catch (e) {
+      alert('Failed to promote user')
+    } finally {
+      setUserActionLoading(userId, false)
+    }
+  }
+
   const handleToggleMainAccess = async (userId: string, allow: boolean) => {
     setUserActionLoading(userId, true)
     try {
@@ -655,6 +677,20 @@ export default function AdminPage() {
                             >
                               {actionLoading[user.id] ? '...' : (user.main_access ? 'Revoke Access' : 'Grant Access')}
                             </button>
+                            {(() => {
+                              const actorRole = (session.user as any)?.role
+                              const canPromote = actorRole === 'admin' && user.role !== 'manager' && user.role !== 'admin'
+                              return (
+                                <button
+                                  onClick={() => handlePromoteToManager(user.id)}
+                                  disabled={actionLoading[user.id] || !canPromote}
+                                  title={!canPromote ? 'Only admins can promote, and not admins/managers' : undefined}
+                                  className="bg-teal-600 hover:bg-teal-700 disabled:bg-gray-600 text-white px-3 py-1 rounded text-xs"
+                                >
+                                  {actionLoading[user.id] ? '...' : 'Promote to Manager'}
+                                </button>
+                              )
+                            })()}
                             {!user.emailVerified && (
                               <>
                                 <button
