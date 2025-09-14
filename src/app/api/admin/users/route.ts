@@ -17,8 +17,9 @@ export async function GET() {
       )
     }
 
-    // Only christian@allvitr.com can access this admin endpoint
-    if (session.user.email !== 'christian@allvitr.com') {
+    // Allow admin and manager roles
+    const role = (session.user as any).role as string | undefined
+    if (role !== 'admin' && role !== 'manager') {
       return NextResponse.json(
         { error: 'Forbidden - Admin access required' },
         { status: 403 }
@@ -33,13 +34,19 @@ export async function GET() {
       )
     }
 
-    // Detect whether main_access column exists
+    // Detect whether main_access and role columns exist
     const colCheck = await query<{ exists: number }>(
       `SELECT 1 as exists FROM information_schema.columns 
        WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'main_access' 
        LIMIT 1`
     )
     const hasMainAccess = colCheck.rows.length > 0
+    const roleCheck = await query<{ exists: number }>(
+      `SELECT 1 as exists FROM information_schema.columns 
+       WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'role' 
+       LIMIT 1`
+    )
+    const hasRole = roleCheck.rows.length > 0
 
     // Get all users (include main_access if present; else return false as placeholder)
     const userRows = await query<{
@@ -50,8 +57,9 @@ export async function GET() {
       created_at: Date
       updated_at: Date
       main_access: boolean | null
+      role: string | null
     }>(
-      hasMainAccess
+      hasMainAccess && hasRole
         ? `
         SELECT 
           id, 
@@ -59,6 +67,35 @@ export async function GET() {
           email, 
           "emailVerified",
           main_access,
+          role,
+          created_at,
+          updated_at
+        FROM users 
+        ORDER BY created_at DESC
+      `
+        : hasMainAccess && !hasRole
+        ? `
+        SELECT 
+          id, 
+          name, 
+          email, 
+          "emailVerified",
+          false as main_access,
+          'user' as role,
+          created_at,
+          updated_at
+        FROM users 
+        ORDER BY created_at DESC
+      `
+        : !hasMainAccess && hasRole
+        ? `
+        SELECT 
+          id, 
+          name, 
+          email, 
+          "emailVerified",
+          false as main_access,
+          role,
           created_at,
           updated_at
         FROM users 
@@ -71,6 +108,7 @@ export async function GET() {
           email, 
           "emailVerified",
           false as main_access,
+          'user' as role,
           created_at,
           updated_at
         FROM users 
@@ -127,6 +165,7 @@ export async function GET() {
         creditsUsedResearchMonth: usage.research,
         creditsRemaining: Math.max(0, MONTHLY_CREDITS - used),
         creditsMonthlyLimit: MONTHLY_CREDITS,
+        role: (u.role || 'user')
       }
     })
 

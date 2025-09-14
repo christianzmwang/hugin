@@ -171,15 +171,17 @@ export const authOptions: any = {
         token.emailVerified = user.emailVerified
         // Fetch mainAccess and businessContext from DB on initial login
         try {
-          const res = await query<{ main_access: boolean | null; business_context: string | null }>(
-            'SELECT main_access, business_context FROM users WHERE id = $1',
+          const res = await query<{ main_access: boolean | null; business_context: string | null; role: string | null }>(
+            'SELECT main_access, business_context, role FROM users WHERE id = $1',
             [user.id]
           )
           token.mainAccess = Boolean(res.rows[0]?.main_access)
           token.businessContext = res.rows[0]?.business_context ?? null
+          token.role = (res.rows[0]?.role as string | null) ?? 'user'
         } catch {
           token.mainAccess = false
           token.businessContext = null
+          token.role = 'user'
         }
         
         // For OAuth users, ensure emailVerified is set
@@ -196,8 +198,8 @@ export const authOptions: any = {
         session.user.emailVerified = token.emailVerified as Date | null
         // Always fetch latest main_access and business_context so admin toggles and context apply immediately
         try {
-          const res = await query<{ main_access: boolean | null; business_context: string | null }>(
-            'SELECT main_access, business_context FROM users WHERE id = $1',
+          const res = await query<{ main_access: boolean | null; business_context: string | null; role: string | null }>(
+            'SELECT main_access, business_context, role FROM users WHERE id = $1',
             [token.id]
           )
           const current = Boolean(res.rows[0]?.main_access)
@@ -206,9 +208,13 @@ export const authOptions: any = {
           const bc = res.rows[0]?.business_context ?? null
           session.user.businessContext = bc
           token.businessContext = bc
+          const role = (res.rows[0]?.role as string | null) ?? (token.role || 'user')
+          session.user.role = (role === 'admin' || role === 'manager') ? role : 'user'
+          token.role = session.user.role
         } catch {
           session.user.mainAccess = Boolean(token.mainAccess)
           session.user.businessContext = (token.businessContext ?? null) as string | null
+          session.user.role = (token.role === 'admin' || token.role === 'manager') ? token.role : 'user'
         }
 
         // Double-check: If this is an OAuth user without verified email, fix it

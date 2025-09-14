@@ -341,7 +341,7 @@ function ExportPageInner() {
 
   return (
     <div className="h-full overflow-hidden flex flex-col app-export">
-      <div className="flex-1 overflow-auto overflow-x-hidden p-6">
+  <div className="flex-1 overflow-auto overflow-x-hidden p-6 bg-white">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6 items-start">
         <div className="lg:col-span-1 space-y-4">
           <div className="border border-white/10 bg-gray-900/60 p-4 export-panel">

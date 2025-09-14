@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import { signIn } from 'next-auth/react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import RedDotWave from './RedDotWave'
 import Hugin from '../../public/hugin.svg'
 
@@ -18,6 +18,8 @@ export default function AuthForm({ mode }: AuthFormProps) {
   const [resendLoading, setResendLoading] = useState(false)
   const [resendMessage, setResendMessage] = useState<string | null>(null)
   const [resendSuccess, setResendSuccess] = useState<boolean | null>(null)
+  const searchParams = useSearchParams()
+  const resetSuccess = searchParams?.get('reset') === 'success'
   const [formData, setFormData] = useState({
     email: '',
     password: '',
@@ -536,9 +538,13 @@ export default function AuthForm({ mode }: AuthFormProps) {
         
         
   <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
-          {error && (
-            <div className="p-4 bg-red-900/50 border border-red-500">
-              <div className="text-sm text-red-200">{error}</div>
+          {(resetSuccess || error) && (
+            <div className={resetSuccess ? 'p-4 bg-green-900/50 border border-green-500' : 'p-4 bg-red-900/50 border border-red-500'}>
+              {resetSuccess ? (
+                <div className="text-sm text-green-200">Password reset successful. Please sign in with your new password.</div>
+              ) : (
+                <div className="text-sm text-red-200">{error}</div>
+              )}
               {isUnverified && (
                 <div className="mt-2">
                   <button
@@ -717,6 +723,14 @@ export default function AuthForm({ mode }: AuthFormProps) {
               {isLoading ? 'Loading...' : mode === 'signin' ? 'Sign in' : 'Sign up'}
             </button>
           </div>
+
+          {mode === 'signin' && (
+            <div className="text-right -mt-2">
+              <a href="/auth/forgot-password" className="text-xs text-gray-400 hover:text-gray-300 underline">
+                Forgot password?
+              </a>
+            </div>
+          )}
 
           {/* Divider */}
           <div className="relative">

@@ -31,7 +31,8 @@ async function ensureTables() {
 export async function GET() {
   const session = (await getServerSession(authOptions)) as Session | null
   if (!session?.user?.email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  if (session.user.email !== 'christian@allvitr.com') {
+  const role = (session.user as any).role as string | undefined
+  if (role !== 'admin' && role !== 'manager') {
     return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
   }
   if (!dbConfigured) return NextResponse.json({ items: [] })

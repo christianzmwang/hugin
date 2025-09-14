@@ -1,5 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  eslint: {
+    // Do not fail the production build due to ESLint errors. Use `pnpm lint` in CI/local instead.
+    ignoreDuringBuilds: true,
+  },
   // Optimize for production
   compress: true,
   poweredByHeader: false,

@@ -104,7 +104,6 @@ function useDebounce<T>(value: T, delay = 100) {
   return debounced
 }
 
-// formatEventDate removed (unused)
 
 function formatDateEU(dateValue: unknown): string {
   if (dateValue == null) return ''
@@ -554,21 +553,13 @@ export default function SearchPage() {
     } catch {}
   }
 
-  // Keyword scanner moved to /sandbox
-
-  // Use hardcoded revenue bounds for immediate loading
-
 
   // Only apply revenue filter if user has explicitly set values
   const hasRevenueFilter = revenueMin !== '' || revenueMax !== ''
 
-  // Use hardcoded profit bounds for immediate loading
-
-
   // Only apply profit filter if user has explicitly set values
   const hasProfitFilter = profitMin !== '' || profitMax !== ''
 
-  // Registration date filters (moved up so they are declared before queryParam useMemo)
   const [registrationFrom, setRegistrationFrom] = useState<string>(() => {
     if (typeof window === 'undefined') return ''
     if (sessionSavedFiltersRef.current && !hasMeaningfulUrlFiltersRef.current) return sessionSavedFiltersRef.current.registeredFrom || ''
@@ -629,7 +620,6 @@ export default function SearchPage() {
     hasShopify,
     registrationFrom, // added: ensure date-from filter updates query
     registrationTo,   // added: ensure date-to filter updates query
-  // listId removed
   ])
 
   // Keep browser URL in sync with active filters (without full reload)

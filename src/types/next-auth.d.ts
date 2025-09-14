@@ -11,6 +11,7 @@ declare module 'next-auth' {
       emailVerified?: Date | null
   mainAccess?: boolean
   businessContext?: string | null
+  role?: 'admin' | 'manager' | 'user'
     }
   }
 
@@ -23,6 +24,7 @@ declare module 'next-auth' {
     emailVerified?: Date | null
   mainAccess?: boolean
     businessContext?: string | null
+    role?: 'admin' | 'manager' | 'user'
   }
 }
 
@@ -32,6 +34,7 @@ declare module 'next-auth/jwt' {
   emailVerified?: Date | null
   mainAccess?: boolean
   businessContext?: string | null
+  role?: 'admin' | 'manager' | 'user'
   }
 }
 

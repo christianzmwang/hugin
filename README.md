@@ -64,6 +64,28 @@ This application requires the following PostgreSQL tables:
 - Session management with NextAuth.js
 - Password strength validation
 - User profile management
+ - Role-based admin access (admin, manager, user)
+
+### Roles
+
+- `admin`: Full access to the admin panel and all admin APIs.
+- `manager`: Limited admin access: can view the admin dashboard and perform all actions except deleting other managers or the admin.
+- `user`: Regular application user.
+
+To apply the roles migration and seed initial roles (marks `christian@allvitr.com` as admin, `christianwang39@gmail.com` as manager):
+
+```bash
+pnpm db:migrate
+```
+
+Notes:
+- The migration adds a `role` column to the `users` table with default `user`.
+- You can change a user's role manually in SQL, for example:
+
+```sql
+UPDATE users SET role = 'manager' WHERE lower(email) = lower('someone@example.com');
+UPDATE users SET role = 'admin' WHERE id = '...';
+```
 
 ## 🔐 Authentication Setup
 

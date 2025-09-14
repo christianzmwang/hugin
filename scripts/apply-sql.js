@@ -43,6 +43,8 @@ async function run() {
   // Default migration set
   const defaultFiles = [
     path.join('sql', 'auth-schema.sql'),
+    path.join('sql', 'roles-migration.sql'),
+    path.join('sql', 'password-reset.sql'),
     path.join('sql', 'credits-usage.sql'),
     path.join('sql', 'recently-viewed-companies.sql'),
   ]

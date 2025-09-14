@@ -12,6 +12,7 @@ interface User {
   created_at: Date
   updated_at: Date
   main_access?: boolean | null
+  role?: 'admin' | 'manager' | 'user'
   lastSession?: string | Date | null
   creditsUsedMonth?: number
   creditsRemaining?: number
@@ -51,7 +52,7 @@ export default function AdminPage() {
   const [selectedCampaign, setSelectedCampaign] = useState<EmailCampaign | null>(null)
   const [showCampaignModal, setShowCampaignModal] = useState(false)
 
-  // Redirect non-admin users
+  // Redirect non-admin/manager users
   useEffect(() => {
     if (status === 'loading') return // Still loading
     
@@ -60,8 +61,9 @@ export default function AdminPage() {
       return
     }
     
-    // Only christian@allvitr.com can access this admin page
-    if (session.user?.email !== 'christian@allvitr.com') {
+    // Allow admin or manager
+    const role = (session.user as any)?.role
+    if (role !== 'admin' && role !== 'manager') {
       router.push('/')
       return
     }
@@ -69,7 +71,8 @@ export default function AdminPage() {
 
   // Load users
   useEffect(() => {
-    if (session?.user?.email === 'christian@allvitr.com') {
+    const role = (session?.user as any)?.role
+    if (role === 'admin' || role === 'manager') {
       loadUsers()
   loadCampaigns()
     }
@@ -232,9 +235,13 @@ export default function AdminPage() {
 
   const handleBulkDelete = async () => {
     const selectedUsersList = Array.from(selectedUsers)
+  const actorRole = (session!.user as any)?.role
     const deletableSelected = selectedUsersList.filter(userId => {
       const user = users.find(u => u.id === userId)
-      return user && user.email !== 'christian@allvitr.com' // Can't delete admin
+      if (!user) return false
+      if (user.email === 'christian@allvitr.com') return false // Can't delete admin
+      if (actorRole === 'manager' && (user.role === 'admin' || user.role === 'manager')) return false
+      return true
     })
 
     if (deletableSelected.length === 0) {
@@ -405,7 +412,7 @@ export default function AdminPage() {
   }
 
   // Don't render anything if not authenticated or not authorized
-  if (!session || session.user?.email !== 'christian@allvitr.com') {
+  if (!session || !(['admin','manager'].includes((session.user as any)?.role))) {
     return null
   }
 
@@ -419,6 +426,7 @@ export default function AdminPage() {
         <div className="w-full">
           <div className="flex justify-between items-center mb-8">
             <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <div className="text-xs text-gray-400">Role: {(session.user as any)?.role}</div>
             <button
               onClick={() => router.push('/')}
               className="bg-gray-600 hover:bg-gray-700 text-white px-4 py-2 rounded-md"
@@ -500,13 +508,15 @@ export default function AdminPage() {
             
             <div className="flex flex-wrap gap-3">
               {/* Verify All (existing) */}
-              <button
-                onClick={handleVerifyAllUsers}
-                disabled={loading || unverifiedUsers.length === 0}
-                className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-6 py-2 rounded-md font-medium"
-              >
-                {loading ? 'Processing...' : `Verify All Users (${unverifiedUsers.length})`}
-              </button>
+              {(['admin','manager'].includes((session.user as any)?.role)) && (
+                <button
+                  onClick={handleVerifyAllUsers}
+                  disabled={loading || unverifiedUsers.length === 0}
+                  className="bg-green-600 hover:bg-green-700 disabled:bg-gray-600 text-white px-6 py-2 rounded-md font-medium"
+                >
+                  {loading ? 'Processing...' : `Verify All Users (${unverifiedUsers.length})`}
+                </button>
+              )}
 
               {/* Multi-select actions */}
               <button
@@ -568,6 +578,7 @@ export default function AdminPage() {
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Email</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Status</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Main Access</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Role</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Created</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Last Login</th>
                       <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">Credits (Used / Limit)</th>
@@ -615,6 +626,7 @@ export default function AdminPage() {
                             {user.main_access ? 'Allowed' : 'No Access'}
                           </span>
                         </td>
+                        <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300 capitalize">{user.role || 'user'}</td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
                           {new Date(user.created_at).toLocaleDateString()}
                         </td>
@@ -661,13 +673,20 @@ export default function AdminPage() {
                                 </button>
                               </>
                             )}
-                            <button
-                              onClick={() => handleDeleteUser(user.id, user.email)}
-                              disabled={actionLoading[user.id] || user.email === 'christian@allvitr.com'}
-                              className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white px-3 py-1 rounded text-xs"
-                            >
-                              {actionLoading[user.id] ? '...' : 'Delete'}
-                            </button>
+                            {(() => {
+                              const actorRole = (session.user as any)?.role
+                              const cannotDelete = actionLoading[user.id] || user.email === 'christian@allvitr.com' || (actorRole === 'manager' && (user.role === 'manager' || user.role === 'admin'))
+                              return (
+                                <button
+                                  onClick={() => handleDeleteUser(user.id, user.email)}
+                                  disabled={cannotDelete}
+                                  title={cannotDelete && actorRole === 'manager' && (user.role === 'manager' || user.role === 'admin') ? 'Managers cannot delete admins or other managers' : undefined}
+                                  className="bg-red-600 hover:bg-red-700 disabled:bg-gray-600 text-white px-3 py-1 rounded text-xs"
+                                >
+                                  {actionLoading[user.id] ? '...' : 'Delete'}
+                                </button>
+                              )
+                            })()}
                           </div>
                         </td>
                       </tr>

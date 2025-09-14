@@ -16,8 +16,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Only christian@allvitr.com can access this admin endpoint
-    if (session.user.email !== 'christian@allvitr.com') {
+    // Allow admin and manager roles
+    const role = (session.user as any).role as string | undefined
+    if (role !== 'admin' && role !== 'manager') {
       return NextResponse.json(
         { error: 'Forbidden - Admin access required' },
         { status: 403 }

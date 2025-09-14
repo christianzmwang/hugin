@@ -248,3 +248,82 @@ export async function sendVerificationReminder(data: EmailVerificationData) {
     return false
   }
 }
+
+export interface PasswordResetData {
+  email: string
+  name?: string
+  resetToken: string
+  baseUrl?: string
+}
+
+export async function sendPasswordResetEmail(data: PasswordResetData) {
+  try {
+    if (!process.env.RESEND_API_KEY) {
+      console.error('RESEND_API_KEY is not configured')
+      return false
+    }
+
+    const resetUrl = `${getBaseUrl(data.baseUrl)}/auth/reset-password?token=${data.resetToken}`
+
+    const { data: emailResult, error } = await resend.emails.send({
+      from: process.env.FROM_EMAIL || 'Allvitr <noreply@send.allvitr.com>',
+      to: [data.email],
+      subject: 'Reset your password - Hugin',
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Reset Your Password - Hugin</title>
+        </head>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333333; background-color: #f9f9f9; width: 100%; margin: 0; padding: 0;">
+          <div style="max-width: 800px; margin: 0 auto; background-color: #ffffff;">
+            <div style="background: #000000; padding: 30px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 28px;">Hugin</h1>
+              <p style="color: #ffffff; margin: 10px 0 0 0; font-size: 16px;">Password Reset</p>
+            </div>
+            <div style="background: #ffffff; padding: 30px; border: 1px solid #e5e7eb;">
+              <h2 style="color: #1f2937; margin-top: 0;">Reset Your Password</h2>
+              <p style="color: #4b5563;">Hi${data.name ? ` ${data.name}` : ''},</p>
+              <p style="color: #4b5563;">We received a request to reset your password for your Hugin account. Click the button below to set a new password. This link is valid for 30 minutes.</p>
+              <div style="text-align: center; margin: 30px 0;">
+                <a href="${resetUrl}" style="background: #dc2626; color: white; padding: 12px 30px; text-decoration: none; font-weight: bold; display: inline-block; font-size: 16px;">Reset Password</a>
+              </div>
+              <p style="color: #4b5563;">If the button doesn’t work, copy and paste this link into your browser:</p>
+              <p style="word-break: break-all; background: #f3f4f6; padding: 10px; font-family: monospace; font-size: 14px; border: 1px solid #d1d5db;"><a href="${resetUrl}" style="color: #dc2626;">${resetUrl}</a></p>
+              <p style="color: #6b7280; font-size: 14px;">If you didn’t request a password reset, you can safely ignore this email.</p>
+            </div>
+            <div style="text-align: center; padding: 20px; color: #9ca3af; font-size: 12px; background-color: #f9f9f9;">
+              <p>© ${new Date().getFullYear()} Allvitr. All rights reserved.</p>
+            </div>
+          </div>
+        </body>
+        </html>
+      `,
+      text: `
+        Reset your Hugin password
+
+        Hi${data.name ? ` ${data.name}` : ''},
+
+        We received a request to reset your password. Use the link below to set a new password (valid for 30 minutes):
+
+        ${resetUrl}
+
+        If you did not request this, you can ignore this message.
+
+        © ${new Date().getFullYear()} Allvitr.`
+    })
+
+    if (error) {
+      console.error('Failed to send password reset email:', error)
+      return false
+    }
+
+    console.log('Password reset email sent successfully:', emailResult?.id)
+    return true
+  } catch (error) {
+    console.error('Error sending password reset email:', error)
+    return false
+  }
+}

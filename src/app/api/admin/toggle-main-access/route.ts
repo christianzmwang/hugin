@@ -10,7 +10,8 @@ export async function POST(request: Request) {
     if (!session || !session.user?.email) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
-    if (session.user.email !== 'christian@allvitr.com') {
+    const role = (session.user as any).role as string | undefined
+    if (role !== 'admin' && role !== 'manager') {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

@@ -16,8 +16,9 @@ export async function POST(request: Request) {
       )
     }
 
-    // Only christian@allvitr.com can access this admin endpoint
-    if (session.user.email !== 'christian@allvitr.com') {
+    // Allow admin and manager roles
+    const actorRole = (session.user as any).role as string | undefined
+    if (actorRole !== 'admin' && actorRole !== 'manager') {
       return NextResponse.json(
         { error: 'Forbidden - Admin access required' },
         { status: 403 }
@@ -33,12 +34,13 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get user details first to check if it's the admin user
+    // Get user details first to check deletion constraints
     const userResult = await query<{
       id: string
       email: string
+      role: string | null
     }>(`
-      SELECT id, email
+      SELECT id, email, role
       FROM users 
       WHERE id = $1
     `, [userId])
@@ -52,12 +54,18 @@ export async function POST(request: Request) {
 
     const userToDelete = userResult.rows[0]
 
-    // Prevent deletion of the admin user
+    // Prevent deletion of the admin user by anyone
     if (userToDelete.email === 'christian@allvitr.com') {
       return NextResponse.json({
         success: false,
         message: 'Cannot delete admin user'
       })
+    }
+
+    // If actor is manager, they cannot delete admins or managers
+    const targetRole = (userToDelete as any).role || 'user'
+    if (actorRole === 'manager' && (targetRole === 'manager' || targetRole === 'admin')) {
+      return NextResponse.json({ success: false, message: 'Managers cannot delete admins or other managers' }, { status: 403 })
     }
 
     // Delete related records first (due to foreign key constraints)

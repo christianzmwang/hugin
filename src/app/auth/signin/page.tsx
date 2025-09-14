@@ -1,5 +1,10 @@
+import { Suspense } from 'react'
 import AuthForm from '@/components/AuthForm'
 
 export default function SignInPage() {
-  return <AuthForm mode="signin" />
+  return (
+    <Suspense>
+      <AuthForm mode="signin" />
+    </Suspense>
+  )
 }
