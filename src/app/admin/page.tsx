@@ -447,7 +447,7 @@ export default function AdminPage() {
       <div className="w-full px-6 py-8 mx-auto max-w-full">
         <div className="w-full">
           <div className="flex justify-between items-center mb-8">
-            <h1 className="text-3xl font-bold">Admin Dashboard</h1>
+            <h1 className="text-3xl font-bold">Manage</h1>
             <div className="text-xs text-gray-400">Role: {(session.user as any)?.role}</div>
             <button
               onClick={() => router.push('/')}
