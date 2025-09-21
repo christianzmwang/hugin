@@ -241,7 +241,7 @@ export default function SandboxPage() {
 
   return (
     <div className="h-full overflow-hidden flex flex-col app-sandbox">
-      <div className="flex-1 overflow-auto overflow-x-hidden p-6 space-y-8 bg-white">
+      <div className="flex-1 overflow-auto overflow-x-hidden p-6 space-y-8 bg-transparent">
         <div className="bg-gray-900 border border-white/10 p-6 space-y-4 sandbox-panel">
         <h1 className="text-lg font-semibold sandbox-heading">Keyword Scanner</h1>
         <p className="text-xs text-gray-400 leading-relaxed sandbox-muted">
