@@ -1,6 +1,7 @@
 # Hugin - Real Time Market Research
 
-https://hugin.allvitr.no/
+https://hugin.allvitr.com/
+
 Hugin is a real-time market research platform that indexes internet data to provide real-time insights about your market.
 
 ## Getting Started
