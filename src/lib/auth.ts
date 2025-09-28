@@ -243,6 +243,19 @@ export const authOptions: any = {
       return session
     },
   },
+
+  // Ensure defaults and side-effects when the adapter creates users (e.g., OAuth)
+  events: {
+    async createUser({ user }: { user: any }) {
+      try {
+        if (user?.id) {
+          await query('UPDATE users SET main_access = TRUE WHERE id = $1', [user.id])
+        }
+      } catch (e) {
+        // ignore if column doesn't exist yet; migrations will set default
+      }
+    },
+  },
   
   secret: process.env.NEXTAUTH_SECRET,
 }

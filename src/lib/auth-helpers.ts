@@ -60,6 +60,17 @@ export async function createUser(userData: CreateUserData): Promise<User | null>
       [normalizedEmail, passwordHash, userData.name || null]
     )
 
+    // Ensure newly created accounts get main access by default
+    // If the column does not exist (older DB), ignore the error
+    try {
+      const createdUser = result.rows[0]
+      if (createdUser?.id) {
+        await query('UPDATE users SET main_access = TRUE WHERE id = $1', [createdUser.id])
+      }
+    } catch (e) {
+      // noop: column may not exist yet on some environments
+    }
+
     return result.rows[0] || null
   } catch (error) {
     console.error('Error creating user:', error)

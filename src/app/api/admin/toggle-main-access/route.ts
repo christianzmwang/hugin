@@ -29,7 +29,7 @@ export async function POST(request: Request) {
              SELECT 1 FROM information_schema.columns 
              WHERE table_schema = 'public' AND table_name = 'users' AND column_name = 'main_access'
            ) THEN
-             ALTER TABLE users ADD COLUMN main_access BOOLEAN NOT NULL DEFAULT FALSE;
+            ALTER TABLE users ADD COLUMN main_access BOOLEAN NOT NULL DEFAULT TRUE;
              CREATE INDEX IF NOT EXISTS users_main_access_idx ON users(main_access);
            END IF;
          END$$;`

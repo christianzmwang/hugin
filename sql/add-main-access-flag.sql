@@ -1,6 +1,6 @@
 -- Adds a per-user flag to allow access to the main page/app
 ALTER TABLE IF NOT EXISTS users
-  ADD COLUMN IF NOT EXISTS main_access BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS main_access BOOLEAN NOT NULL DEFAULT TRUE;
 
 -- Optional: make admin account allowed by default (adjust email as needed)
 UPDATE users SET main_access = TRUE WHERE email = 'christian@allvitr.com';

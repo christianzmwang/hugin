@@ -535,7 +535,7 @@ function CompanyPageContent() {
   }, [procDropdownOpen])
   const procButtonsContainerRef = useRef<HTMLDivElement | null>(null)
   // Persisted processor group width to keep Chat button stable and avoid layout shift
-  const PROC_FALLBACK_WIDTH = 220
+  const PROC_FALLBACK_WIDTH = 160
   const [procGroupWidth, setProcGroupWidth] = useState<number | null>(() => {
     if (typeof window !== 'undefined') {
       const v = window.localStorage.getItem('procGroupWidth')
@@ -546,6 +546,22 @@ function CompanyPageContent() {
     }
     return null
   })
+  useEffect(() => {
+    if (procGroupWidth != null) return
+    const el = procButtonsContainerRef.current
+    if (!el) return
+    const measure = () => {
+      const rect = el.getBoundingClientRect()
+      const width = Math.ceil(rect.width)
+      if (Number.isFinite(width) && width > 50) {
+        setProcGroupWidth(width)
+        try { window.localStorage.setItem('procGroupWidth', String(width)) } catch {}
+      }
+    }
+    const raf = typeof requestAnimationFrame !== 'undefined' ? requestAnimationFrame(measure) : null
+    if (!raf) measure()
+    return () => { if (raf) cancelAnimationFrame(raf) }
+  }, [procGroupWidth, uiMode])
   // Inline chat state (replaces ParallelChat component)
   const [chatMessages, setChatMessages] = useState<Array<{ id: string; role: 'user' | 'assistant'; content: string }>>([])
   const [chatInput, setChatInput] = useState('')
